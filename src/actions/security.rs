@@ -16,6 +16,7 @@ use {
 pub fn code_actions(
     document: &ParsedDocument,
     uri: Url,
+    _range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
     let mut actions = Vec::new();
@@ -455,7 +456,7 @@ pub fn process(_accounts: &[AccountInfo], instruction_data: &[u8]) -> ProgramRes
         let document = ParsedDocument::parse_or_empty(source);
         let diagnostics = diagnostics::collect(&document);
         let uri = Url::parse("file:///tmp/lib.rs").unwrap();
-        let actions = code_actions(&document, uri, &diagnostics);
+        let actions = code_actions(&document, uri, diagnostics[0].range, &diagnostics);
 
         let action = actions
             .iter()

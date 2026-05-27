@@ -21,31 +21,54 @@ pub fn code_actions(
     range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
-    let mut actions = init_constraints::code_actions(document, uri.clone(), range, diagnostics);
+    let ranked_diagnostics = common::ranked_diagnostics_for_range(diagnostics, range);
+    let relevant_diagnostics = ranked_diagnostics.as_slice();
+    let mut actions =
+        init_constraints::code_actions(document, uri.clone(), range, relevant_diagnostics);
     actions.extend(missing_init::code_actions(
         document,
         uri.clone(),
-        diagnostics,
+        range,
+        relevant_diagnostics,
     ));
-    actions.extend(accounts::code_actions(document, uri.clone(), diagnostics));
+    actions.extend(accounts::code_actions(
+        document,
+        uri.clone(),
+        range,
+        relevant_diagnostics,
+    ));
     actions.extend(instructions::code_actions(
         document,
         uri.clone(),
-        diagnostics,
+        range,
+        relevant_diagnostics,
     ));
-    actions.extend(security::code_actions(document, uri.clone(), diagnostics));
-    actions.extend(features::code_actions(document, uri.clone(), diagnostics));
+    actions.extend(security::code_actions(
+        document,
+        uri.clone(),
+        range,
+        relevant_diagnostics,
+    ));
+    actions.extend(features::code_actions(
+        document,
+        uri.clone(),
+        range,
+        relevant_diagnostics,
+    ));
     actions.extend(constraints::code_actions(
         document,
         uri.clone(),
-        diagnostics,
+        range,
+        relevant_diagnostics,
     ));
     actions.extend(missing_init::fix_all_code_actions(
         document,
         uri.clone(),
+        range,
         diagnostics,
     ));
-    actions.extend(pda::code_actions(uri, diagnostics));
+    actions.extend(pda::code_actions(uri, range, relevant_diagnostics));
+    common::sort_actions_by_cursor(&mut actions, range);
     actions
 }
 

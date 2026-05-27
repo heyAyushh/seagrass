@@ -8,7 +8,7 @@ use {
 };
 
 /// Generate code actions for PDA diagnostics.
-pub fn code_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
+pub fn code_actions(uri: Url, _range: Range, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
     let mut actions = Vec::with_capacity(diagnostics.len() * 2);
 
     for diagnostic in diagnostics {

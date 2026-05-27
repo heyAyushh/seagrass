@@ -29,6 +29,7 @@ use {
 pub fn code_actions(
     document: &ParsedDocument,
     uri: Url,
+    _range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
     let mut actions = add_instruction_argument_actions(document, uri.clone(), diagnostics);

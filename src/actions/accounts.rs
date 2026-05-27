@@ -22,9 +22,10 @@ use {
 pub fn code_actions(
     document: &ParsedDocument,
     uri: Url,
+    range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
-    let mut actions = context_structs::code_actions(document, uri.clone(), diagnostics);
+    let mut actions = context_structs::code_actions(document, uri.clone(), range, diagnostics);
     actions.extend(replace_missing_account_actions(
         document,
         uri.clone(),

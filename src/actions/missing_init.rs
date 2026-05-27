@@ -1,5 +1,7 @@
 use {
-    super::common::{diagnostic_code, signer_candidate, single_document_edit},
+    super::common::{
+        diagnostic_code, diagnostic_touches_range, signer_candidate, single_document_edit,
+    },
     crate::{
         diagnostics::ANCHOR_MISSING_INIT_CONSTRAINT_CODE,
         document::{ParsedDocument, SymbolRange},
@@ -13,6 +15,7 @@ use {
 pub(super) fn code_actions(
     document: &ParsedDocument,
     uri: Url,
+    _range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
     diagnostics
@@ -49,8 +52,17 @@ pub(super) fn code_actions(
 pub(super) fn fix_all_code_actions(
     document: &ParsedDocument,
     uri: Url,
+    range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
+    let cursor_touches_missing_init = diagnostics.iter().any(|diagnostic| {
+        diagnostic_code(diagnostic) == Some(ANCHOR_MISSING_INIT_CONSTRAINT_CODE)
+            && diagnostic_touches_range(diagnostic, range)
+    });
+    if !cursor_touches_missing_init {
+        return Vec::new();
+    }
+
     let edits = diagnostics
         .iter()
         .filter(|diagnostic| {

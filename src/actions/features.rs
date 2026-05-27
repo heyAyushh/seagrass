@@ -11,6 +11,7 @@ use {
 pub fn code_actions(
     _document: &crate::document::ParsedDocument,
     uri: Url,
+    _range: tower_lsp::lsp_types::Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
     let mut actions = Vec::new();

@@ -14,6 +14,8 @@ use {
     },
 };
 
+const POSITION_CHARACTER_STRIDE: u64 = 1_000_000;
+
 /// Creates a single TextEdit for the given range and replacement text.
 pub fn single_text_edit(range: Range, new_text: String) -> TextEdit {
     TextEdit { range, new_text }
@@ -49,6 +51,68 @@ pub fn diagnostic_quickfix(diagnostic: &Diagnostic) -> Option<&str> {
         .as_ref()
         .and_then(|data| data.get("quickfix"))
         .and_then(|value| value.as_str())
+}
+
+pub fn ranked_diagnostics_for_range(
+    diagnostics: &[Diagnostic],
+    cursor_range: Range,
+) -> Vec<Diagnostic> {
+    let should_filter = is_point_range(cursor_range)
+        && diagnostics
+            .iter()
+            .any(|diagnostic| ranges_touch(diagnostic.range, cursor_range));
+    let mut ranked = diagnostics
+        .iter()
+        .filter(|diagnostic| !should_filter || ranges_touch(diagnostic.range, cursor_range))
+        .cloned()
+        .collect::<Vec<_>>();
+    ranked.sort_by_key(|diagnostic| range_distance(diagnostic.range, cursor_range));
+    ranked
+}
+
+pub fn diagnostic_touches_range(diagnostic: &Diagnostic, cursor_range: Range) -> bool {
+    ranges_touch(diagnostic.range, cursor_range)
+}
+
+pub fn sort_actions_by_cursor(actions: &mut [CodeAction], cursor_range: Range) {
+    actions.sort_by_key(|action| {
+        action
+            .diagnostics
+            .as_ref()
+            .and_then(|diagnostics| diagnostics.first())
+            .map(|diagnostic| range_distance(diagnostic.range, cursor_range))
+            .unwrap_or(u64::MAX)
+    });
+}
+
+fn ranges_touch(left: Range, right: Range) -> bool {
+    position_key(left.start) <= position_key(right.end)
+        && position_key(right.start) <= position_key(left.end)
+}
+
+fn is_point_range(range: Range) -> bool {
+    range.start == range.end
+}
+
+fn range_distance(left: Range, right: Range) -> u64 {
+    if ranges_touch(left, right) {
+        return 0;
+    }
+    let left_start = position_key(left.start);
+    let left_end = position_key(left.end);
+    let right_start = position_key(right.start);
+    let right_end = position_key(right.end);
+    if left_end < right_start {
+        right_start.saturating_sub(left_end)
+    } else {
+        left_start.saturating_sub(right_end)
+    }
+}
+
+fn position_key(position: Position) -> u64 {
+    u64::from(position.line)
+        .saturating_mul(POSITION_CHARACTER_STRIDE)
+        .saturating_add(u64::from(position.character))
 }
 
 /// Finds the line number of a struct declaration by name in the source text.

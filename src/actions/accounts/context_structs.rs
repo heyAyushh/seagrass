@@ -14,6 +14,7 @@ use {
 pub(super) fn code_actions(
     document: &ParsedDocument,
     uri: Url,
+    _range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
     let mut actions = Vec::new();

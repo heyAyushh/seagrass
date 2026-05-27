@@ -57,6 +57,101 @@ fn byte_offset(source: &str, position: Position) -> usize {
     source.len()
 }
 
+#[test]
+fn cursor_range_filters_unrelated_quickfix_actions() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    pub user: Signer<'info>,
+    pub vault: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = vec![
+        missing_account_reference_diagnostic(2, "usr", "user"),
+        missing_account_reference_diagnostic(4, "vualt", "vault"),
+    ];
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        point_range(diagnostics[1].range.start),
+        &diagnostics,
+    );
+
+    assert!(actions
+        .iter()
+        .any(|action| action.title == "Replace `vualt` with `vault`"));
+    assert!(!actions
+        .iter()
+        .any(|action| action.title == "Replace `usr` with `user`"));
+}
+
+#[test]
+fn cursor_distance_ranks_nearest_quickfix_actions() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    pub user: Signer<'info>,
+    pub vault: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = vec![
+        missing_account_reference_diagnostic(2, "usr", "user"),
+        missing_account_reference_diagnostic(4, "vualt", "vault"),
+    ];
+    let cursor_near_vault = Range {
+        start: Position {
+            line: 5,
+            character: 0,
+        },
+        end: Position {
+            line: 5,
+            character: 0,
+        },
+    };
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        cursor_near_vault,
+        &diagnostics,
+    );
+
+    assert_eq!(
+        actions.first().map(|action| action.title.as_str()),
+        Some("Replace `vualt` with `vault`")
+    );
+}
+
+fn missing_account_reference_diagnostic(line: u32, missing: &str, replacement: &str) -> Diagnostic {
+    Diagnostic {
+        range: Range {
+            start: Position { line, character: 4 },
+            end: Position {
+                line,
+                character: 4 + u32::try_from(missing.len()).unwrap(),
+            },
+        },
+        source: Some(diagnostics::SOURCE.to_string()),
+        code: Some(NumberOrString::String(
+            "anchor-missing-account-reference".to_string(),
+        )),
+        data: Some(serde_json::json!({
+            "account": missing,
+            "accountsStruct": "Create",
+            "candidates": [replacement],
+        })),
+        ..Diagnostic::default()
+    }
+}
+
+fn point_range(position: Position) -> Range {
+    Range {
+        start: position,
+        end: position,
+    }
+}
+
 struct MissingReferenceActionScenario {
     missing: &'static str,
     replacement: &'static str,
