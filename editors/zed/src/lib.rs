@@ -51,13 +51,8 @@ impl zed::Extension for SeagrassExtension {
             "seagrass was not found on PATH, and cargo is not available".to_string()
         })?;
 
-        let args = if let Some(manifest_path) = env_value(&env, SERVER_MANIFEST_ENV) {
-            cargo_args_for_manifest(manifest_path)
-        } else if worktree.read_text_file("Cargo.toml").is_ok() {
-            cargo_args_for_manifest("Cargo.toml")
-        } else {
-            cargo_args_for_manifest(SERVER_MANIFEST_FROM_EXTENSION)
-        };
+        let worktree_manifest = worktree.read_text_file("Cargo.toml").ok();
+        let args = cargo_args(&env, worktree_manifest.as_deref());
 
         Ok(zed::Command {
             command: cargo,
@@ -122,6 +117,55 @@ fn cargo_args_for_manifest(manifest_path: impl Into<String>) -> Vec<String> {
         manifest_path.into(),
         "--quiet".to_string(),
     ]
+}
+
+fn cargo_args(env: &[(String, String)], worktree_manifest: Option<&str>) -> Vec<String> {
+    if let Some(manifest_path) = env_value(env, SERVER_MANIFEST_ENV) {
+        return cargo_args_for_manifest(manifest_path);
+    }
+
+    if worktree_manifest.is_some_and(is_seagrass_server_manifest) {
+        return cargo_args_for_manifest("Cargo.toml");
+    }
+
+    cargo_args_for_manifest(SERVER_MANIFEST_FROM_EXTENSION)
+}
+
+fn is_seagrass_server_manifest(manifest: &str) -> bool {
+    section_has_toml_string(manifest, "[package]", "name", SERVER_BINARY)
+        && section_has_toml_string(manifest, "[[bin]]", "name", SERVER_BINARY)
+}
+
+fn section_has_toml_string(manifest: &str, section: &str, key: &str, expected: &str) -> bool {
+    let mut in_section = false;
+
+    for raw_line in manifest.lines() {
+        let line = strip_toml_comment(raw_line).trim();
+        if line.starts_with('[') {
+            in_section = line == section;
+            continue;
+        }
+        if in_section && toml_string_value(line, key).as_deref() == Some(expected) {
+            return true;
+        }
+    }
+
+    false
+}
+
+fn toml_string_value(line: &str, key: &str) -> Option<String> {
+    let value = line
+        .strip_prefix(key)?
+        .trim_start()
+        .strip_prefix('=')?
+        .trim_start()
+        .strip_prefix('"')?;
+    let end = value.find('"')?;
+    Some(value[..end].to_string())
+}
+
+fn strip_toml_comment(line: &str) -> &str {
+    line.split('#').next().unwrap_or("")
 }
 
 fn env_value(env: &[(String, String)], key: &str) -> Option<String> {
@@ -246,6 +290,53 @@ mod tests {
 
         assert_eq!(diagnostics_transport(Some(&settings)), "both");
     }
+
+    #[test]
+    fn cargo_args_use_manifest_env_override() {
+        let env = vec![(
+            SERVER_MANIFEST_ENV.to_string(),
+            "/tmp/seagrass/Cargo.toml".to_string(),
+        )];
+
+        assert_eq!(
+            cargo_args(&env, Some(GENERIC_WORKTREE_MANIFEST)),
+            cargo_args_for_manifest("/tmp/seagrass/Cargo.toml")
+        );
+    }
+
+    #[test]
+    fn cargo_args_use_worktree_manifest_only_for_seagrass_server() {
+        assert_eq!(
+            cargo_args(&[], Some(SEAGRASS_SERVER_MANIFEST)),
+            cargo_args_for_manifest("Cargo.toml")
+        );
+    }
+
+    #[test]
+    fn cargo_args_skip_generic_worktree_manifest_without_bin() {
+        assert_eq!(
+            cargo_args(&[], Some(GENERIC_WORKTREE_MANIFEST)),
+            cargo_args_for_manifest(SERVER_MANIFEST_FROM_EXTENSION)
+        );
+    }
+
+    const GENERIC_WORKTREE_MANIFEST: &str = r#"
+[package]
+name = "some-program"
+version = "0.1.0"
+edition = "2021"
+"#;
+
+    const SEAGRASS_SERVER_MANIFEST: &str = r#"
+[package]
+name = "seagrass"
+version = "1.0.2"
+edition = "2021"
+
+[[bin]]
+name = "seagrass"
+path = "src/main.rs"
+"#;
 }
 
 zed::register_extension!(SeagrassExtension);
