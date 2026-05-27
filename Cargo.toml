@@ -21,7 +21,7 @@ license = "MIT"
 repository = "https://github.com/heyAyushh/seagrass"
 
 [workspace.dependencies]
-anchor-syn = { git = "https://github.com/otter-sec/anchor.git", rev = "4addac53" }
+anchor-syn = { version = "1.0.2", git = "https://github.com/otter-sec/anchor.git", rev = "4addac53" }
 cargo_toml = "0.22.3"
 proptest = "1"
 syn = "2"

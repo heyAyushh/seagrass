@@ -8,7 +8,7 @@ edition = "2021"
 cargo-fuzz = true
 
 [dependencies]
-seagrass = { path = ".." }
+seagrass = { path = "..", version = "1.0.2" }
 libfuzzer-sys = "0.4"
 
 [[bin]]
