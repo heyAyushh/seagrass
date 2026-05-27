@@ -4,6 +4,11 @@ const SERVER_ID: &str = "seagrass";
 const SERVER_BINARY: &str = "seagrass";
 const SERVER_MANIFEST_ENV: &str = "SEAGRASS_MANIFEST_PATH";
 const DEFAULT_DIAGNOSTICS_TRANSPORT: &str = "push";
+const SLASH_STATUS: &str = "seagrass-status";
+const SLASH_COVERAGE: &str = "seagrass-coverage";
+const SLASH_ARTIFACTS: &str = "seagrass-artifacts";
+const SLASH_FEEDBACK: &str = "seagrass-feedback";
+const START_SERVER_FIRST: &str = "Start the Seagrass server first.";
 const SERVER_MANIFEST_FROM_EXTENSION: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml");
 const SECURITY_LEVEL_SETTINGS: &[&str] = &[
@@ -118,6 +123,27 @@ impl zed::Extension for SeagrassExtension {
 
         let settings = LspSettings::for_worktree(language_server_id.as_ref(), worktree)?;
         Ok(Some(workspace_configuration(settings.settings)))
+    }
+
+    fn complete_slash_command_argument(
+        &self,
+        command: zed::SlashCommand,
+        _args: Vec<String>,
+    ) -> zed::Result<Vec<zed::SlashCommandArgumentCompletion>> {
+        slash_command_spec(&command.name)
+            .map(|_| Vec::new())
+            .ok_or_else(|| unsupported_slash_command(&command.name))
+    }
+
+    fn run_slash_command(
+        &self,
+        command: zed::SlashCommand,
+        _args: Vec<String>,
+        _worktree: Option<&zed::Worktree>,
+    ) -> zed::Result<zed::SlashCommandOutput> {
+        let spec = slash_command_spec(&command.name)
+            .ok_or_else(|| unsupported_slash_command(&command.name))?;
+        Ok(slash_command_unavailable_output(spec))
     }
 }
 
@@ -265,6 +291,49 @@ fn ensure_string_default(settings: &mut zed::serde_json::Value, key: &str, defau
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SlashCommandSpec {
+    name: &'static str,
+    lsp_command: &'static str,
+}
+
+fn slash_command_spec(name: &str) -> Option<SlashCommandSpec> {
+    match name {
+        SLASH_STATUS => Some(SlashCommandSpec {
+            name: SLASH_STATUS,
+            lsp_command: "seagrass/status",
+        }),
+        SLASH_COVERAGE => Some(SlashCommandSpec {
+            name: SLASH_COVERAGE,
+            lsp_command: "seagrass/projectCoverage",
+        }),
+        SLASH_ARTIFACTS => Some(SlashCommandSpec {
+            name: SLASH_ARTIFACTS,
+            lsp_command: "seagrass/artifacts",
+        }),
+        SLASH_FEEDBACK => Some(SlashCommandSpec {
+            name: SLASH_FEEDBACK,
+            lsp_command: "seagrass/feedback",
+        }),
+        _ => None,
+    }
+}
+
+fn slash_command_unavailable_output(spec: SlashCommandSpec) -> zed::SlashCommandOutput {
+    let text = format!(
+        "{START_SERVER_FIRST}\n\nZed extension API 0.7.0 does not expose a workspace/executeCommand bridge from Assistant slash commands, so /{} cannot dispatch `{}` yet.",
+        spec.name, spec.lsp_command
+    );
+    zed::SlashCommandOutput {
+        text,
+        sections: Vec::new(),
+    }
+}
+
+fn unsupported_slash_command(name: &str) -> String {
+    format!("unsupported Seagrass slash command `{name}`")
+}
+
 fn merge_env(
     mut base: zed::EnvVars,
     overrides: Option<std::collections::HashMap<String, String>>,
@@ -400,6 +469,36 @@ mod tests {
             cargo_args(&[], Some(GENERIC_WORKTREE_MANIFEST)),
             cargo_args_for_manifest(SERVER_MANIFEST_FROM_EXTENSION)
         );
+    }
+
+    #[test]
+    fn slash_commands_map_to_server_execute_commands() {
+        assert_eq!(
+            slash_command_spec(SLASH_STATUS).map(|spec| spec.lsp_command),
+            Some("seagrass/status")
+        );
+        assert_eq!(
+            slash_command_spec(SLASH_COVERAGE).map(|spec| spec.lsp_command),
+            Some("seagrass/projectCoverage")
+        );
+        assert_eq!(
+            slash_command_spec(SLASH_ARTIFACTS).map(|spec| spec.lsp_command),
+            Some("seagrass/artifacts")
+        );
+        assert_eq!(
+            slash_command_spec(SLASH_FEEDBACK).map(|spec| spec.lsp_command),
+            Some("seagrass/feedback")
+        );
+    }
+
+    #[test]
+    fn slash_command_output_reports_missing_zed_bridge() {
+        let output = slash_command_unavailable_output(slash_command_spec(SLASH_STATUS).unwrap());
+
+        assert!(output.text.contains(START_SERVER_FIRST));
+        assert!(output.text.contains("workspace/executeCommand"));
+        assert!(output.text.contains("seagrass/status"));
+        assert!(output.sections.is_empty());
     }
 
     const GENERIC_WORKTREE_MANIFEST: &str = r#"

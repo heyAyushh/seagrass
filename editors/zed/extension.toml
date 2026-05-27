@@ -11,3 +11,19 @@ name = "Seagrass"
 languages = ["Rust"]
 language_ids = { Rust = "rust" }
 code_action_kinds = ["quickfix", "source"]
+
+[slash_commands.seagrass-status]
+description = "Show Seagrass server status"
+requires_argument = false
+
+[slash_commands.seagrass-coverage]
+description = "Show Seagrass project coverage"
+requires_argument = false
+
+[slash_commands.seagrass-artifacts]
+description = "Show Seagrass artifact report"
+requires_argument = false
+
+[slash_commands.seagrass-feedback]
+description = "Show Seagrass feedback URL"
+requires_argument = false
