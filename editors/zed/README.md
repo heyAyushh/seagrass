@@ -124,6 +124,8 @@ The server also exposes a bounded in-memory log snapshot over LSP:
 
 The same execute-command surface exposes `seagrass/status`, `seagrass/artifacts`, `seagrass/feedback`, `seagrass/errorCoverage`, `seagrass/supportMatrix`, `seagrass/generatorProfile`, and `seagrass/analyze`. Zed's adapter stays thin, so these commands are implemented once in the server and remain available to other LSP clients and agent harnesses.
 
-`seagrass/feedback` returns the bundled feedback URL from the server. The Zed extension does not expose a native command for it because `zed_extension_api` 0.7.0 cannot open external URLs from the wasm extension; use the slash-command path once enabled.
+Assistant slash commands are registered as `/seagrass-status`, `/seagrass-coverage`, `/seagrass-artifacts`, and `/seagrass-feedback`. Zed 0.7.0 does not expose a direct Assistant-to-running-LSP execute-command bridge, so the adapter sends a one-shot `workspace/executeCommand` request to the resolved Seagrass binary and returns the server JSON. If the binary or cargo fallback is unavailable, the slash command returns a "Start the Seagrass server first" message instead of failing silently.
+
+`seagrass/feedback` returns the bundled feedback URL from the server. The Zed extension does not expose a native command for it because `zed_extension_api` 0.7.0 cannot open external URLs from the wasm extension; use `/seagrass-feedback` to print the URL in Assistant.
 
 `seagrass/projectCoverage` returns the current workspace settings, open-document diagnostic counts, attack-family counts, and support-matrix coverage. This is the quick way to check which security families are active in the editor without reading logs.
