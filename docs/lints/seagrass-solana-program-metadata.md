@@ -16,6 +16,8 @@ derived from raw substring matches.
 
 - comments, doc comments, string literals, or unrelated attribute text
 - examples where the required semantic evidence is absent or ambiguous
+- files that do not declare the program id and do not contain `#[program]`
+  instructions
 - project states outside this topic's diagnostic contract
 
 ## False-Positive Matrix
@@ -25,6 +27,7 @@ derived from raw substring matches.
 | `seagrass/solana.program-metadata` appears only in a comment, doc comment, or string literal | no diagnostic |
 | an unrelated identifier contains words from this topic | no diagnostic |
 | the parsed semantic evidence for this invariant is absent | no diagnostic |
+| file is not the program root (no declare_id!, no #[program]) | no diagnostic |
 | parsed evidence satisfies solana program metadata | diagnostic |
 
 ## Suppression
