@@ -84,6 +84,52 @@ pub struct Initialize<'info> {
 
     let _ = std::fs::remove_dir_all(root);
 }
+
+#[test]
+fn offers_solana_target_os_check_cfg_quickfix_for_manifest() {
+    let root = std::env::temp_dir().join(format!(
+        "seagrass-solana-cfg-action-test-{}",
+        std::process::id()
+    ));
+    std::fs::create_dir_all(&root).unwrap();
+    let manifest_path = root.join("Cargo.toml");
+    std::fs::write(&manifest_path, "[workspace]\nmembers = []\n").unwrap();
+    let manifest_uri = Url::from_file_path(&manifest_path).unwrap();
+    let document = ParsedDocument::parse(
+        r#"
+declare_id!("Demo111111111111111111111111111111111111");
+"#,
+    )
+    .unwrap();
+    let diagnostics = crate::diagnostics::check_cfg::collect(
+        &document,
+        &manifest_uri,
+        &std::fs::read_to_string(&manifest_path).unwrap(),
+    );
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        diagnostics[0].range,
+        &diagnostics,
+    );
+
+    let action = actions
+        .iter()
+        .find(|action| action.title.contains("target_os"))
+        .expect("expected target_os quickfix");
+    let edit = action.edit.as_ref().unwrap();
+    let changes = edit.changes.as_ref().unwrap();
+    let text_edit = changes.get(&manifest_uri).unwrap().first().unwrap();
+    assert!(text_edit
+        .new_text
+        .contains("[workspace.lints.rust.unexpected_cfgs]"));
+    assert!(text_edit
+        .new_text
+        .contains("'cfg(target_os, values(\"solana\"))'"));
+
+    let _ = std::fs::remove_dir_all(root);
+}
+
 #[test]
 fn offers_sync_declare_id_quickfix() {
     let source = r#"declare_id!("Declared111111111111111111111111111111111");"#;

@@ -18,6 +18,7 @@ pub fn code_actions(
     actions.extend(replace_keyword_value_actions(uri.clone(), diagnostics));
     actions.extend(add_anchor_debug_feature_actions(diagnostics));
     actions.extend(add_init_if_needed_feature_actions(diagnostics));
+    actions.extend(add_solana_target_os_check_cfg_actions(diagnostics));
     actions.extend(sync_declare_id_actions(uri.clone(), diagnostics));
     actions
 }
@@ -161,6 +162,51 @@ fn add_init_if_needed_feature_actions(diagnostics: &[Diagnostic]) -> Vec<CodeAct
                 data: Some(serde_json::json!({
                     "anchorAction": "add-anchor-lang-feature",
                     "feature": feature,
+                })),
+            })
+        })
+        .collect()
+}
+
+fn add_solana_target_os_check_cfg_actions(diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic_code(diagnostic) == Some("anchor-check-cfg"))
+        .filter(|diagnostic| {
+            diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfix"))
+                .and_then(|value| value.as_str())
+                == Some(check_cfg::ADD_SOLANA_TARGET_OS_CHECK_CFG_QUICKFIX)
+        })
+        .filter_map(|diagnostic| {
+            let manifest_uri = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("manifest"))
+                .and_then(|value| value.as_str())
+                .and_then(|value| Url::parse(value).ok())?;
+            let manifest_path = manifest_uri.to_file_path().ok()?;
+            let manifest_text = fs::read_to_string(manifest_path).ok()?;
+            let edit = check_cfg::solana_target_os_check_cfg_edit(&manifest_text)?;
+            let mut changes = HashMap::new();
+            changes.insert(manifest_uri.clone(), vec![edit]);
+
+            Some(CodeAction {
+                title: "Allow `target_os = \"solana\"` in Cargo check-cfg".to_string(),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(changes),
+                    document_changes: None,
+                    change_annotations: None,
+                }),
+                command: None,
+                is_preferred: Some(true),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "add-solana-target-os-check-cfg",
                 })),
             })
         })
