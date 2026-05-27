@@ -1,1 +1,6 @@
 /target/
+/.sisyphus/
+/.commandcode/
+/.antigravitycli/
+/node_modules/
+*.tsbuildinfo
