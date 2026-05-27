@@ -68,6 +68,11 @@ Each adapter should pick the default diagnostics transport that gives the best n
 
 Completion should wake on the first typed identifier character and on space in Anchor-aware contexts. The server advertises those trigger characters and then applies its own semantic gate, so normal Rust stays quiet while Anchor prefixes and delimiter-space flows do not wait for editor minimum-word heuristics.
 
+Quick fixes may carry snippet tabstops when an editor advertises
+`experimental.snippetTextEdit`. VS Code advertises this capability and applies
+the server's raw snippet text. Editors that do not advertise it receive the same
+materialized edit text without tabstops.
+
 ## Settings
 
 VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settings equivalent:

@@ -17,7 +17,10 @@ use {
         collections::{BTreeMap, BTreeSet, VecDeque},
         fs,
         panic::{catch_unwind, AssertUnwindSafe},
-        sync::{Arc, Mutex, RwLock},
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Arc, Mutex, RwLock,
+        },
         time::{Duration, Instant},
     },
     tower_lsp::{
@@ -61,6 +64,7 @@ mod diagnostic_pipeline;
 mod helpers;
 mod navigation_handlers;
 mod reports;
+mod snippet_edits;
 
 use {helpers::*, reports::*};
 
@@ -137,6 +141,7 @@ struct Backend {
     // while serializing the infrequent write operations (workspace refresh).
     workspace_index: Arc<RwLock<workspace::WorkspaceIndex>>,
     settings: Arc<Mutex<ServerSettings>>,
+    client_supports_snippet_edits: Arc<AtomicBool>,
     diagnostics_transport: Arc<Mutex<DiagnosticsTransport>>,
     recent_logs: Arc<Mutex<VecDeque<ServerLogEntry>>>,
     document_debouncers: DashMap<Url, debounce::Debouncer>,
@@ -159,13 +164,18 @@ pub async fn run_stdio() {
     let _hotpath_guard = crate::hotpath::install_guard();
     let stdin = tokio::io::stdin();
     let stdout = tokio::io::stdout();
+    let settings = Arc::new(Mutex::new(ServerSettings::default()));
+    let client_supports_snippet_edits = Arc::new(AtomicBool::new(false));
+    let backend_settings = Arc::clone(&settings);
+    let backend_snippet_support = Arc::clone(&client_supports_snippet_edits);
 
-    let (service, socket) = LspService::new(|client| Backend {
+    let (service, socket) = LspService::new(move |client| Backend {
         client,
         documents: DashMap::new(),
         workspace_roots: Arc::new(Mutex::new(Vec::new())),
         workspace_index: Arc::new(RwLock::new(workspace::WorkspaceIndex::default())),
-        settings: Arc::new(Mutex::new(ServerSettings::default())),
+        settings: backend_settings,
+        client_supports_snippet_edits: backend_snippet_support,
         diagnostics_transport: Arc::new(Mutex::new(DiagnosticsTransport::Push)),
         recent_logs: Arc::new(Mutex::new(VecDeque::with_capacity(RECENT_LOG_LIMIT))),
         document_debouncers: DashMap::new(),
@@ -174,6 +184,8 @@ pub async fn run_stdio() {
         query_cache: query_cache::QueryCache::new(),
         salsa_db: Arc::new(Mutex::new(LspSalsaDb::default())),
     });
+    let service =
+        snippet_edits::SnippetEditService::new(service, client_supports_snippet_edits, settings);
     Server::new(stdin, stdout, socket).serve(service).await;
 }
 
@@ -181,6 +193,10 @@ pub async fn run_stdio() {
 impl LanguageServer for Backend {
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        self.client_supports_snippet_edits.store(
+            snippet_edits::client_supports_snippet_text_edit(&params.capabilities),
+            Ordering::Relaxed,
+        );
         let roots = workspace_roots_from_initialize(&params);
 
         // Validate workspace roots exist on disk before accepting them.

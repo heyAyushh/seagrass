@@ -178,6 +178,7 @@ fn full_sync_change_range_tracks_current_edit_span() {
 #[test]
 fn status_text_reports_observable_server_state() {
     let settings = ServerSettings {
+        agent_mode: false,
         security_diagnostics: true,
         experimental_diagnostics: false,
         security_levels: BTreeMap::new(),
@@ -399,6 +400,7 @@ fn settings_accept_flat_and_nested_vscode_shapes() {
 #[test]
 fn agent_mode_fills_unset_server_settings() {
     let mut settings = ServerSettings {
+        agent_mode: false,
         security_diagnostics: false,
         experimental_diagnostics: false,
         security_levels: BTreeMap::new(),

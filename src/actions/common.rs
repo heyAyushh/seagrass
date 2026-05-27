@@ -7,7 +7,10 @@ use {
         diagnostics::SOURCE,
         document::{ParsedDocument, SymbolRange},
     },
-    std::collections::HashMap,
+    std::{
+        collections::HashMap,
+        sync::{Mutex, OnceLock},
+    },
     tower_lsp::lsp_types::{
         CodeAction, CodeActionKind, Diagnostic, NumberOrString, Position, Range, TextEdit, Url,
         WorkspaceEdit,
@@ -15,6 +18,18 @@ use {
 };
 
 const POSITION_CHARACTER_STRIDE: u64 = 1_000_000;
+const SNIPPET_TEMPLATE_CACHE_LIMIT: usize = 1_024;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct SnippetEditKey {
+    start_line: u32,
+    start_character: u32,
+    end_line: u32,
+    end_character: u32,
+    materialized: String,
+}
+
+static SNIPPET_TEMPLATES: OnceLock<Mutex<HashMap<SnippetEditKey, String>>> = OnceLock::new();
 
 /// Creates a single TextEdit for the given range and replacement text.
 pub fn single_text_edit(range: Range, new_text: String) -> TextEdit {
@@ -22,10 +37,20 @@ pub fn single_text_edit(range: Range, new_text: String) -> TextEdit {
 }
 
 pub fn snippet_text_edit(range: Range, template: &str) -> TextEdit {
+    let materialized = materialize_snippet_template(template);
+    remember_snippet_template(range, &materialized, template);
     TextEdit {
         range,
-        new_text: materialize_snippet_template(template),
+        new_text: materialized,
     }
+}
+
+pub(crate) fn snippet_template_for_edit(range: Range, materialized: &str) -> Option<String> {
+    snippet_template_store()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner())
+        .get(&snippet_edit_key(range, materialized))
+        .cloned()
 }
 
 /// Creates a WorkspaceEdit containing a single TextEdit for one document.
@@ -120,6 +145,33 @@ fn position_key(position: Position) -> u64 {
     u64::from(position.line)
         .saturating_mul(POSITION_CHARACTER_STRIDE)
         .saturating_add(u64::from(position.character))
+}
+
+fn remember_snippet_template(range: Range, materialized: &str, template: &str) {
+    if template == materialized {
+        return;
+    }
+    let mut snippets = snippet_template_store()
+        .lock()
+        .unwrap_or_else(|err| err.into_inner());
+    if snippets.len() >= SNIPPET_TEMPLATE_CACHE_LIMIT {
+        snippets.clear();
+    }
+    snippets.insert(snippet_edit_key(range, materialized), template.to_string());
+}
+
+fn snippet_template_store() -> &'static Mutex<HashMap<SnippetEditKey, String>> {
+    SNIPPET_TEMPLATES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn snippet_edit_key(range: Range, materialized: &str) -> SnippetEditKey {
+    SnippetEditKey {
+        start_line: range.start.line,
+        start_character: range.start.character,
+        end_line: range.end.line,
+        end_character: range.end.character,
+        materialized: materialized.to_string(),
+    }
 }
 
 fn materialize_snippet_template(template: &str) -> String {
@@ -477,13 +529,15 @@ mod tests {
 
     #[test]
     fn snippet_text_edit_materializes_default_placeholder() {
-        let edit = snippet_text_edit(
-            sample_range(),
-            "pub ${1:state}: ${2:Account<'info, State>},",
-        );
+        let template = "pub ${1:state}: ${2:Account<'info, State>},";
+        let edit = snippet_text_edit(sample_range(), template);
 
         assert_eq!(edit.range, sample_range());
         assert_eq!(edit.new_text, "pub state: Account<'info, State>,");
+        assert_eq!(
+            snippet_template_for_edit(edit.range, &edit.new_text).as_deref(),
+            Some(template)
+        );
     }
 
     #[test]

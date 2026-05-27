@@ -9,6 +9,10 @@ mod pda;
 mod security;
 
 pub use common::edit_distance;
+pub(crate) use common::snippet_template_for_edit;
+
+#[cfg(test)]
+pub(crate) use common::snippet_text_edit;
 
 use {
     crate::document::ParsedDocument,

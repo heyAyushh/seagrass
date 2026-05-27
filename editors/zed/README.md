@@ -94,6 +94,8 @@ Zed settings under `lsp.seagrass.settings` are passed through to `workspace/didC
 
 Completions are expected to wake on the first typed Anchor prefix and after delimiter spaces such as `#[account(init, `, not after Zed's generic minimum-word heuristic. The server advertises identifier and space trigger characters, then filters requests semantically so normal Rust spaces stay quiet.
 
+Zed currently receives materialized quick-fix edits. `zed_extension_api` 0.7.0 does not expose a way for this adapter to advertise `experimental.snippetTextEdit` or to apply snippet WorkspaceEdits, so snippet tabstops remain a VS Code path for now.
+
 `diagnostics.coldPath` defaults to `idle`: hot parser/Anchor-structure diagnostics stay live while full usage, security, and project diagnostics wait for a typing pause. Use `save` to run full diagnostics on open/save only, or `manual` to leave full checks to explicit pull/command-driven flows.
 
 `agent.mode` defaults to `false`. When enabled, Seagrass fills unset settings with agent-friendly defaults: security and experimental diagnostics on, strict native security on, all nine security families at `warn`, `diagnostics.coldPath` at `idle`, and `trace.server` on. Set any specific key beside it to override that preset.

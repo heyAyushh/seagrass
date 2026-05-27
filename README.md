@@ -117,7 +117,9 @@ code .
 ```
 
 Run the `Run Seagrass Extension` launch configuration. Server process settings
-live under `seagrass.*`.
+live under `seagrass.*`. VS Code advertises Seagrass snippet quick-fix support,
+so account-field fixes can include tabstops while other editors receive the
+same materialized edits.
 
 ## Smoke Test
 

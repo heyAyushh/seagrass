@@ -195,7 +195,7 @@ pub(super) fn accounts_struct_stub(
 fn account_field_stub(field: &InferredAccountField, indent: &str) -> String {
     let constraint = account_field_constraints(field, indent);
     format!(
-        "{constraint}{indent}pub {}: {},\n",
+        "{constraint}{indent}pub ${{1:{}}}: ${{2:{}}},$0\n",
         field.name, field.type_name
     )
 }

@@ -88,6 +88,7 @@ impl ParsedOpenDocument {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ServerSettings {
+    pub(crate) agent_mode: bool,
     pub(crate) security_diagnostics: bool,
     pub(crate) experimental_diagnostics: bool,
     pub(crate) security_levels: BTreeMap<String, diagnostics::DiagnosticLevel>,
@@ -119,6 +120,7 @@ pub(crate) struct ServerLogEntry {
 impl Default for ServerSettings {
     fn default() -> Self {
         Self {
+            agent_mode: false,
             security_diagnostics: true,
             experimental_diagnostics: true,
             security_levels: BTreeMap::new(),
@@ -136,6 +138,7 @@ impl ServerSettings {
     pub(crate) fn apply(&mut self, settings: serde_json::Value) {
         let anchor = settings.get("seagrass").unwrap_or(&settings);
         let agent_mode = bool_setting(anchor, "agent.mode").unwrap_or(false);
+        self.agent_mode = agent_mode;
         if agent_mode {
             self.apply_agent_mode_defaults(anchor);
         }

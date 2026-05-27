@@ -1,5 +1,6 @@
 import * as path from "path";
 import * as vscode from "vscode";
+import { type InitializeParams } from "vscode-languageserver-protocol";
 import { LanguageClient, type LanguageClientOptions, type ServerOptions } from "vscode-languageclient/node";
 
 const CLIENT_ID = "seagrass";
@@ -13,6 +14,7 @@ const ERROR_COVERAGE_COMMAND = "seagrass/errorCoverage";
 const SUPPORT_MATRIX_COMMAND = "seagrass/supportMatrix";
 const GENERATOR_PROFILE_COMMAND = "seagrass/generatorProfile";
 const LOGS_COMMAND = "seagrass/logs";
+const SNIPPET_TEXT_EDIT_CAPABILITY = "snippetTextEdit";
 const DEFAULT_SERVER_ARGS = ["run", "-p", "seagrass", "--quiet"];
 const WATCHED_FILES = [
   "**/src/**/*.rs",
@@ -68,6 +70,8 @@ let outputChannel: vscode.OutputChannel | undefined;
 let statusBarItem: vscode.StatusBarItem | undefined;
 let restartQueue: Promise<void> = Promise.resolve();
 
+type JsonObject = Record<string, unknown>;
+
 type ServerLaunchConfig = {
   command: string;
   args: string[];
@@ -77,6 +81,24 @@ type ServerLaunchConfig = {
 };
 
 type DiagnosticsTransport = "push" | "pull" | "both";
+
+class SeagrassLanguageClient extends LanguageClient {
+  protected override fillInitializeParams(params: InitializeParams): void {
+    super.fillInitializeParams(params);
+    const experimental = asJsonObject(params.capabilities.experimental);
+    params.capabilities.experimental = {
+      ...experimental,
+      [SNIPPET_TEXT_EDIT_CAPABILITY]: true,
+    };
+  }
+}
+
+function asJsonObject(value: unknown): JsonObject {
+  if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+    return value as JsonObject;
+  }
+  return {};
+}
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   outputChannel = vscode.window.createOutputChannel(CLIENT_NAME);
@@ -153,7 +175,7 @@ async function startClient(
   const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
   logStartup(launch, workspaceFolders);
 
-  client = new LanguageClient(CLIENT_ID, CLIENT_NAME, serverOptions(launch), clientOptions(fileWatchers, workspaceFolders));
+  client = new SeagrassLanguageClient(CLIENT_ID, CLIENT_NAME, serverOptions(launch), clientOptions(fileWatchers, workspaceFolders));
   await client.start();
   updateStatusBar("ready");
 }
