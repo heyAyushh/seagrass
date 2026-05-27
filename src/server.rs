@@ -18,7 +18,7 @@ use {
         fs,
         panic::{catch_unwind, AssertUnwindSafe},
         sync::{
-            atomic::{AtomicBool, Ordering},
+            atomic::{AtomicBool, AtomicU64, Ordering},
             Arc, Mutex, RwLock,
         },
         time::{Duration, Instant},
@@ -149,6 +149,9 @@ struct Backend {
     document_debouncers: DashMap<Url, debounce::Debouncer>,
     recent_typing_changes: DashMap<Url, RecentTypingChange>,
     completion_memo: DashMap<Url, CompletionMemo>,
+    /// Per-URI publish epoch, bumped once per `publish_analysis` call.
+    /// Used as a freshness token by the code-action cache.
+    code_action_epoch: Arc<DashMap<Url, AtomicU64>>,
     query_cache: query_cache::QueryCache,
     // Salsa DB (wrapped in Mutex for thread safety - LspSalsaDb uses RefCell internally and is not Sync).
     // Architecture:
@@ -184,6 +187,7 @@ pub async fn run_stdio() {
         document_debouncers: DashMap::new(),
         recent_typing_changes: DashMap::new(),
         completion_memo: DashMap::new(),
+        code_action_epoch: Arc::new(DashMap::new()),
         query_cache: query_cache::QueryCache::new(),
         salsa_db: Arc::new(Mutex::new(LspSalsaDb::default())),
     });
@@ -338,6 +342,7 @@ impl LanguageServer for Backend {
         self.documents.remove(&uri);
         self.recent_typing_changes.remove(&uri);
         self.completion_memo.remove(&uri);
+        self.forget_code_action_epoch(&uri);
         self.refresh_workspace_index().await;
         if self.diagnostics_transport().publishes() {
             self.client.publish_diagnostics(uri, Vec::new(), None).await;

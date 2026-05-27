@@ -418,6 +418,7 @@ impl Backend {
         let diagnostics = annotate_diagnostic_lane(diagnostics, lane);
         let diagnostic_count = diagnostics.len();
         let diagnostics_by_code = diagnostic_code_counts(&diagnostics);
+        self.bump_code_action_epoch(&uri);
         self.client
             .publish_diagnostics(uri, diagnostics, version)
             .await;
