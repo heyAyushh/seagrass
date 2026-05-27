@@ -3,11 +3,11 @@ name: Seagrass Release Packages
 on:
   push:
     tags:
-      - "lsp-v*"
+      - "v*"
   workflow_dispatch:
     inputs:
       tag:
-        description: "Existing release tag to package, e.g. lsp-v1.0.2"
+        description: "Existing release tag to package, e.g. v1.0.2"
         required: true
         type: string
 
@@ -50,12 +50,12 @@ jobs:
           set -euo pipefail
 
           tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
-          if [[ ! "$tag" =~ ^lsp-v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
-            echo "Expected an Seagrass tag like lsp-v1.0.2 or lsp-v1.0.2-rc.1, got: $tag" >&2
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "Expected an Seagrass tag like v1.0.2 or v1.0.2-rc.1, got: $tag" >&2
             exit 1
           fi
 
-          version="${tag#lsp-v}"
+          version="${tag#v}"
           prerelease=false
           if [[ "$version" == *-* ]]; then
             prerelease=true

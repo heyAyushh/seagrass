@@ -36,7 +36,11 @@ repository.workspace = true
 description = "Language server for Solana framework programs"
 readme = "README.md"
 default-run = "seagrass"
-publish = false
+publish = true
+homepage = "https://github.com/heyAyushh/seagrass"
+documentation = "https://docs.rs/seagrass"
+keywords = ["solana", "anchor", "lsp", "language-server", "lint"]
+categories = ["development-tools", "command-line-utilities"]
 
 [lib]
 name = "seagrass"

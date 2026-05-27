@@ -49,7 +49,7 @@ bun scripts/check-release-readiness.ts \
 | `externalReview.announcementUrl` | Required for `community`; concrete pull, issue, or discussion URL under this repo. |
 | `externalReview.auditWindowDays` | Computed from `auditOpenedAt` to `completedAt`; must be at least 30 for `community`. |
 | `externalReview.signoffs` | Required after `status` is `signed-off`; at least one reviewer signoff with a concrete pull, issue, or discussion URL. |
-| `externalReview.findingsDisposition` | Required after `status` is `signed-off`; must include an immutable CHANGELOG.md proof URL under this repo, using either the release tag (`lsp-v...`) or a 40-character commit SHA. |
+| `externalReview.findingsDisposition` | Required after `status` is `signed-off`; must include an immutable CHANGELOG.md proof URL under this repo, using either the release tag (`v...`) or a 40-character commit SHA. |
 
 ## Updating The Evidence
 
@@ -101,7 +101,7 @@ Do not change `status` to `passed` or `signed-off` without an artifact URL that
 can be inspected later. Generic repo pages such as `/pulls`, placeholder ids
 such as `actions/runs/0`, and `issues/0` are rejected; final evidence must point
 at concrete review and workflow artifacts. Changelog disposition proof must use
-an immutable `blob/<lsp-v... or sha>/CHANGELOG.md` URL, not `main` or `master`.
+an immutable `blob/<v... or sha>/CHANGELOG.md` URL, not `main` or `master`.
 
 When both generated objects exist, apply them with the strict merge command. It
 validates the merged file before writing `docs/release-readiness.json`:

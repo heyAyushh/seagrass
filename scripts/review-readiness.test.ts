@@ -14,7 +14,7 @@ describe("review readiness evidence", () => {
       mode: "community",
       reviewer: "External Reviewer",
       artifactUrl: `${repoBaseUrl}/pull/1#issuecomment-1`,
-      findingsArtifactUrl: `${repoBaseUrl}/blob/lsp-v1.0.2/CHANGELOG.md`,
+      findingsArtifactUrl: `${repoBaseUrl}/blob/v1.0.2/CHANGELOG.md`,
       completedAt: "2026-05-26T12:00:00.000Z",
       auditOpenedAt: "2026-04-26T12:00:00.000Z",
       announcementUrl: `${repoBaseUrl}/issues/1`,
@@ -39,7 +39,7 @@ describe("review readiness evidence", () => {
       findingsDisposition: {
         status: "dispositioned",
         changelogPath: "CHANGELOG.md",
-        artifactUrl: `${repoBaseUrl}/blob/lsp-v1.0.2/CHANGELOG.md`,
+        artifactUrl: `${repoBaseUrl}/blob/v1.0.2/CHANGELOG.md`,
       },
     });
   });
@@ -50,7 +50,7 @@ describe("review readiness evidence", () => {
         mode: "paid",
         reviewer: "External Reviewer",
         artifactUrl: "http://example.com/review",
-        findingsArtifactUrl: `https://github.com/${expectedGithubRepoSlug()}/blob/lsp-v1.0.2/CHANGELOG.md`,
+        findingsArtifactUrl: `https://github.com/${expectedGithubRepoSlug()}/blob/v1.0.2/CHANGELOG.md`,
         completedAt: "2026-05-26T12:00:00.000Z",
       }),
     ).toThrow(/github\.com/);
@@ -64,7 +64,7 @@ describe("review readiness evidence", () => {
         mode: "community",
         reviewer: "External Reviewer",
         artifactUrl: `${repoBaseUrl}/pulls`,
-        findingsArtifactUrl: `${repoBaseUrl}/blob/lsp-v1.0.2/CHANGELOG.md`,
+        findingsArtifactUrl: `${repoBaseUrl}/blob/v1.0.2/CHANGELOG.md`,
         completedAt: "2026-05-26T12:00:00.000Z",
         auditOpenedAt: "2026-04-26T12:00:00.000Z",
         announcementUrl: `${repoBaseUrl}/issues/1`,
@@ -79,7 +79,7 @@ describe("review readiness evidence", () => {
         mode: "community",
         reviewer: "External Reviewer",
         artifactUrl: `${repoBaseUrl}/pull/1#issuecomment-1`,
-        findingsArtifactUrl: `${repoBaseUrl}/blob/lsp-v1.0.2/CHANGELOG.md`,
+        findingsArtifactUrl: `${repoBaseUrl}/blob/v1.0.2/CHANGELOG.md`,
         completedAt: "2026-05-26T12:00:00.000Z",
         auditOpenedAt: "2026-05-25T12:00:00.000Z",
         announcementUrl: `${repoBaseUrl}/issues/1`,
@@ -109,7 +109,7 @@ describe("review readiness evidence", () => {
         mode: "paid",
         reviewer: "pending",
         artifactUrl: `${repoBaseUrl}/pull/1#issuecomment-1`,
-        findingsArtifactUrl: `${repoBaseUrl}/blob/lsp-v1.0.2/CHANGELOG.md`,
+        findingsArtifactUrl: `${repoBaseUrl}/blob/v1.0.2/CHANGELOG.md`,
         completedAt: "2026-05-26T12:00:00.000Z",
       }),
     ).toThrow(/reviewer must name a reviewer/);

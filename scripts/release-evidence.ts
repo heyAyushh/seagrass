@@ -14,7 +14,7 @@ export const REQUIRED_COMMUNITY_AUDIT_DAYS = 30;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const GITHUB_POSITIVE_ID_PATTERN = "[1-9][0-9]*";
 const IMMUTABLE_CHANGELOG_REF_PATTERN =
-  "(?:[a-f0-9]{40}|lsp-v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9._-]+)?)";
+  "(?:[a-f0-9]{40}|v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9._-]+)?)";
 const CARGO_REPOSITORY_FIELD_PATTERN = /^\s*repository\s*=\s*"([^"]+)"/m;
 
 export const repoRoot = resolve(scriptDir, "..");

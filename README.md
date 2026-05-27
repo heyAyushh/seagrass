@@ -160,8 +160,8 @@ Create a signed LSP release tag after `VERSION` and every LSP/editor manifest
 match the intended version:
 
 ```sh
-git tag -s lsp-v1.0.2
-git push origin lsp-v1.0.2
+git tag -s v1.0.2
+git push origin v1.0.2
 ```
 
 The release workflow builds and attaches:
@@ -171,7 +171,7 @@ The release workflow builds and attaches:
 - `seagrass-vscode-<version>.vsix`
 - matching `.sha256` files
 
-Pre-release tags such as `lsp-v1.0.2-rc.1` create GitHub pre-releases.
+Pre-release tags such as `v1.0.2-rc.1` create GitHub pre-releases.
 
 ## License
 

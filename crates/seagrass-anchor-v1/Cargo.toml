@@ -5,9 +5,12 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
+publish = true
 description = "Anchor v1 framework catalog for Seagrass"
+homepage = "https://github.com/heyAyushh/seagrass"
+keywords = ["solana", "anchor", "lsp"]
+categories = ["development-tools"]
 
 [dependencies]
-seagrass-core = { package = "seagrass", path = "../.." }
-seagrass-framework = { path = "../seagrass-framework" }
+seagrass-core = { package = "seagrass", path = "../..", version = "1.0.2" }
+seagrass-framework = { path = "../seagrass-framework", version = "1.0.2" }

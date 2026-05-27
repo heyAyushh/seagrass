@@ -135,7 +135,7 @@ function reviewPayload(): { externalReview: unknown } {
       findingsDisposition: {
         status: "dispositioned",
         changelogPath: "CHANGELOG.md",
-        artifactUrl: `${repoBaseUrl()}/blob/lsp-v${releaseVersion}/CHANGELOG.md`,
+        artifactUrl: `${repoBaseUrl()}/blob/v${releaseVersion}/CHANGELOG.md`,
       },
     },
   };
