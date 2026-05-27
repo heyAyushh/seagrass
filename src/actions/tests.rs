@@ -1,5 +1,8 @@
 use {
-    super::{code_actions, common::diagnostic_code, common::parser_rule_kind, resolve},
+    super::{
+        code_actions, code_actions_unfiltered, common::diagnostic_code, common::parser_rule_kind,
+        cursor_dependent_code_actions, rank_and_filter_for_cursor, resolve,
+    },
     crate::{
         constraint_catalog,
         diagnostics::{self, ANCHOR_MISSING_INIT_CONSTRAINT_CODE},
@@ -121,6 +124,71 @@ pub struct Create<'info> {
         actions.first().map(|action| action.title.as_str()),
         Some("Replace `vualt` with `vault`")
     );
+}
+
+#[test]
+fn split_build_matches_wrapper_output_for_targeted_cursor() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    pub user: Signer<'info>,
+    pub vault: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = vec![
+        missing_account_reference_diagnostic(2, "usr", "user"),
+        missing_account_reference_diagnostic(4, "vualt", "vault"),
+    ];
+    let uri = Url::parse("file:///tmp/lib.rs").unwrap();
+    let cursor = point_range(diagnostics[1].range.start);
+
+    let wrapper = code_actions(&document, uri.clone(), cursor, &diagnostics);
+
+    let relevant = super::common::ranked_diagnostics_for_range(&diagnostics, cursor);
+    let mut split = code_actions_unfiltered(&document, uri.clone(), relevant.as_slice());
+    split.extend(cursor_dependent_code_actions(
+        &document,
+        uri,
+        cursor,
+        relevant.as_slice(),
+    ));
+    let split = rank_and_filter_for_cursor(split, cursor);
+
+    let wrapper_titles: Vec<&str> = wrapper.iter().map(|a| a.title.as_str()).collect();
+    let split_titles: Vec<&str> = split.iter().map(|a| a.title.as_str()).collect();
+    assert_eq!(wrapper_titles, split_titles);
+}
+
+#[test]
+fn unfiltered_build_is_a_superset_of_cursor_filtered_actions() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    pub user: Signer<'info>,
+    pub vault: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = vec![
+        missing_account_reference_diagnostic(2, "usr", "user"),
+        missing_account_reference_diagnostic(4, "vualt", "vault"),
+    ];
+    let uri = Url::parse("file:///tmp/lib.rs").unwrap();
+    let cursor = point_range(diagnostics[1].range.start);
+
+    let cursor_filtered = code_actions(&document, uri.clone(), cursor, &diagnostics);
+    let unfiltered = code_actions_unfiltered(&document, uri, &diagnostics);
+
+    assert!(
+        unfiltered.len() >= cursor_filtered.len(),
+        "unfiltered ({}) should not be smaller than cursor-filtered ({})",
+        unfiltered.len(),
+        cursor_filtered.len()
+    );
+    let unfiltered_titles: Vec<&str> = unfiltered.iter().map(|a| a.title.as_str()).collect();
+    assert!(unfiltered_titles.contains(&"Replace `vualt` with `vault`"));
+    assert!(unfiltered_titles.contains(&"Replace `usr` with `user`"));
 }
 
 fn missing_account_reference_diagnostic(line: u32, missing: &str, replacement: &str) -> Diagnostic {
