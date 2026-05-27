@@ -1,0 +1,12 @@
+[package]
+name = "seagrass-sources"
+version.workspace = true
+publish = false
+authors = ["Seagrass Maintainers <17379963+heyAyushh@users.noreply.github.com>"]
+repository = "https://github.com/heyAyushh/seagrass"
+license = "MIT"
+description = "Source adapters for Seagrass framework integrations"
+edition = "2021"
+
+[dependencies]
+seagrass-framework = { path = "../seagrass-framework" }
