@@ -7,7 +7,7 @@ use {
         hover,
     },
     std::collections::HashMap,
-    tower_lsp::lsp_types::{Diagnostic, Position, Url},
+    tower_lsp::lsp_types::{Diagnostic, NumberOrString, Position, Url},
 };
 
 struct EditorCase<'a> {
@@ -206,6 +206,100 @@ pub struct Create<'info> {
         .value
         .contains("Anchor instruction argument for `Context<Create>`"));
     assert!(markup.value.contains("Type: `String`"));
+}
+
+#[test]
+fn editor_ux_pda_seed_resolution_keeps_nested_account_fields_visible() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn collect_fees_v2(ctx: Context<CollectFeesV2>, bundle_index: u16) -> Result<()> { Ok(()) }
+}
+
+#[derive(Accounts)]
+pub struct CollectFeesV2<'info> {
+    #[account(
+        seeds = [
+            b"bundled_position",
+            position_bundle.position_bundle_mint.key().as_ref(),
+            bundle_index.to_string().as_bytes(),
+        ],
+        bump,
+    )]
+    pub bundled_position: Account<'info, BundledPosition>,
+    pub position_bundle: Account<'info, PositionBundle>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = diagnostics::collect(&document);
+    let pda_diagnostics = diagnostics
+        .iter()
+        .filter(|diagnostic| is_pda_seed_resolution_diagnostic(diagnostic))
+        .collect::<Vec<_>>();
+
+    assert!(
+        pda_diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("bundle_index.to_string().as_bytes()")
+                && diagnostic
+                    .message
+                    .contains("cannot be represented in the IDL")
+        }),
+        "expected transformed argument seed warning; got {pda_diagnostics:#?}"
+    );
+    assert!(
+        pda_diagnostics.iter().all(|diagnostic| {
+            !diagnostic
+                .message
+                .contains("position_bundle.position_bundle_mint")
+        }),
+        "nested account field seed should stay IDL-visible; got {pda_diagnostics:#?}"
+    );
+
+    let transformed_seed_warning = pda_diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .message
+                .contains("bundle_index.to_string().as_bytes()")
+        })
+        .unwrap_or_else(|| {
+            panic!("expected transformed seed diagnostic; got {pda_diagnostics:#?}")
+        });
+    let related_information = transformed_seed_warning
+        .related_information
+        .as_ref()
+        .expect("expected related information for PDA seed warning");
+    let invisible_related = related_information
+        .iter()
+        .filter(|info| info.message.starts_with("IDL-invisible seed"))
+        .collect::<Vec<_>>();
+
+    assert_eq!(
+        invisible_related.len(),
+        1,
+        "expected one invisible-seed hint; got {related_information:?}"
+    );
+    assert!(invisible_related[0]
+        .message
+        .contains("bundle_index.to_string().as_bytes()"));
+    assert!(
+        related_information.iter().any(|info| {
+            info.message
+                .contains("mixed IDL-visible and IDL-invisible seeds")
+        }),
+        "expected mixed seed context as related information; got {related_information:?}"
+    );
+    assert!(
+        related_information.iter().any(|info| {
+            info.message.contains("IDL-visible seed")
+                && info
+                    .message
+                    .contains("position_bundle.position_bundle_mint.key().as_ref()")
+        }),
+        "expected visible related hint for nested account field seed; got {related_information:?}"
+    );
 }
 
 #[test]
@@ -615,6 +709,12 @@ fn diagnostic_with_expected<'a>(
     diagnostics
         .iter()
         .find(|diagnostic| diagnostic_data_str(diagnostic, "expected") == Some(expected))
+}
+
+fn is_pda_seed_resolution_diagnostic(diagnostic: &Diagnostic) -> bool {
+    diagnostic.code.as_ref().is_some_and(
+        |code| matches!(code, NumberOrString::String(code) if code == "anchor-pda-seed-resolution"),
+    )
 }
 
 fn diagnostic_data_str<'a>(diagnostic: &'a Diagnostic, key: &str) -> Option<&'a str> {

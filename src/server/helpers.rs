@@ -402,7 +402,6 @@ pub(super) fn diagnostics_transport_from_initialize_options(
 
     match transport {
         Some("pull") => DiagnosticsTransport::Pull,
-        Some("both") => DiagnosticsTransport::Both,
         _ => DiagnosticsTransport::Push,
     }
 }
@@ -414,4 +413,111 @@ pub(super) fn workspace_roots_from_initialize(params: &InitializeParams) -> Vec<
         .map(|folders| folders.iter().map(|folder| folder.uri.clone()).collect())
         .or_else(|| params.root_uri.clone().map(|uri| vec![uri]))
         .unwrap_or_default()
+}
+
+pub(super) const MANIFEST_WATCHER_REGISTRATION_ID: &str = "seagrass/watch-manifests";
+pub(super) const MANIFEST_WATCHER_GLOBS: &[&str] =
+    &["**/Cargo.toml", "**/Anchor.toml", "**/Seagrass.toml"];
+
+pub(super) fn client_supports_watched_file_registration(capabilities: &ClientCapabilities) -> bool {
+    capabilities
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.did_change_watched_files.as_ref())
+        .and_then(|watched| watched.dynamic_registration)
+        .unwrap_or(false)
+}
+
+pub(super) fn manifest_watcher_registrations() -> Vec<Registration> {
+    let watchers = MANIFEST_WATCHER_GLOBS
+        .iter()
+        .map(|pattern| FileSystemWatcher {
+            glob_pattern: GlobPattern::String((*pattern).to_string()),
+            kind: None,
+        })
+        .collect();
+    let options = DidChangeWatchedFilesRegistrationOptions { watchers };
+    vec![Registration {
+        id: MANIFEST_WATCHER_REGISTRATION_ID.to_string(),
+        method: "workspace/didChangeWatchedFiles".to_string(),
+        register_options: Some(
+            serde_json::to_value(options)
+                .expect("DidChangeWatchedFilesRegistrationOptions always serializes"),
+        ),
+    }]
+}
+
+#[cfg(test)]
+mod manifest_watcher_tests {
+    use super::*;
+    use tower_lsp::lsp_types::{
+        DidChangeWatchedFilesClientCapabilities, WorkspaceClientCapabilities,
+    };
+
+    #[test]
+    fn detects_dynamic_registration_capability() {
+        let capabilities = ClientCapabilities {
+            workspace: Some(WorkspaceClientCapabilities {
+                did_change_watched_files: Some(DidChangeWatchedFilesClientCapabilities {
+                    dynamic_registration: Some(true),
+                    relative_pattern_support: None,
+                }),
+                ..WorkspaceClientCapabilities::default()
+            }),
+            ..ClientCapabilities::default()
+        };
+        assert!(client_supports_watched_file_registration(&capabilities));
+    }
+
+    #[test]
+    fn rejects_missing_or_disabled_capability() {
+        assert!(!client_supports_watched_file_registration(
+            &ClientCapabilities::default()
+        ));
+        let disabled = ClientCapabilities {
+            workspace: Some(WorkspaceClientCapabilities {
+                did_change_watched_files: Some(DidChangeWatchedFilesClientCapabilities {
+                    dynamic_registration: Some(false),
+                    relative_pattern_support: None,
+                }),
+                ..WorkspaceClientCapabilities::default()
+            }),
+            ..ClientCapabilities::default()
+        };
+        assert!(!client_supports_watched_file_registration(&disabled));
+    }
+
+    #[test]
+    fn registration_covers_cargo_anchor_and_seagrass_manifests() {
+        let registrations = manifest_watcher_registrations();
+        assert_eq!(registrations.len(), 1);
+        let registration = &registrations[0];
+        assert_eq!(registration.id, MANIFEST_WATCHER_REGISTRATION_ID);
+        assert_eq!(registration.method, "workspace/didChangeWatchedFiles");
+
+        let options: DidChangeWatchedFilesRegistrationOptions = serde_json::from_value(
+            registration
+                .register_options
+                .clone()
+                .expect("register_options present"),
+        )
+        .expect("options deserialize");
+
+        let globs: Vec<String> = options
+            .watchers
+            .iter()
+            .map(|watcher| match &watcher.glob_pattern {
+                GlobPattern::String(pattern) => pattern.clone(),
+                GlobPattern::Relative(_) => panic!("unexpected relative glob"),
+            })
+            .collect();
+        assert_eq!(
+            globs,
+            vec![
+                "**/Cargo.toml".to_string(),
+                "**/Anchor.toml".to_string(),
+                "**/Seagrass.toml".to_string(),
+            ]
+        );
+    }
 }

@@ -649,9 +649,7 @@ fn classify_seed_expression(seed: &str, accounts: &AccountSetEvidence<'_>) -> Se
     };
     let rest = rest.trim_start();
 
-    if accounts.has_account(identifier)
-        && matches!(rest, ".key().as_ref()" | ".as_ref()" | ".key().as_ref")
-    {
+    if accounts.has_account(identifier) && is_account_seed_path(rest) {
         return SeedExpressionKind::AccountKey;
     }
 
@@ -664,6 +662,20 @@ fn classify_seed_expression(seed: &str, accounts: &AccountSetEvidence<'_>) -> Se
     }
 
     SeedExpressionKind::Expression
+}
+
+fn is_account_seed_path(rest: &str) -> bool {
+    account_seed_path_root(rest)
+        .is_some_and(|root| root.is_empty() || root.split('.').all(is_account_identifier))
+}
+
+fn account_seed_path_root(rest: &str) -> Option<&str> {
+    for suffix in [".key().as_ref()", ".key().as_ref", ".as_ref()"] {
+        if let Some(path) = rest.strip_suffix(suffix) {
+            return Some(path.trim_start_matches('.'));
+        }
+    }
+    None
 }
 
 fn is_account_identifier(value: &str) -> bool {

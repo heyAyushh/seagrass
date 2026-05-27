@@ -32,6 +32,7 @@ pub async fn run_from_env() -> Result<(), Box<dyn Error>> {
 #[command(
     name = "seagrass",
     bin_name = "seagrass",
+    version = env!("CARGO_PKG_VERSION"),
     about = "Seagrass Anchor language tooling"
 )]
 struct Cli {

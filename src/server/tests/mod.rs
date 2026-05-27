@@ -128,7 +128,23 @@ fn diagnostics_transport_defaults_to_push() {
 }
 
 #[test]
-fn diagnostics_transport_reads_nested_initialization_options() {
+fn diagnostics_transport_reads_pull_initialization_options() {
+    let options = serde_json::json!({
+        "seagrass": {
+            "diagnostics": {
+                "transport": "pull"
+            }
+        }
+    });
+
+    assert_eq!(
+        diagnostics_transport_from_initialize_options(Some(&options)),
+        DiagnosticsTransport::Pull
+    );
+}
+
+#[test]
+fn diagnostics_transport_rejects_mixed_initialization_options() {
     let options = serde_json::json!({
         "seagrass": {
             "diagnostics": {
@@ -139,7 +155,7 @@ fn diagnostics_transport_reads_nested_initialization_options() {
 
     assert_eq!(
         diagnostics_transport_from_initialize_options(Some(&options)),
-        DiagnosticsTransport::Both
+        DiagnosticsTransport::Push
     );
 }
 
@@ -195,7 +211,7 @@ fn status_text_reports_observable_server_state() {
         "file:///workspace",
         17,
         2,
-        DiagnosticsTransport::Both,
+        DiagnosticsTransport::Push,
         &settings,
     );
 
@@ -204,7 +220,7 @@ fn status_text_reports_observable_server_state() {
     assert!(status.contains("indexed files: 17"));
     assert!(status.contains("open documents: 2"));
     assert!(status.contains("sync: full"));
-    assert!(status.contains("diagnostics: both"));
+    assert!(status.contains("diagnostics: push"));
     assert!(status.contains("coldPath=save"));
     assert!(status.contains(
             "features: security=true, experimental=false, strictNative=true, workspaceIndex=false, trace=true, editor=generic"

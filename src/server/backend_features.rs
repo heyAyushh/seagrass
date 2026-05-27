@@ -79,6 +79,34 @@ impl Backend {
         count
     }
 
+    pub(super) async fn register_manifest_watchers(&self) {
+        if !self
+            .supports_watched_file_registration
+            .load(Ordering::Relaxed)
+        {
+            return;
+        }
+        let registrations = manifest_watcher_registrations();
+        match self.client.register_capability(registrations).await {
+            Ok(()) => {
+                self.record_log(
+                    "info",
+                    "manifestWatchersRegistered",
+                    "registered watched-file globs for Cargo.toml, Anchor.toml, Seagrass.toml",
+                    serde_json::json!({ "globs": MANIFEST_WATCHER_GLOBS }),
+                );
+            }
+            Err(err) => {
+                self.record_log(
+                    "warn",
+                    "manifestWatchersRegistrationFailed",
+                    format!("failed to register manifest watchers: {err}"),
+                    serde_json::json!({ "error": err.to_string() }),
+                );
+            }
+        }
+    }
+
     pub(super) fn status_text(&self) -> String {
         let roots = self.workspace_root_log();
         let indexed = self
@@ -629,20 +657,30 @@ impl Backend {
         &self,
         params: DocumentDiagnosticParams,
     ) -> Result<DocumentDiagnosticReportResult> {
+        if !self.diagnostics_transport().advertises_pull() {
+            return Ok(full_document_diagnostic_result(Vec::new()));
+        }
+
         let items = self
             .document_for(&params.text_document.uri)
             .map(|document| self.collect_diagnostics_for_uri(&params.text_document.uri, &document))
             .map(|items| annotate_diagnostic_lane(items, DiagnosticPublishLane::Pull))
             .unwrap_or_default();
 
-        Ok(DocumentDiagnosticReportResult::Report(
-            DocumentDiagnosticReport::Full(RelatedFullDocumentDiagnosticReport {
-                related_documents: None,
-                full_document_diagnostic_report: FullDocumentDiagnosticReport {
-                    result_id: None,
-                    items,
-                },
-            }),
-        ))
+        Ok(full_document_diagnostic_result(items))
     }
+}
+
+fn full_document_diagnostic_result(
+    items: Vec<tower_lsp::lsp_types::Diagnostic>,
+) -> DocumentDiagnosticReportResult {
+    DocumentDiagnosticReportResult::Report(DocumentDiagnosticReport::Full(
+        RelatedFullDocumentDiagnosticReport {
+            related_documents: None,
+            full_document_diagnostic_report: FullDocumentDiagnosticReport {
+                result_id: None,
+                items,
+            },
+        },
+    ))
 }

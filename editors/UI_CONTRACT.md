@@ -113,6 +113,10 @@ Server launch settings are editor-specific because each editor models binaries d
 2. `seagrass` on `PATH`.
 3. Local `cargo run` fallback for development.
 
+## Manifest Watching
+
+The server dynamically registers `workspace/didChangeWatchedFiles` during `initialized` for `**/Cargo.toml`, `**/Anchor.toml`, and `**/Seagrass.toml`. Manifest-driven rules (e.g. `anchor-check-cfg`) re-evaluate as soon as the client reports a save, without requiring a follow-up edit to a Rust source file. Registration is gated on `workspace.didChangeWatchedFiles.dynamicRegistration` from `ClientCapabilities`; clients that don't advertise it are tolerated — Seagrass falls back to refreshing manifests on the next text-document change.
+
 ## Visual Tone
 
 Keep editor-facing text compact, content-first, and concrete. Prefer labels over explanations in command names. Put operational detail in logs and README files, not popups.

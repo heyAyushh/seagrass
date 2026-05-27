@@ -56,9 +56,10 @@ pub mod demo {
 
 #[derive(Accounts)]
 pub struct Create<'info> {
-    #[account(seeds = [b"state", user.key().as_ref(), name.as_bytes(), id.to_le_bytes().as_ref(), crate::ID.as_ref()], bump)]
+    #[account(seeds = [b"state", user.key().as_ref(), position_bundle.position_bundle_mint.key().as_ref(), name.as_bytes(), id.to_le_bytes().as_ref(), crate::ID.as_ref()], bump)]
     pub state: Account<'info, State>,
     pub user: Signer<'info>,
+    pub position_bundle: Account<'info, PositionBundle>,
 }
 "#,
         )
@@ -79,9 +80,10 @@ pub struct Create<'info> {
 
     assert_eq!(seeds[0].kind, SeedExpressionKind::StaticBytes);
     assert_eq!(seeds[1].kind, SeedExpressionKind::AccountKey);
-    assert_eq!(seeds[2].kind, SeedExpressionKind::InstructionArgument);
+    assert_eq!(seeds[2].kind, SeedExpressionKind::AccountKey);
     assert_eq!(seeds[3].kind, SeedExpressionKind::InstructionArgument);
-    assert_eq!(seeds[4].kind, SeedExpressionKind::Expression);
+    assert_eq!(seeds[4].kind, SeedExpressionKind::InstructionArgument);
+    assert_eq!(seeds[5].kind, SeedExpressionKind::Expression);
 }
 
 #[test]

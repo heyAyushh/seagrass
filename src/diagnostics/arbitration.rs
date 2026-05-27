@@ -224,6 +224,7 @@ fn append_related_diagnostic(survivor: &mut Diagnostic, mut demoted: Diagnostic)
     if let Some(mut demoted_related) = demoted.related_information.take() {
         related.append(&mut demoted_related);
     }
+    dedupe_related_information(related);
 }
 
 fn demoted_related_message(diagnostic: &Diagnostic) -> String {
@@ -237,6 +238,20 @@ fn diagnostic_code(diagnostic: &Diagnostic) -> Option<&str> {
         NumberOrString::String(code) => Some(code.as_str()),
         NumberOrString::Number(_) => None,
     }
+}
+
+fn dedupe_related_information(related: &mut Vec<DiagnosticRelatedInformation>) {
+    let mut seen = HashSet::new();
+    related.retain(|info| {
+        seen.insert((
+            info.location.uri.to_string(),
+            info.location.range.start.line,
+            info.location.range.start.character,
+            info.location.range.end.line,
+            info.location.range.end.character,
+            info.message.clone(),
+        ))
+    });
 }
 
 fn is_security_code(code: &str) -> bool {

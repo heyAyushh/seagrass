@@ -75,7 +75,7 @@ fn push_seed_diagnostics(
                 constraint.range(),
                 AnchorDiagnosticKind::PdaSeedResolution,
                 format!(
-                    "`{}` PDA seed `{}` will be dropped from the IDL. Anchor's IDL generator only supports static bytes, account keys, and instruction arguments. Function calls and complex expressions are not serializable.",
+                    "`{}` PDA seed `{}` cannot be represented in the IDL. Anchor's IDL generator only supports static bytes, account keys or fields, and instruction arguments. Function calls and complex expressions are not serializable.",
                     field.field.name,
                     seed.expression
                 ),
@@ -111,7 +111,7 @@ fn push_mixed_seeds_diagnostic(
             constraint.range(),
             AnchorDiagnosticKind::PdaSeedResolution,
             format!(
-                "`{}` derives a PDA with mixed IDL-visible and IDL-invisible seeds. The IDL will only contain the representable seeds; clients will need manual derivation logic for the complex expressions.",
+                "`{}` derives a PDA with mixed IDL-visible and IDL-invisible seeds. Anchor clients cannot fully derive this PDA from IDL alone; add manual derivation logic for the complex expressions.",
                 field.field.name
             ),
             Some(serde_json::json!({
@@ -146,7 +146,10 @@ fn seed_related_information(
     let range = expression_range_in_constraint(source, constraint.range(), &seed.expression)?;
     let message = match seed.kind {
         SeedExpressionKind::Expression => {
-            format!("IDL-invisible seed `{}` is dropped here.", seed.expression)
+            format!(
+                "IDL-invisible seed `{}` is not representable here.",
+                seed.expression
+            )
         }
         SeedExpressionKind::StaticBytes
         | SeedExpressionKind::AccountKey
@@ -197,7 +200,7 @@ pub struct Create<'info> {
             diagnostics.iter().any(|d| {
                 d.code.as_ref().is_some_and(|c| matches!(c, NumberOrString::String(code) if code == "anchor-pda-seed-resolution"))
                     && d.message.contains("some_helper()")
-                    && d.message.contains("dropped from the IDL")
+                    && d.message.contains("cannot be represented in the IDL")
             }),
             "expected diagnostic for complex seed expression"
         );
@@ -247,6 +250,89 @@ pub struct Create<'info> {
     }
 
     #[test]
+    fn nested_account_field_seed_is_idl_visible_but_transformed_arg_still_warns() {
+        let source = r#"
+#[program]
+pub mod demo {
+    pub fn collect_fees_v2(ctx: Context<CollectFeesV2>, bundle_index: u16) -> Result<()> { Ok(()) }
+}
+
+#[derive(Accounts)]
+pub struct CollectFeesV2<'info> {
+    #[account(
+        seeds = [
+            b"bundled_position",
+            position_bundle.position_bundle_mint.key().as_ref(),
+            bundle_index.to_string().as_bytes(),
+        ],
+        bump,
+    )]
+    pub bundled_position: Account<'info, BundledPosition>,
+    pub position_bundle: Account<'info, PositionBundle>,
+}
+"#;
+        let document = ParsedDocument::parse(source).unwrap();
+        let diagnostics = collect(&document);
+        let seed_diagnostics = diagnostics
+            .iter()
+            .filter(|diagnostic| {
+                diagnostic.code.as_ref().is_some_and(
+                    |code| matches!(code, NumberOrString::String(code) if code == "anchor-pda-seed-resolution"),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            seed_diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .message
+                    .contains("bundle_index.to_string().as_bytes()")
+                    && diagnostic
+                        .message
+                        .contains("cannot be represented in the IDL")
+            }),
+            "expected transformed instruction argument seed diagnostic; got {seed_diagnostics:#?}"
+        );
+        assert!(
+            seed_diagnostics.iter().all(|diagnostic| {
+                !diagnostic
+                    .message
+                    .contains("position_bundle.position_bundle_mint")
+            }),
+            "nested account field seed should be IDL-visible; got {seed_diagnostics:#?}"
+        );
+
+        let mixed =
+            pda_diagnostic_with_message(&diagnostics, "mixed IDL-visible and IDL-invisible seeds");
+        let related_information = mixed
+            .related_information
+            .as_ref()
+            .expect("expected related information for mixed PDA seeds");
+        let invisible_related = related_information
+            .iter()
+            .filter(|info| info.message.starts_with("IDL-invisible seed"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(
+            invisible_related.len(),
+            1,
+            "expected exactly one invisible seed related hint; got {related_information:?}"
+        );
+        assert_eq!(
+            range_text(source, invisible_related[0].location.range),
+            "bundle_index.to_string().as_bytes()"
+        );
+        assert!(
+            related_information.iter().any(|info| {
+                info.message.contains("IDL-visible seed")
+                    && range_text(source, info.location.range)
+                        == "position_bundle.position_bundle_mint.key().as_ref()"
+            }),
+            "expected visible related hint for nested account field seed; got {related_information:?}"
+        );
+    }
+
+    #[test]
     fn diagnostic_includes_seed_data() {
         let source = r#"
 #[derive(Accounts)]
@@ -286,7 +372,8 @@ pub struct Create<'info> {
         let document = ParsedDocument::parse(source).unwrap();
         let diagnostics = collect(&document);
 
-        let diagnostic = pda_diagnostic_with_message(&diagnostics, "dropped from the IDL");
+        let diagnostic =
+            pda_diagnostic_with_message(&diagnostics, "cannot be represented in the IDL");
         let related_information = diagnostic
             .related_information
             .as_ref()

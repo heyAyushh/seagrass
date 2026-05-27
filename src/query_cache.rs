@@ -1,8 +1,8 @@
 use dashmap::DashMap;
 use std::hash::{Hash, Hasher};
 use tower_lsp::lsp_types::{
-    CodeAction, CompletionItem, Diagnostic, DocumentSymbol, FoldingRange, Hover, InlayHint,
-    Location, Position, Range, SemanticTokens, Url,
+    CompletionItem, Diagnostic, DocumentSymbol, FoldingRange, Hover, InlayHint, Location, Position,
+    Range, SemanticTokens, Url,
 };
 
 /// Pre-allocated capacity for the inner [`DashMap`].
@@ -213,8 +213,6 @@ pub enum QueryKind {
     InlayHints(Range),
     /// Full-document semantic tokens.
     SemanticTokens,
-    /// Code actions applicable inside a specific range.
-    CodeActions(Range),
 }
 
 impl Hash for QueryKind {
@@ -231,7 +229,7 @@ impl Hash for QueryKind {
             }
             QueryKind::DocumentSymbols => {}
             QueryKind::FoldingRanges => {}
-            QueryKind::InlayHints(range) | QueryKind::CodeActions(range) => {
+            QueryKind::InlayHints(range) => {
                 range.start.line.hash(state);
                 range.start.character.hash(state);
                 range.end.line.hash(state);
@@ -286,6 +284,4 @@ pub enum CacheValue {
     InlayHints(Vec<InlayHint>),
     /// Result of [`QueryKind::SemanticTokens`].
     SemanticTokens(SemanticTokens),
-    /// Result of [`QueryKind::CodeActions`].
-    CodeActions(Vec<CodeAction>),
 }

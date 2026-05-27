@@ -165,7 +165,9 @@ pub struct Create<'info> {
         let diagnostic = diagnostics
             .iter()
             .find(|diagnostic| {
-                diagnostic.message.contains("dropped from the IDL")
+                diagnostic
+                    .message
+                    .contains("cannot be represented in the IDL")
                     && matches!(
                         diagnostic.code.as_ref(),
                         Some(NumberOrString::String(code)) if code == "anchor-pda-seed-resolution"

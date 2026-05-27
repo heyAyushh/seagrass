@@ -188,7 +188,7 @@ async function initialize(): Promise<void> {
     initializationOptions: {
       seagrass: {
         diagnostics: {
-          transport: "both",
+          transport: "pull",
         },
         workspaceIndex: {
           enabled: true,

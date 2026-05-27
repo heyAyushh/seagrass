@@ -316,23 +316,21 @@ impl DiagnosticsColdPath {
 pub(crate) enum DiagnosticsTransport {
     Push,
     Pull,
-    Both,
 }
 
 impl DiagnosticsTransport {
     pub(crate) fn publishes(self) -> bool {
-        matches!(self, Self::Push | Self::Both)
+        matches!(self, Self::Push)
     }
 
     pub(crate) fn advertises_pull(self) -> bool {
-        matches!(self, Self::Pull | Self::Both)
+        matches!(self, Self::Pull)
     }
 
     pub(crate) fn as_str(self) -> &'static str {
         match self {
             Self::Push => "push",
             Self::Pull => "pull",
-            Self::Both => "both",
         }
     }
 }

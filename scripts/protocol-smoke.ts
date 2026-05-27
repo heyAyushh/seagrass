@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { execFileSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 type JsonObject = Record<string, unknown>;
 
 const SERVER_EXIT_TIMEOUT_MILLIS = 5_000;
+const MIN_ANCHOR_TUTORIAL_SMOKE_FIXTURES = 3;
 
 type LspMessage = {
   jsonrpc?: "2.0";
@@ -53,6 +54,12 @@ type Diagnostic = {
 
 type DiagnosticReport = {
   items?: Diagnostic[];
+};
+
+type SmokeFixture = {
+  name: string;
+  uri: string;
+  source: string;
 };
 
 type TextEdit = {
@@ -192,11 +199,21 @@ type InitializeResult = {
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const trackedFixtureRoot = resolve(repoRoot, "target/seagrass-smoke-tracked");
+const smokeFixtureRoot = resolve(repoRoot, "target/seagrass-smoke-fixtures");
 const artifactSmokeRoot = resolve(repoRoot, "target/seagrass-artifact-smoke");
 const artifactSmokeLibPath = resolve(artifactSmokeRoot, "programs/artifact-demo/src/lib.rs");
 const artifactSmokeAnchorTomlPath = resolve(artifactSmokeRoot, "Anchor.toml");
 const artifactSmokeUri = pathToFileURL(artifactSmokeLibPath).href;
+const checkCfgSmokeRoot = resolve(repoRoot, "target/seagrass-check-cfg-smoke");
+const anchorDebugSmokeManifestPath = resolve(checkCfgSmokeRoot, "anchor-debug/Cargo.toml");
+const anchorDebugSmokeLibPath = resolve(checkCfgSmokeRoot, "anchor-debug/src/lib.rs");
+const solanaTargetSmokeManifestPath = resolve(checkCfgSmokeRoot, "solana-target/Cargo.toml");
+const solanaTargetSmokeLibPath = resolve(checkCfgSmokeRoot, "solana-target/src/lib.rs");
+const anchorDebugSmokeManifestUri = pathToFileURL(anchorDebugSmokeManifestPath).href;
+const anchorDebugSmokeUri = pathToFileURL(anchorDebugSmokeLibPath).href;
+const solanaTargetSmokeManifestUri = pathToFileURL(solanaTargetSmokeManifestPath).href;
+const solanaTargetSmokeUri = pathToFileURL(solanaTargetSmokeLibPath).href;
+const checkCfgSmokeWorkspaceUri = pathToFileURL(checkCfgSmokeRoot).href;
 const cargoArtifactSmokeRoot = resolve(repoRoot, "target/seagrass-cargo-artifact-smoke");
 const pinocchioSmokeLibPath = resolve(cargoArtifactSmokeRoot, "programs/pinocchio-counter/src/lib.rs");
 const nativeSmokeLibPath = resolve(cargoArtifactSmokeRoot, "programs/native-counter/src/lib.rs");
@@ -232,29 +249,7 @@ const completionGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-
 const hoverGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-hover-guardrails.rs")).href;
 const relatedInfoGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-related-info-guardrails.rs")).href;
 const cpiUri = pathToFileURL(resolve(repoRoot, "target/seagrass-cpi.rs")).href;
-const examplesUri = pathToFileURL(resolve(repoRoot, "examples")).href;
-const realBasic1 = trackedFixture("examples/tutorial/basic-1/programs/basic-1/src/lib.rs");
-const realBasic5 = trackedFixture("examples/tutorial/basic-5/programs/basic-5/src/lib.rs");
-const realPuppetMaster = trackedFixture("examples/tutorial/basic-3/programs/puppet-master/src/lib.rs");
-const realBasic1Path = realBasic1.path;
-const realBasic5Path = realBasic5.path;
-const realPuppetMasterPath = realPuppetMaster.path;
-const realBasic1Uri = realBasic1.uri;
-const realBasic5Uri = realBasic5.uri;
-const realPuppetMasterUri = realPuppetMaster.uri;
-const realBasic1Source = realBasic1.source;
-const realBasic5Source = realBasic5.source;
-const realPuppetMasterSource = realPuppetMaster.source;
-const realTutorialSources = gitTrackedFiles("examples/tutorial")
-  .filter((filePath) => filePath.endsWith("/src/lib.rs"))
-  .map(trackedFixture);
-const realAnchorCorpusSources = [
-  "tests/misc/programs/misc/src/context.rs",
-  "tests/spl/token-extensions/programs/token-extensions/src/instructions.rs",
-  "tests/optional/programs/optional/src/context.rs",
-  "tests/pda-derivation/programs/pda-derivation/src/lib.rs",
-  "tests/sysvars/programs/sysvars/src/lib.rs",
-].map(trackedFixture);
+const smokeFixtureWorkspaceUri = pathToFileURL(smokeFixtureRoot).href;
 
 const artifactSmokeSource = `
 use anchor_lang::prelude::*;
@@ -272,6 +267,15 @@ pub mod artifact_demo {
 
 #[derive(Accounts)]
 pub struct Initialize {}
+`;
+
+const checkCfgSmokeSource = `
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct CollectFeesV2<'info> {
+    pub payer: Signer<'info>,
+}
 `;
 
 const pinocchioSmokeSource = `
@@ -353,6 +357,140 @@ pub struct Create<'info> {
     pub authority: Signer<'info>,
 }
 `;
+
+const basicEmptyTutorialSource = `
+use anchor_lang::prelude::*;
+
+declare_id!("BasicEmpty111111111111111111111111111111");
+
+#[program]
+pub mod basic_empty {
+    use super::*;
+
+    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Initialize {}
+`;
+
+const basicMutationTutorialSource = `
+use anchor_lang::prelude::*;
+
+declare_id!("BasicMutation11111111111111111111111111");
+
+#[program]
+pub mod basic_mutation {
+    use super::*;
+
+    pub fn initialize(ctx: Context<Initialize>, data: u64) -> Result<()> {
+        let my_account = &mut ctx.accounts.my_account;
+        my_account.data = data;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(init, payer = payer, space = 8 + MyAccount::INIT_SPACE)]
+    pub my_account: Account<'info, MyAccount>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct MyAccount {
+    pub data: u64,
+}
+`;
+
+const basicPdaTutorialSource = `
+use anchor_lang::prelude::*;
+
+declare_id!("BasicPda1111111111111111111111111111111");
+
+#[program]
+pub mod basic_pda {
+    use super::*;
+
+    pub fn update(ctx: Context<Update>, value: u64) -> Result<()> {
+        ctx.accounts.state.value = value;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Update<'info> {
+    #[account(mut, seeds = [b"state", authority.key().as_ref()], bump, has_one = authority)]
+    pub state: Account<'info, State>,
+    pub authority: Signer<'info>,
+}
+
+#[account]
+pub struct State {
+    pub authority: Pubkey,
+    pub value: u64,
+}
+`;
+
+const puppetMasterCpiSource = `
+use anchor_lang::prelude::*;
+use puppet::cpi::accounts::SetData;
+use puppet::program::Puppet;
+
+declare_id!("PuppetMaster111111111111111111111111111");
+
+#[program]
+pub mod puppet_master {
+    use super::*;
+
+    pub fn pull_strings(ctx: Context<PullStrings>, data: u64) -> Result<()> {
+        let cpi_program = ctx.accounts.puppet_program.to_account_info();
+        let cpi_accounts = SetData {
+            puppet: ctx.accounts.puppet.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        puppet::cpi::set_data(cpi_ctx, data)
+    }
+}
+
+#[derive(Accounts)]
+pub struct PullStrings<'info> {
+    #[account(mut)]
+    pub puppet: AccountInfo<'info>,
+    pub puppet_program: Program<'info, Puppet>,
+}
+`;
+
+const basicMutationFixture = sourceFixture(
+  "basic mutation tutorial",
+  "tutorial/basic-mutation/programs/basic-mutation/src/lib.rs",
+  basicMutationTutorialSource,
+);
+const basicPdaFixture = sourceFixture(
+  "basic PDA tutorial",
+  "tutorial/basic-pda/programs/basic-pda/src/lib.rs",
+  basicPdaTutorialSource,
+);
+const puppetMasterFixture = sourceFixture(
+  "puppet-master CPI corpus",
+  "corpus/puppet-master/programs/puppet-master/src/lib.rs",
+  puppetMasterCpiSource,
+);
+const anchorTutorialSources = [
+  sourceFixture(
+    "basic empty tutorial",
+    "tutorial/basic-empty/programs/basic-empty/src/lib.rs",
+    basicEmptyTutorialSource,
+  ),
+  basicMutationFixture,
+  basicPdaFixture,
+];
+const anchorCorpusSources = [puppetMasterFixture];
 
 const mainSource = `
 use anchor_lang::prelude::*;
@@ -973,31 +1111,55 @@ function documentSymbolsInclude(symbols: DocumentSymbol[] | null | undefined, pa
   return false;
 }
 
-function gitTrackedFiles(pathspec: string): string[] {
-  const output = execFileSync("git", ["ls-files", pathspec], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  return output
-    .split("\n")
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .sort();
-}
-
-function trackedFixture(relativePath: string): { path: string; uri: string; source: string } {
-  const source = execFileSync("git", ["show", `HEAD:${relativePath}`], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  const filePath = resolve(trackedFixtureRoot, relativePath);
+function sourceFixture(name: string, relativePath: string, source: string): SmokeFixture {
+  const filePath = resolve(smokeFixtureRoot, relativePath);
   mkdirSync(dirname(filePath), { recursive: true });
   writeFileSync(filePath, source);
   return {
-    path: filePath,
+    name,
     uri: pathToFileURL(filePath).href,
     source,
   };
+}
+
+function writeCheckCfgSmokeFixtures(): void {
+  mkdirSync(dirname(anchorDebugSmokeManifestPath), { recursive: true });
+  mkdirSync(dirname(anchorDebugSmokeLibPath), { recursive: true });
+  mkdirSync(dirname(solanaTargetSmokeManifestPath), { recursive: true });
+  mkdirSync(dirname(solanaTargetSmokeLibPath), { recursive: true });
+  writeFileSync(
+    anchorDebugSmokeManifestPath,
+    `
+[package]
+name = "anchor-debug-check-cfg-smoke"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+default = []
+
+[dependencies]
+anchor-lang = "0.32.1"
+`,
+  );
+  writeFileSync(anchorDebugSmokeLibPath, checkCfgSmokeSource);
+  writeFileSync(
+    solanaTargetSmokeManifestPath,
+    `
+[package]
+name = "solana-target-check-cfg-smoke"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+anchor-debug = []
+default = []
+
+[dependencies]
+anchor-lang = "0.32.1"
+`,
+  );
+  writeFileSync(solanaTargetSmokeLibPath, checkCfgSmokeSource);
 }
 
 function writeArtifactSmokeFixture(): void {
@@ -1132,7 +1294,7 @@ function assertNoHighSignalFalsePositive(uri: string, diagnostics: DiagnosticRep
     typeof item.code === "string" && falsePositiveCodes.has(item.code),
   );
   if (falsePositives.length > 0) {
-    throw new Error(`real Anchor tutorial file produced high-signal false positives for ${uri}: ${JSON.stringify(falsePositives)}`);
+    throw new Error(`Anchor tutorial smoke fixture produced high-signal false positives for ${uri}: ${JSON.stringify(falsePositives)}`);
   }
 }
 
@@ -1147,11 +1309,12 @@ function assertNoCoreSemanticFalsePositive(uri: string, diagnostics: DiagnosticR
     typeof item.code === "string" && falsePositiveCodes.has(item.code),
   );
   if (falsePositives.length > 0) {
-    throw new Error(`real Anchor corpus file produced core semantic false positives for ${uri}: ${JSON.stringify(falsePositives)}`);
+    throw new Error(`Anchor corpus smoke fixture produced core semantic false positives for ${uri}: ${JSON.stringify(falsePositives)}`);
   }
 }
 
 writeArtifactSmokeFixture();
+writeCheckCfgSmokeFixtures();
 writeCargoArtifactSmokeFixture();
 writeEcosystemSmokeFixture();
 
@@ -1160,13 +1323,14 @@ try {
     processId: process.pid,
     rootUri: pathToFileURL(repoRoot).href,
     workspaceFolders: [
-      { uri: examplesUri, name: "examples" },
+      { uri: smokeFixtureWorkspaceUri, name: "smoke-fixtures" },
+      { uri: checkCfgSmokeWorkspaceUri, name: "check-cfg-smoke" },
       { uri: pathToFileURL(cargoArtifactSmokeRoot).href, name: "cargo-artifact-smoke" },
     ],
     initializationOptions: {
       seagrass: {
         diagnostics: {
-          transport: "both",
+          transport: "pull",
         },
       },
     },
@@ -1249,74 +1413,122 @@ try {
 
   notify("initialized", {});
 
-  if (realTutorialSources.length < 7) {
-    throw new Error(`expected real tutorial corpus coverage, found ${realTutorialSources.length} files`);
+  openDocument(anchorDebugSmokeUri, checkCfgSmokeSource);
+  const anchorDebugDiagnostics = await pullDiagnostics(anchorDebugSmokeUri);
+  const anchorDebugDiagnostic = anchorDebugDiagnostics.items?.find(
+    (item) => item.code === "anchor-check-cfg" && item.data?.quickfix === "add-anchor-debug-feature",
+  );
+  if (!anchorDebugDiagnostic) {
+    throw new Error(`anchor-debug check-cfg diagnostic did not include quickfix data: ${JSON.stringify(anchorDebugDiagnostics)}`);
   }
-  for (const tutorial of realTutorialSources) {
+  const anchorDebugActions = await request<CodeAction[]>("textDocument/codeAction", {
+    textDocument: { uri: anchorDebugSmokeUri },
+    range: anchorDebugDiagnostic.range,
+    context: { diagnostics: [anchorDebugDiagnostic], only: ["quickfix"] },
+  });
+  const anchorDebugEdit = anchorDebugActions
+    ?.find((action) => action.title === "Add `anchor-debug = []` to Cargo.toml features")
+    ?.edit?.changes?.[anchorDebugSmokeManifestUri]?.[0]?.newText;
+  if (anchorDebugEdit !== "anchor-debug = []\n") {
+    throw new Error(`anchor-debug check-cfg quickfix was missing: ${JSON.stringify(anchorDebugActions)}`);
+  }
+
+  openDocument(solanaTargetSmokeUri, checkCfgSmokeSource);
+  const solanaTargetDiagnostics = await pullDiagnostics(solanaTargetSmokeUri);
+  const solanaTargetDiagnostic = solanaTargetDiagnostics.items?.find(
+    (item) => item.code === "anchor-check-cfg" && item.data?.quickfix === "add-solana-target-os-check-cfg",
+  );
+  if (!solanaTargetDiagnostic) {
+    throw new Error(`Solana target_os check-cfg diagnostic did not include quickfix data: ${JSON.stringify(solanaTargetDiagnostics)}`);
+  }
+  const solanaTargetActions = await request<CodeAction[]>("textDocument/codeAction", {
+    textDocument: { uri: solanaTargetSmokeUri },
+    range: solanaTargetDiagnostic.range,
+    context: { diagnostics: [solanaTargetDiagnostic], only: ["quickfix"] },
+  });
+  const solanaTargetEdit = solanaTargetActions
+    ?.find((action) => action.title === "Allow `target_os = \"solana\"` in Cargo check-cfg")
+    ?.edit?.changes?.[solanaTargetSmokeManifestUri]?.[0]?.newText;
+  if (
+    !solanaTargetEdit?.includes("[package.lints.rust.unexpected_cfgs]") ||
+    !solanaTargetEdit.includes("'cfg(target_os, values(\"solana\"))'")
+  ) {
+    throw new Error(`Solana target_os check-cfg quickfix was missing: ${JSON.stringify(solanaTargetActions)}`);
+  }
+
+  if (anchorTutorialSources.length < MIN_ANCHOR_TUTORIAL_SMOKE_FIXTURES) {
+    throw new Error(`expected Anchor tutorial smoke coverage, found ${anchorTutorialSources.length} files`);
+  }
+  for (const tutorial of anchorTutorialSources) {
     openDocument(tutorial.uri, tutorial.source);
     const diagnostics = await pullDiagnostics(tutorial.uri);
     assertNoDuplicateDiagnostics(tutorial.uri, diagnostics);
     assertNoHighSignalFalsePositive(tutorial.uri, diagnostics);
   }
-  for (const corpusFile of realAnchorCorpusSources) {
+  for (const corpusFile of anchorCorpusSources) {
     openDocument(corpusFile.uri, corpusFile.source);
     const diagnostics = await pullDiagnostics(corpusFile.uri);
     assertNoDuplicateDiagnostics(corpusFile.uri, diagnostics);
     assertNoCoreSemanticFalsePositive(corpusFile.uri, diagnostics);
   }
 
-  openDocument(realBasic1Uri, realBasic1Source);
-  const realBasic1Diagnostics = await pullDiagnostics(realBasic1Uri);
-  assertNoDuplicateDiagnostics(realBasic1Uri, realBasic1Diagnostics);
+  openDocument(basicMutationFixture.uri, basicMutationFixture.source);
+  const basicMutationDiagnostics = await pullDiagnostics(basicMutationFixture.uri);
+  assertNoDuplicateDiagnostics(basicMutationFixture.uri, basicMutationDiagnostics);
   if (
-    realBasic1Diagnostics.items?.some(
+    basicMutationDiagnostics.items?.some(
       (item) => item.code === "anchor-missing-account-reference" || item.code === "anchor-missing-init-constraint",
     )
   ) {
-    throw new Error(`real basic-1 produced false Anchor diagnostics: ${JSON.stringify(realBasic1Diagnostics.items)}`);
+    throw new Error(`${basicMutationFixture.name} produced false Anchor diagnostics: ${JSON.stringify(basicMutationDiagnostics.items)}`);
   }
-  const realBasic1Hover = await request<Hover>("textDocument/hover", {
-    textDocument: { uri: realBasic1Uri },
-    position: positionAt(realBasic1Source, "my_account.data = data"),
+  const basicMutationHover = await request<Hover>("textDocument/hover", {
+    textDocument: { uri: basicMutationFixture.uri },
+    position: positionAt(basicMutationFixture.source, "my_account.data = data"),
   });
   if (
-    !realBasic1Hover?.contents?.value?.includes("Anchor field in `Initialize`") ||
-    !realBasic1Hover.contents.value.includes("Used by: `initialize` mutates")
+    !basicMutationHover?.contents?.value?.includes("Anchor field in `Initialize`") ||
+    !basicMutationHover.contents.value.includes("Used by: `initialize` mutates")
   ) {
-    throw new Error(`real basic-1 local binding hover was not Anchor-aware: ${JSON.stringify(realBasic1Hover)}`);
+    throw new Error(`${basicMutationFixture.name} local binding hover was not Anchor-aware: ${JSON.stringify(basicMutationHover)}`);
   }
-  const realBasic1Definition = await request<Location[] | Location | null>("textDocument/definition", {
-    textDocument: { uri: realBasic1Uri },
-    position: positionAfter(realBasic1Source, "Context<Initialize"),
+  const basicMutationDefinition = await request<Location[] | Location | null>("textDocument/definition", {
+    textDocument: { uri: basicMutationFixture.uri },
+    position: positionAfter(basicMutationFixture.source, "Context<Initialize"),
   });
-  const realBasic1Definitions = Array.isArray(realBasic1Definition)
-    ? realBasic1Definition
-    : realBasic1Definition
-      ? [realBasic1Definition]
+  const basicMutationDefinitions = Array.isArray(basicMutationDefinition)
+    ? basicMutationDefinition
+    : basicMutationDefinition
+      ? [basicMutationDefinition]
       : [];
-  if (!realBasic1Definitions.some((location) => location.uri === realBasic1Uri && location.range.start.line >= 21)) {
-    throw new Error(`real basic-1 Context<Initialize> definition did not jump to the accounts struct: ${JSON.stringify(realBasic1Definition)}`);
+  const basicMutationAccountsLine = positionAt(basicMutationFixture.source, "pub struct Initialize").line;
+  if (
+    !basicMutationDefinitions.some(
+      (location) => location.uri === basicMutationFixture.uri && location.range.start.line === basicMutationAccountsLine,
+    )
+  ) {
+    throw new Error(`${basicMutationFixture.name} Context<Initialize> definition did not jump to the accounts struct: ${JSON.stringify(basicMutationDefinition)}`);
   }
 
-  openDocument(realBasic5Uri, realBasic5Source);
-  const realBasic5Diagnostics = await pullDiagnostics(realBasic5Uri);
-  assertNoDuplicateDiagnostics(realBasic5Uri, realBasic5Diagnostics);
-  if (realBasic5Diagnostics.items?.some((item) => item.code === "anchor-constraint-shape")) {
-    throw new Error(`real basic-5 valid PDA/has_one constraints were incorrectly flagged: ${JSON.stringify(realBasic5Diagnostics.items)}`);
+  openDocument(basicPdaFixture.uri, basicPdaFixture.source);
+  const basicPdaDiagnostics = await pullDiagnostics(basicPdaFixture.uri);
+  assertNoDuplicateDiagnostics(basicPdaFixture.uri, basicPdaDiagnostics);
+  if (basicPdaDiagnostics.items?.some((item) => item.code === "anchor-constraint-shape")) {
+    throw new Error(`${basicPdaFixture.name} valid PDA/has_one constraints were incorrectly flagged: ${JSON.stringify(basicPdaDiagnostics.items)}`);
   }
-  const realBasic5Hover = await request<Hover>("textDocument/hover", {
-    textDocument: { uri: realBasic5Uri },
-    position: positionAt(realBasic5Source, "seeds = ["),
+  const basicPdaHover = await request<Hover>("textDocument/hover", {
+    textDocument: { uri: basicPdaFixture.uri },
+    position: positionAt(basicPdaFixture.source, "seeds = ["),
   });
-  if (!realBasic5Hover?.contents?.value?.includes("seeds")) {
-    throw new Error(`real basic-5 PDA hover did not explain seeds: ${JSON.stringify(realBasic5Hover)}`);
+  if (!basicPdaHover?.contents?.value?.includes("seeds")) {
+    throw new Error(`${basicPdaFixture.name} PDA hover did not explain seeds: ${JSON.stringify(basicPdaHover)}`);
   }
 
-  openDocument(realPuppetMasterUri, realPuppetMasterSource);
-  const realPuppetMasterDiagnostics = await pullDiagnostics(realPuppetMasterUri);
-  assertNoDuplicateDiagnostics(realPuppetMasterUri, realPuppetMasterDiagnostics);
-  if (realPuppetMasterDiagnostics.items?.some((item) => item.code === "anchor-missing-account-reference")) {
-    throw new Error(`real puppet-master CPI account usage was incorrectly flagged: ${JSON.stringify(realPuppetMasterDiagnostics.items)}`);
+  openDocument(puppetMasterFixture.uri, puppetMasterFixture.source);
+  const puppetMasterDiagnostics = await pullDiagnostics(puppetMasterFixture.uri);
+  assertNoDuplicateDiagnostics(puppetMasterFixture.uri, puppetMasterDiagnostics);
+  if (puppetMasterDiagnostics.items?.some((item) => item.code === "anchor-missing-account-reference")) {
+    throw new Error(`${puppetMasterFixture.name} CPI account usage was incorrectly flagged: ${JSON.stringify(puppetMasterDiagnostics.items)}`);
   }
 
   openDocument(mainUri, mainSource);

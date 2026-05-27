@@ -100,6 +100,8 @@ Zed currently receives materialized quick-fix edits. `zed_extension_api` 0.7.0 d
 
 `agent.mode` defaults to `false`. When enabled, Seagrass fills unset settings with agent-friendly defaults: security and experimental diagnostics on, strict native security on, all nine security families at `warn`, `diagnostics.coldPath` at `idle`, and `trace.server` on. Set any specific key beside it to override that preset.
 
+During `initialized`, Seagrass dynamically registers `workspace/didChangeWatchedFiles` for `**/Cargo.toml`, `**/Anchor.toml`, and `**/Seagrass.toml`. When Zed's filesystem watcher reports a change to one of those manifests, Seagrass refreshes the workspace index and republishes diagnostics for every open document, so manifest-driven rules like `anchor-check-cfg` clear immediately after you save the manifest — no need to edit the Rust source again. Registration is gated on the client advertising `workspace.didChangeWatchedFiles.dynamicRegistration`; on clients that don't (e.g. Claude Code's built-in LSP tool), Seagrass silently skips the registration and falls back to refreshing on the next text-document edit.
+
 ## Logs And Support
 
 Zed shows extension and language-server process output in `Zed.log`; run `zed: open log` from the command palette. For live foreground debugging, launch Zed from a terminal with `zed --foreground`.

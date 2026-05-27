@@ -30,12 +30,13 @@ use {
                 GotoDeclarationParams, GotoDeclarationResponse, GotoImplementationParams,
                 GotoImplementationResponse, GotoTypeDefinitionParams, GotoTypeDefinitionResponse,
             },
-            CodeAction, CodeActionKind, CodeActionOptions, CodeActionParams,
+            ClientCapabilities, CodeAction, CodeActionKind, CodeActionOptions, CodeActionParams,
             CodeActionProviderCapability, CodeLens, CodeLensOptions, CodeLensParams,
             CompletionContext, CompletionItem, CompletionOptions, CompletionParams,
             CompletionResponse, DeclarationCapability, DiagnosticOptions,
             DiagnosticServerCapabilities, DidChangeConfigurationParams,
             DidChangeTextDocumentParams, DidChangeWatchedFilesParams,
+            DidChangeWatchedFilesRegistrationOptions, FileSystemWatcher, GlobPattern, Registration,
             DidChangeWorkspaceFoldersParams, DidCloseTextDocumentParams, DidOpenTextDocumentParams,
             DidSaveTextDocumentParams, DocumentDiagnosticParams, DocumentDiagnosticReport,
             DocumentDiagnosticReportResult, DocumentHighlightParams, DocumentLink,
@@ -142,6 +143,7 @@ struct Backend {
     workspace_index: Arc<RwLock<workspace::WorkspaceIndex>>,
     settings: Arc<Mutex<ServerSettings>>,
     client_supports_snippet_edits: Arc<AtomicBool>,
+    supports_watched_file_registration: Arc<AtomicBool>,
     diagnostics_transport: Arc<Mutex<DiagnosticsTransport>>,
     recent_logs: Arc<Mutex<VecDeque<ServerLogEntry>>>,
     document_debouncers: DashMap<Url, debounce::Debouncer>,
@@ -176,6 +178,7 @@ pub async fn run_stdio() {
         workspace_index: Arc::new(RwLock::new(workspace::WorkspaceIndex::default())),
         settings: backend_settings,
         client_supports_snippet_edits: backend_snippet_support,
+        supports_watched_file_registration: Arc::new(AtomicBool::new(false)),
         diagnostics_transport: Arc::new(Mutex::new(DiagnosticsTransport::Push)),
         recent_logs: Arc::new(Mutex::new(VecDeque::with_capacity(RECENT_LOG_LIMIT))),
         document_debouncers: DashMap::new(),
@@ -195,6 +198,10 @@ impl LanguageServer for Backend {
     async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
         self.client_supports_snippet_edits.store(
             snippet_edits::client_supports_snippet_text_edit(&params.capabilities),
+            Ordering::Relaxed,
+        );
+        self.supports_watched_file_registration.store(
+            client_supports_watched_file_registration(&params.capabilities),
             Ordering::Relaxed,
         );
         let roots = workspace_roots_from_initialize(&params);
@@ -238,6 +245,7 @@ impl LanguageServer for Backend {
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     async fn initialized(&self, _: tower_lsp::lsp_types::InitializedParams) {
         self.refresh_workspace_index().await;
+        self.register_manifest_watchers().await;
 
         let roots = self.workspace_root_log();
         self.emit_log(
@@ -507,16 +515,6 @@ impl LanguageServer for Backend {
     ) -> Result<Option<tower_lsp::lsp_types::CodeActionResponse>> {
         let uri = params.text_document.uri;
         let range = params.range;
-        let version = self.current_document_version(&uri);
-        let cache_key = (uri.clone(), query_cache::QueryKind::CodeActions(range));
-        if let Some(query_cache::CacheValue::CodeActions(actions)) =
-            self.query_cache.get(cache_key.clone(), version)
-        {
-            return Ok(
-                (!actions.is_empty()).then_some(actions.into_iter().map(Into::into).collect())
-            );
-        }
-
         let Some(document) = self.document_for(&uri) else {
             return Ok(None);
         };
@@ -534,11 +532,6 @@ impl LanguageServer for Backend {
             wants_source_action,
         );
         let actions = actions::code_actions(&document, uri, range, &diagnostics);
-        self.query_cache.insert(
-            cache_key,
-            version,
-            query_cache::CacheValue::CodeActions(actions.clone()),
-        );
         Ok((!actions.is_empty()).then_some(actions.into_iter().map(Into::into).collect()))
     }
 
