@@ -1,0 +1,82 @@
+[workspace]
+allow_dirty = false
+dependencies_update = false
+git_release_enable = true
+git_release_type = "auto"
+git_tag_enable = true
+git_tag_name = "v{{ version }}"
+publish = true
+publish_allow_dirty = false
+publish_no_verify = false
+release = true
+semver_check = true
+changelog_update = true
+
+[changelog]
+header = "# Changelog\n\nAll notable Seagrass changes are tracked here.\nFormat follows Conventional Commits and Keep a Changelog.\n"
+body = """
+## [{{ version }}]{%- if release_link -%}({{ release_link }}){%- endif %} - {{ timestamp | date(format="%Y-%m-%d") }}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}{{ commit.message | upper_first }}
+{%- endfor %}
+{% endfor %}
+"""
+commit_parsers = [
+  { message = "^feat", group = "Features" },
+  { message = "^fix", group = "Bug Fixes" },
+  { message = "^perf", group = "Performance" },
+  { message = "^refactor", group = "Refactor" },
+  { message = "^docs", group = "Documentation" },
+  { message = "^test", group = "Tests" },
+  { message = "^build", group = "Build System" },
+  { message = "^ci", group = "CI" },
+  { message = "^chore", group = "Chores" },
+  { message = "^revert", group = "Reverts" },
+  { message = "^style", skip = true },
+  { body = ".*BREAKING CHANGE", group = "Breaking Changes" },
+]
+
+[[package]]
+name = "seagrass"
+publish = true
+
+[[package]]
+name = "seagrass-framework"
+publish = true
+
+[[package]]
+name = "seagrass-sources"
+publish = true
+
+[[package]]
+name = "seagrass-anchor-v1"
+publish = true
+
+[[package]]
+name = "seagrass-anchor-v2-preview"
+publish = true
+
+[[package]]
+name = "seagrass-native"
+publish = true
+
+[[package]]
+name = "seagrass-pinocchio"
+publish = true
+
+[[package]]
+name = "seagrass-cli"
+publish = false
+release = false
+
+[[package]]
+name = "seagrass-fuzz"
+publish = false
+release = false
+
+[[package]]
+name = "seagrass-zed"
+publish = false
+release = false

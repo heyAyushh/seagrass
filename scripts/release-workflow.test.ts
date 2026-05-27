@@ -14,6 +14,7 @@ const seagrassWorkflowPaths = [
   ".github/workflows/perf.yaml",
   ".github/workflows/pr.yaml",
   ".github/workflows/property-tests.yaml",
+  ".github/workflows/release-plz.yaml",
   ".github/workflows/release.yaml",
 ];
 const pinnedActionReferencePattern = /^[a-z0-9._-]+\/[a-z0-9._-]+@[a-f0-9]{40}$/i;
@@ -100,7 +101,9 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain('".github/workflows/fuzz.yaml"');
     expect(workflow).toContain('".github/workflows/perf.yaml"');
     expect(workflow).toContain('".github/workflows/property-tests.yaml"');
+    expect(workflow).toContain('".github/workflows/release-plz.yaml"');
     expect(workflow).toContain('".github/workflows/release.yaml"');
+    expect(workflow).toContain('"release-plz.toml"');
     expect(workflow).toContain('"VERSION"');
     expect(workflow).toContain('"bump-version.sh"');
   });
