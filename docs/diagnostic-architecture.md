@@ -61,7 +61,7 @@ pub enum Applicability {
 }
 ```
 
-Implemented entry point: `lsp/src/diagnostics/lint.rs`. The shared module owns
+Implemented entry point: `src/diagnostics/lint.rs`. The shared module owns
 `Region`, `RegionMap`, `Confidence`, `Applicability`, `LintVisitor`, and
 `run_lint_visitor`. The unchecked-arithmetic exemplar is wired through this
 contract; remaining rule ports should migrate incrementally instead of creating
@@ -158,7 +158,7 @@ impl SuppressionIndex {
 
 ## Lint-The-Linter
 
-`bun lsp/scripts/check-rule-hygiene.ts` fails raw-source production diagnostic
+`bun scripts/check-rule-hygiene.ts` fails raw-source production diagnostic
 scans:
 
 - `source.lines().`

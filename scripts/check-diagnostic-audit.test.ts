@@ -42,7 +42,7 @@ describe("diagnostic audit checker", () => {
 
     expect(failures.join("\n")).toContain("wildcard topic cells are not allowed");
     expect(failures.join("\n")).toContain("must use concrete seagrass topics or n/a");
-    expect(failures.join("\n")).toContain("not present in lsp/docs/topics.json");
+    expect(failures.join("\n")).toContain("not present in docs/topics.json");
   });
 
   test("requires emitted diagnostic topics to appear in the audit", () => {
@@ -52,7 +52,7 @@ describe("diagnostic audit checker", () => {
       new Set(["seagrass/security.owner-check", "seagrass/security.type-cosplay"]),
     );
 
-    expect(failures).toContain("seagrass/security.type-cosplay missing from lsp/docs/diagnostic-audit.md");
+    expect(failures).toContain("seagrass/security.type-cosplay missing from docs/diagnostic-audit.md");
   });
 
   test("rejects vague audit cells and non-taxonomy confidence labels", () => {
@@ -168,7 +168,7 @@ describe("diagnostic audit checker", () => {
     ];
 
     expect(auditCoverageFailures(rows)).toEqual([
-      "lsp/docs/diagnostic-audit.md must include at least one hover/ provider row",
+      "docs/diagnostic-audit.md must include at least one hover/ provider row",
     ]);
   });
 
@@ -190,7 +190,7 @@ describe("diagnostic audit checker", () => {
     ];
 
     expect(auditableSourceFailures(rows, sourcePaths)).toEqual([
-      "completions/account_fields/context.rs is missing from lsp/docs/diagnostic-audit.md",
+      "completions/account_fields/context.rs is missing from docs/diagnostic-audit.md",
     ]);
   });
 
@@ -226,8 +226,8 @@ describe("diagnostic audit checker", () => {
       "diagnostics/security.rs",
       "diagnostics/security/raw_account.rs",
     ]);
-    expect(sourcePathFailures(rows, "/repo/lsp/src", new Set(["/repo/lsp/src/diagnostics/security.rs"]))).toEqual([
-      "diagnostics/security/raw_account.rs does not exist under /repo/lsp/src",
+    expect(sourcePathFailures(rows, "/repo/src", new Set(["/repo/src/diagnostics/security.rs"]))).toEqual([
+      "diagnostics/security/raw_account.rs does not exist under /repo/src",
     ]);
   });
 });

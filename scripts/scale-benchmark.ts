@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
+const repoRoot = resolve(scriptDir, "..");
 const serverBinary = resolve(repoRoot, "target/debug/seagrass");
 const defaultWorkspaceRunId = `${Date.now()}-${process.pid}`;
 const defaultWorkspace = resolve(
@@ -67,7 +67,7 @@ type ScaleSample = {
 const args = parseArgs(process.argv.slice(2));
 
 runChecked("bun", [
-  "lsp/scripts/synth-workspace.ts",
+  "scripts/synth-workspace.ts",
   "--programs",
   String(args.programs),
   "--output",

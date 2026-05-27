@@ -15,12 +15,14 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const GITHUB_POSITIVE_ID_PATTERN = "[1-9][0-9]*";
 const IMMUTABLE_CHANGELOG_REF_PATTERN =
   "(?:[a-f0-9]{40}|lsp-v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[A-Za-z0-9._-]+)?)";
+const CARGO_REPOSITORY_FIELD_PATTERN = /^\s*repository\s*=\s*"([^"]+)"/m;
 
-export const repoRoot = resolve(scriptDir, "../..");
+export const repoRoot = resolve(scriptDir, "..");
 
-const fuzzManifestPath = resolve(repoRoot, "lsp/fuzz/Cargo.toml");
+const rootManifestPath = resolve(repoRoot, "Cargo.toml");
+const fuzzManifestPath = resolve(repoRoot, "fuzz/Cargo.toml");
 const fuzzWorkflowPath = resolve(repoRoot, ".github/workflows/lsp-fuzz.yaml");
-const defaultCorpusRoot = resolve(repoRoot, "lsp/fuzz/corpus");
+const defaultCorpusRoot = resolve(repoRoot, "fuzz/corpus");
 
 export function gitHead(): string {
   return execFileSync("git", ["rev-parse", "HEAD"], {
@@ -43,10 +45,15 @@ export function expectedFuzzTargets(): string[] {
   }
   const metadata = JSON.parse(metadataOutput) as unknown;
   if (!isRecord(metadata) || !Array.isArray(metadata.packages)) {
-    throw new Error("cargo metadata for lsp/fuzz did not contain packages");
+    throw new Error("cargo metadata for fuzz did not contain packages");
   }
-  return metadata.packages
-    .flatMap((pkg) => (isRecord(pkg) && Array.isArray(pkg.targets) ? pkg.targets : []))
+  const fuzzPackage = metadata.packages.find(
+    (pkg) => isRecord(pkg) && stringField(pkg, "name") === "seagrass-fuzz",
+  );
+  if (!isRecord(fuzzPackage) || !Array.isArray(fuzzPackage.targets)) {
+    throw new Error("cargo metadata did not contain the seagrass-fuzz package targets");
+  }
+  return fuzzPackage.targets
     .filter(isRecord)
     .filter((target) => Array.isArray(target.kind) && target.kind.includes("bin"))
     .map((target) => stringField(target, "name"))
@@ -120,7 +127,12 @@ function originRemoteUrl(): string {
   if (process.env.GITHUB_REPOSITORY) {
     return `https://github.com/${process.env.GITHUB_REPOSITORY}.git`;
   }
-  return "";
+  return cargoRepositoryUrl();
+}
+
+function cargoRepositoryUrl(): string {
+  const manifest = readFileSync(rootManifestPath, "utf8");
+  return manifest.match(CARGO_REPOSITORY_FIELD_PATTERN)?.[1] ?? "";
 }
 
 function commandOutput(command: string, args: string[]): string {
@@ -128,6 +140,7 @@ function commandOutput(command: string, args: string[]): string {
     return execFileSync(command, args, {
       cwd: repoRoot,
       encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
     }).trim();
   } catch {
     return "";
@@ -191,7 +204,7 @@ export function isExpectedReviewProofUrl(value: string): boolean {
 export function isExpectedChangelogProofUrl(value: string): boolean {
   return githubPathMatches(
     value,
-    `blob/${IMMUTABLE_CHANGELOG_REF_PATTERN}/(?:lsp/)?CHANGELOG\\.md`,
+    `blob/${IMMUTABLE_CHANGELOG_REF_PATTERN}/CHANGELOG\\.md`,
   );
 }
 

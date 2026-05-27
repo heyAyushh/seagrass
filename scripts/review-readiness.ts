@@ -261,7 +261,7 @@ function printHelp(): void {
   console.log(`Generate Seagrass external review readiness evidence.
 
 Usage:
-  bun lsp/scripts/review-readiness.ts --mode <paid|community> --reviewer <name> --artifact-url <url> --findings-artifact-url <url> [options]
+  bun scripts/review-readiness.ts --mode <paid|community> --reviewer <name> --artifact-url <url> --findings-artifact-url <url> [options]
 
 Options:
   --completed-at <iso>          Review completion timestamp. Default: now.

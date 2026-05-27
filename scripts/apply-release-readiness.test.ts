@@ -16,7 +16,7 @@ import {
 } from "./release-evidence.ts";
 
 const expectedRepoSlug = "heyAyushh/seagrass";
-const releaseVersion = readFileSync(resolve(import.meta.dir, "../../VERSION"), "utf8").trim();
+const releaseVersion = readFileSync(resolve(import.meta.dir, "../VERSION"), "utf8").trim();
 const completedAt = "2026-05-26T12:00:00.000Z";
 const fuzzStartedAt = "2026-05-25T12:00:00.000Z";
 const auditOpenedAt = "2026-04-26T12:00:00.000Z";

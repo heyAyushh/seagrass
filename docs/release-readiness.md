@@ -10,19 +10,19 @@ Two release proofs cannot be produced by local tests:
 The release workflow enforces those proofs with:
 
 ```sh
-bun lsp/scripts/check-release-readiness.ts --version "$(tr -d '[:space:]' < VERSION)"
+bun scripts/check-release-readiness.ts --version "$(tr -d '[:space:]' < VERSION)"
 ```
 
 Use `--readiness-path <path>` to validate a generated evidence artifact before
-copying it into `lsp/docs/release-readiness.json`.
+copying it into `docs/release-readiness.json`.
 
-The checked-in `lsp/docs/release-readiness.json` is intentionally pending until
+The checked-in `docs/release-readiness.json` is intentionally pending until
 real evidence exists. Pending evidence uses explicit `pending` sentinels and
 zero fuzz hours so it cannot be mistaken for proof. For local shape validation
 while the evidence is pending:
 
 ```sh
-bun lsp/scripts/check-release-readiness.ts \
+bun scripts/check-release-readiness.ts \
   --allow-pending \
   --version "$(tr -d '[:space:]' < VERSION)"
 ```
@@ -37,9 +37,9 @@ bun lsp/scripts/check-release-readiness.ts \
 | `fuzzCleanRun.commit` | Must match the release commit. |
 | `fuzzCleanRun.startedAt` / `completedAt` | Must span at least 24 elapsed hours for final evidence. |
 | `fuzzCleanRun.aggregateFuzzHours` | Must be at least 24 and no more than elapsed workflow time. |
-| `fuzzCleanRun.corpusSha256` | Required after `status` is `passed`; SHA-256 tree hash of `lsp/fuzz/corpus` after importing the workflow artifacts. |
+| `fuzzCleanRun.corpusSha256` | Required after `status` is `passed`; SHA-256 tree hash of `fuzz/corpus` after importing the workflow artifacts. |
 | `fuzzCleanRun.targets` | Must list the fuzz targets covered. |
-| `fuzzCleanRun.workflowMatrixTargets` | Must match `.github/workflows/lsp-fuzz.yaml` and `lsp/fuzz/Cargo.toml`. |
+| `fuzzCleanRun.workflowMatrixTargets` | Must match `.github/workflows/lsp-fuzz.yaml` and `fuzz/Cargo.toml`. |
 | `fuzzCleanRun.targetRuns` | Required per-target proof rows; `shards` must match `.github/workflows/lsp-fuzz.yaml`, and hours must sum to `aggregateFuzzHours`. |
 | `externalReview.status` | Must be `signed-off`. |
 | `externalReview.mode` | `paid` or `community`. |
@@ -62,11 +62,11 @@ archives. Download them with `gh`, then import the corpus and readiness object:
 
 ```sh
 gh run download <run-id> --dir target/fuzz-artifacts
-bun lsp/scripts/import-fuzz-artifacts.ts \
+bun scripts/import-fuzz-artifacts.ts \
   --artifacts-dir target/fuzz-artifacts \
   --commit <release-sha> \
   --dry-run
-bun lsp/scripts/import-fuzz-artifacts.ts \
+bun scripts/import-fuzz-artifacts.ts \
   --artifacts-dir target/fuzz-artifacts \
   --commit <release-sha>
 ```
@@ -75,7 +75,7 @@ The importer rejects stale target matrices, stale shard counts, missing shard
 archives, unsafe tar members, placeholder workflow run ids, non-24h readiness
 evidence, and mismatched commits. It also writes `fuzzCleanRun.corpusSha256`,
 which the strict readiness gate compares against the checked-in
-`lsp/fuzz/corpus` tree before release packaging can proceed.
+`fuzz/corpus` tree before release packaging can proceed.
 The release workflow packages the checked `release-readiness.json` with the
 promoted fuzz corpus so release users can replay the corpus against the exact
 proof that unlocked the tag.
@@ -87,7 +87,7 @@ using the community path.
 Generate the object from the signoff and changelog disposition artifacts:
 
 ```sh
-bun lsp/scripts/review-readiness.ts \
+bun scripts/review-readiness.ts \
   --mode community \
   --reviewer <reviewer-or-firm> \
   --artifact-url <review-signoff-url> \
@@ -104,10 +104,10 @@ at concrete review and workflow artifacts. Changelog disposition proof must use
 an immutable `blob/<lsp-v... or sha>/CHANGELOG.md` URL, not `main` or `master`.
 
 When both generated objects exist, apply them with the strict merge command. It
-validates the merged file before writing `lsp/docs/release-readiness.json`:
+validates the merged file before writing `docs/release-readiness.json`:
 
 ```sh
-bun lsp/scripts/apply-release-readiness.ts \
+bun scripts/apply-release-readiness.ts \
   --fuzz target/fuzz-readiness-<release-sha>.json \
   --review target/review-readiness.json \
   --version "$(tr -d '[:space:]' < VERSION)" \

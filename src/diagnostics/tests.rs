@@ -3,7 +3,6 @@ use {
     crate::{
         diagnostics::registry::ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE, document::ParsedDocument,
     },
-    std::{fs, path::Path},
     tower_lsp::lsp_types::{NumberOrString, Position, Range, Url},
 };
 
@@ -621,11 +620,11 @@ pub struct Create<'info> {
 
 #[test]
 fn real_tutorial_programs_do_not_emit_high_signal_false_positives() {
-    for path in [
-        "../examples/tutorial/basic-1/programs/basic-1/src/lib.rs",
-        "../examples/tutorial/basic-5/programs/basic-5/src/lib.rs",
+    for (name, source) in [
+        ("basic-1", BASIC_TUTORIAL_SOURCE),
+        ("basic-5", BASIC_STATE_TUTORIAL_SOURCE),
     ] {
-        let diagnostics = collect_real_program_diagnostics(path);
+        let diagnostics = collect_source_diagnostics(source);
         let false_positives = diagnostics
             .iter()
             .filter(|diagnostic| {
@@ -648,16 +647,14 @@ fn real_tutorial_programs_do_not_emit_high_signal_false_positives() {
 
         assert!(
             false_positives.is_empty(),
-            "{path} produced high-signal false positives: {false_positives:#?}"
+            "{name} produced high-signal false positives: {false_positives:#?}"
         );
     }
 }
 
 #[test]
 fn real_puppet_master_cpi_usage_does_not_emit_cpi_program_false_positive() {
-    let diagnostics = collect_real_program_diagnostics(
-        "../examples/tutorial/basic-3/programs/puppet-master/src/lib.rs",
-    );
+    let diagnostics = collect_source_diagnostics(PUPPET_MASTER_CPI_SOURCE);
 
     assert!(
         diagnostics.iter().all(|diagnostic| {
@@ -671,13 +668,87 @@ fn real_puppet_master_cpi_usage_does_not_emit_cpi_program_false_positive() {
     );
 }
 
-fn collect_real_program_diagnostics(relative_path: &str) -> Vec<Diagnostic> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(relative_path);
-    let source = fs::read_to_string(&path)
-        .unwrap_or_else(|err| panic!("failed to read {}: {err}", path.display()));
+fn collect_source_diagnostics(source: &str) -> Vec<Diagnostic> {
     let document = ParsedDocument::parse_or_empty(source);
     collect(&document)
 }
+
+const BASIC_TUTORIAL_SOURCE: &str = r#"
+use anchor_lang::prelude::*;
+
+declare_id!("11111111111111111111111111111111");
+
+#[program]
+pub mod basic_1 {
+    use super::*;
+
+    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> {
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Initialize {}
+"#;
+
+const BASIC_STATE_TUTORIAL_SOURCE: &str = r#"
+use anchor_lang::prelude::*;
+
+declare_id!("11111111111111111111111111111111");
+
+#[program]
+pub mod basic_5 {
+    use super::*;
+
+    pub fn initialize(ctx: Context<Initialize>, data: u64) -> Result<()> {
+        ctx.accounts.data.data = data;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    #[account(init, payer = payer, space = 8 + 8)]
+    pub data: Account<'info, Data>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[account]
+pub struct Data {
+    pub data: u64,
+}
+"#;
+
+const PUPPET_MASTER_CPI_SOURCE: &str = r#"
+use anchor_lang::prelude::*;
+use puppet::cpi::accounts::SetData;
+use puppet::program::Puppet;
+
+declare_id!("11111111111111111111111111111111");
+
+#[program]
+pub mod puppet_master {
+    use super::*;
+
+    pub fn pull_strings(ctx: Context<PullStrings>, data: u64) -> Result<()> {
+        let cpi_program = ctx.accounts.puppet_program.to_account_info();
+        let cpi_accounts = SetData {
+            puppet: ctx.accounts.puppet.to_account_info(),
+        };
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        puppet::cpi::set_data(cpi_ctx, data)
+    }
+}
+
+#[derive(Accounts)]
+pub struct PullStrings<'info> {
+    #[account(mut)]
+    pub puppet: AccountInfo<'info>,
+    pub puppet_program: Program<'info, Puppet>,
+}
+"#;
 
 fn code_text(code: &NumberOrString) -> Option<&str> {
     match code {

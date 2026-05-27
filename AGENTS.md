@@ -23,8 +23,8 @@ Use this guide for changes in `/Users/ay/Documents/codes/solana/seagrass`,
 especially:
 
 - Anchor Rust crates, CLI, TypeScript packages, docs, and examples.
-- `lsp/`, including the `anchor-lsp` server.
-- `lsp/editors/vscode` and `lsp/editors/zed`.
+- `src/`, including the Seagrass language server.
+- `editors/vscode` and `editors/zed`.
 - Release metadata such as `VERSION`, `CHANGELOG.md`, `CONTRIBUTING.md`, and
   `bump-version.sh`.
 
@@ -60,7 +60,7 @@ When changing LSP behavior:
 1. Start from the semantic source: parsed Rust, Anchor syntax, generated
    constraint catalogs, workspace indexes, IDLs, or local build artifacts.
 2. Add focused unit tests for the new semantic rule.
-3. Add or update `lsp/src/editor_ux_parity.rs` when the change affects what
+3. Add or update `src/editor_ux_parity.rs` when the change affects what
    a user sees in Zed or VS Code.
 4. Run the production gate before claiming the change is done.
 
@@ -73,7 +73,7 @@ cargo run -p anchor-lsp
 Run the production gate with:
 
 ```sh
-bun lsp/scripts/verify-production.ts
+bun scripts/verify-production.ts
 ```
 
 ## Editor UX Standards
@@ -104,11 +104,11 @@ Keep these versions aligned:
 
 - `VERSION`
 - `[workspace.package].version` in `Cargo.toml`
-- `lsp/editors/vscode/package.json`
-- `lsp/editors/zed/Cargo.toml`
-- `lsp/editors/zed/extension.toml`
+- `editors/vscode/package.json`
+- `editors/zed/Cargo.toml`
+- `editors/zed/extension.toml`
 
-`bun lsp/scripts/verify-production.ts` fails when LSP/editor versions drift.
+`bun scripts/verify-production.ts` fails when LSP/editor versions drift.
 `bump-version.sh` should update local editor manifests that are not handled by
 `cargo-release`.
 
@@ -123,10 +123,10 @@ When contributor workflow changes, update `CONTRIBUTING.md` in the same change.
 The LSP overlay and local editor adapters use MIT licensing. Keep the license
 metadata aligned across:
 
-- `lsp/LICENSE`
-- `lsp/Cargo.toml`
-- `lsp/editors/vscode/package.json`
-- `lsp/editors/zed/Cargo.toml`
+- `LICENSE`
+- `Cargo.toml`
+- `editors/vscode/package.json`
+- `editors/zed/Cargo.toml`
 
 Do not silently relicense the parent Anchor workspace. The root `LICENSE` and
 root README describe the parent workspace license unless a file explicitly says
@@ -138,10 +138,10 @@ otherwise.
 | --- | --- |
 | LSP behavior | `cargo test -p anchor-lsp` plus targeted tests. |
 | Editor-visible LSP behavior | `cargo test -p anchor-lsp editor_ux_parity -- --nocapture`. |
-| LSP production readiness | `bun lsp/scripts/verify-production.ts`. |
-| VS Code adapter | `cd lsp/editors/vscode && bun run check`. |
-| Zed adapter | `cd lsp/editors/zed && cargo test`. |
-| Zed wasm release artifact | `cd lsp/editors/zed && cargo build --target wasm32-wasip2 --release`, then copy the release wasm to `extension.wasm`. |
+| LSP production readiness | `bun scripts/verify-production.ts`. |
+| VS Code adapter | `cd editors/vscode && bun run check`. |
+| Zed adapter | `cd editors/zed && cargo test`. |
+| Zed wasm release artifact | `cd editors/zed && cargo build --target wasm32-wasip2 --release`, then copy the release wasm to `extension.wasm`. |
 | Root Anchor Rust change | Relevant `cargo test`, `cargo build`, and formatting checks. |
 | TypeScript package change | Relevant `yarn build`, `yarn test`, or package-local lint/check command. |
 

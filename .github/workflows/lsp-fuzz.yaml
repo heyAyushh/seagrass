@@ -98,7 +98,7 @@ jobs:
           run_meta="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")"
           run_started_at="$(bun -e 'const input = await Bun.stdin.text(); const meta = JSON.parse(input); process.stdout.write(meta.run_started_at ?? meta.created_at);' <<< "${run_meta}")"
           completed_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-          bun lsp/scripts/fuzz-readiness.ts \
+          bun scripts/fuzz-readiness.ts \
             --status "${FUZZ_STATUS}" \
             --workflow-run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
             --commit "${GITHUB_SHA}" \

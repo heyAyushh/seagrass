@@ -6,7 +6,7 @@ on:
       - master
       - anchor-next
     paths:
-      - "lsp/**"
+      - "**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/lsp-perf.yaml"
@@ -14,7 +14,7 @@ on:
     branches:
       - master
     paths:
-      - "lsp/**"
+      - "**"
       - "Cargo.toml"
       - "Cargo.lock"
       - ".github/workflows/lsp-perf.yaml"
@@ -44,7 +44,7 @@ jobs:
           npm install --global "bun@${BUN_VERSION}"
           bun --version
       - name: Replay LSP request stream with hotpath budgets
-        run: bun lsp/scripts/perf-replay.ts
+        run: bun scripts/perf-replay.ts
       - name: Upload hotpath report
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
@@ -76,7 +76,7 @@ jobs:
           bun --version
       - name: Measure N=${{ matrix.programs }} workspace scale
         run: |
-          bun lsp/scripts/scale-benchmark.ts \
+          bun scripts/scale-benchmark.ts \
             --programs ${{ matrix.programs }} \
             --samples 3 \
             --report target/seagrass-scale-${{ matrix.programs }}.json

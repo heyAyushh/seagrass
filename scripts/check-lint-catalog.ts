@@ -5,9 +5,9 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const topicsPath = resolve(repoRoot, "lsp/docs/topics.json");
-const lintsRoot = resolve(repoRoot, "lsp/docs/lints");
+const repoRoot = resolve(scriptDir, "..");
+const topicsPath = resolve(repoRoot, "docs/topics.json");
+const lintsRoot = resolve(repoRoot, "docs/lints");
 const fixMode = process.argv.includes("--fix");
 const GENERATED_BOILERPLATE = [
   "This page documents the user-facing diagnostic topic.",

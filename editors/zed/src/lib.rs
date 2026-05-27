@@ -53,8 +53,8 @@ impl zed::Extension for SeagrassExtension {
 
         let args = if let Some(manifest_path) = env_value(&env, SERVER_MANIFEST_ENV) {
             cargo_args_for_manifest(manifest_path)
-        } else if worktree.read_text_file("lsp/Cargo.toml").is_ok() {
-            cargo_args_for_manifest("lsp/Cargo.toml")
+        } else if worktree.read_text_file("Cargo.toml").is_ok() {
+            cargo_args_for_manifest("Cargo.toml")
         } else {
             cargo_args_for_manifest(SERVER_MANIFEST_FROM_EXTENSION)
         };

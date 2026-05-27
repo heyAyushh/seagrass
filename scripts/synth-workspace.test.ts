@@ -3,18 +3,19 @@ import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 
-const repoRoot = resolve(import.meta.dir, "../..");
+const repoRoot = resolve(import.meta.dir, "..");
 const testRoot = resolve(repoRoot, "target/synth-workspace-tests");
-const expectedAnchorLangPath = "../../../../lang";
+const expectedAnchorLangDependency =
+  'anchor-lang = { git = "https://github.com/otter-sec/anchor.git", rev = "4addac53" }';
 
 describe("synthetic Anchor workspace", () => {
-  test("uses the real workspace anchor-lang path", () => {
+  test("uses the pinned upstream anchor-lang dependency", () => {
     mkdirSync(testRoot, { recursive: true });
     const outputRoot = mkdtempSync(resolve(testRoot, "workspace-"));
 
     const result = spawnSync(
       "bun",
-      ["lsp/scripts/synth-workspace.ts", "--programs", "1", "--output", outputRoot],
+      ["scripts/synth-workspace.ts", "--programs", "1", "--output", outputRoot],
       {
         cwd: repoRoot,
         encoding: "utf8",
@@ -23,6 +24,6 @@ describe("synthetic Anchor workspace", () => {
 
     expect(result.status).toBe(0);
     const manifest = readFileSync(resolve(outputRoot, "programs/program_0/Cargo.toml"), "utf8");
-    expect(manifest).toContain(`anchor-lang = { path = "${expectedAnchorLangPath}" }`);
+    expect(manifest).toContain(expectedAnchorLangDependency);
   });
 });

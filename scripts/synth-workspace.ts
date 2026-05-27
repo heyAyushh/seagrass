@@ -7,10 +7,11 @@ import { fileURLToPath } from "node:url";
 const DEFAULT_PROGRAM_COUNT = 200;
 const MIN_PROGRAM_COUNT = 1;
 const MAX_PROGRAM_COUNT = 2_000;
-const ANCHOR_LANG_RELATIVE_PATH = "../../../../lang";
+const ANCHOR_LANG_DEPENDENCY =
+  'anchor-lang = { git = "https://github.com/otter-sec/anchor.git", rev = "4addac53" }';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
+const repoRoot = resolve(scriptDir, "..");
 
 const args = parseArgs(process.argv.slice(2));
 const programCount = boundedProgramCount(args.programs ?? DEFAULT_PROGRAM_COUNT);
@@ -80,7 +81,7 @@ function writeProgram(root: string, programIndex: number): void {
   mkdirSync(sourceRoot, { recursive: true });
   writeFileSync(
     resolve(programRoot, "Cargo.toml"),
-    `[package]\nname = "${crateName}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\nanchor-lang = { path = "${ANCHOR_LANG_RELATIVE_PATH}" }\n`,
+    `[package]\nname = "${crateName}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n${ANCHOR_LANG_DEPENDENCY}\n`,
   );
   writeFileSync(resolve(sourceRoot, "lib.rs"), programSource(programIndex));
 }

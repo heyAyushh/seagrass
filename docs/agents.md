@@ -133,7 +133,7 @@ updates them.
 Run:
 
 ```sh
-bun lsp/scripts/protocol-smoke.ts
+bun scripts/protocol-smoke.ts
 ```
 
 The smoke test verifies both commands are advertised and return agent-usable

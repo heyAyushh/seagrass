@@ -30,7 +30,7 @@ import {
 } from "./release-evidence.ts";
 
 const tarGzipExtension = ".tar.gz";
-const defaultCorpusOut = resolve(repoRoot, "lsp/fuzz/corpus");
+const defaultCorpusOut = resolve(repoRoot, "fuzz/corpus");
 const defaultReadinessDir = resolve(repoRoot, "target");
 
 type FuzzTargetRun = {
@@ -470,16 +470,16 @@ function printHelp(): void {
   console.log(`Import Seagrass fuzz workflow artifacts.
 
 Usage:
-  bun lsp/scripts/import-fuzz-artifacts.ts --artifacts-dir <path> --commit <sha> [options]
+  bun scripts/import-fuzz-artifacts.ts --artifacts-dir <path> --commit <sha> [options]
 
 Options:
-  --corpus-out <path>     Corpus destination. Default: lsp/fuzz/corpus.
+  --corpus-out <path>     Corpus destination. Default: fuzz/corpus.
   --readiness-out <path>  Fuzz readiness output. Default: target/fuzz-readiness-<sha>.json.
   --dry-run               Validate artifacts and report planned writes without writing.
   --overwrite             Allow replacing existing corpus files with different contents.
 
 Examples:
   gh run download <run-id> --dir target/fuzz-artifacts
-  bun lsp/scripts/import-fuzz-artifacts.ts --artifacts-dir target/fuzz-artifacts --commit <sha> --dry-run
-  bun lsp/scripts/import-fuzz-artifacts.ts --artifacts-dir target/fuzz-artifacts --commit <sha>`);
+  bun scripts/import-fuzz-artifacts.ts --artifacts-dir target/fuzz-artifacts --commit <sha> --dry-run
+  bun scripts/import-fuzz-artifacts.ts --artifacts-dir target/fuzz-artifacts --commit <sha>`);
 }

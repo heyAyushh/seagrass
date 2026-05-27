@@ -18,5 +18,5 @@ source files in the `otter-sec/anchor` workspace:
 - `examples/**/programs/**/src/**/*.rs`
 - `tests/**/programs/**/src/**/*.rs`
 
-The generated catalogs are checked in under `lsp/src/generated/` so normal
+The generated catalogs are checked in under `src/generated/` so normal
 builds do not scrape those upstream files.

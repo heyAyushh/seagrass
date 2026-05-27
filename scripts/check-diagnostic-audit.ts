@@ -5,11 +5,11 @@ import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const sourceRoot = resolve(repoRoot, "lsp/src");
+const repoRoot = resolve(scriptDir, "..");
+const sourceRoot = resolve(repoRoot, "src");
 const diagnosticsRoot = resolve(sourceRoot, "diagnostics");
-const auditPath = resolve(repoRoot, "lsp/docs/diagnostic-audit.md");
-const topicsPath = resolve(repoRoot, "lsp/docs/topics.json");
+const auditPath = resolve(repoRoot, "docs/diagnostic-audit.md");
+const topicsPath = resolve(repoRoot, "docs/topics.json");
 const tableColumnCount = 8;
 const sourceTopicEvidenceRegexes = [
   /\bconst\s+[A-Z0-9_]*TOPIC[A-Z0-9_]*\s*:\s*&\s*(?:'static\s+)?str\s*=\s*"(?<topic>seagrass\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)"/g,
@@ -158,7 +158,7 @@ export function auditTopicFailures(
     ...[...emittedTopics]
       .filter((topic) => !auditedTopics.has(topic))
       .sort(compareStrings)
-      .map((topic) => `${topic} missing from lsp/docs/diagnostic-audit.md`),
+      .map((topic) => `${topic} missing from docs/diagnostic-audit.md`),
   ];
 }
 
@@ -166,7 +166,7 @@ export function auditCoverageFailures(rows: AuditRow[]): string[] {
   return requiredProviderPrefixes.flatMap((prefix) =>
     rows.some((row) => row.file.startsWith(prefix))
       ? []
-      : [`lsp/docs/diagnostic-audit.md must include at least one ${prefix} provider row`],
+      : [`docs/diagnostic-audit.md must include at least one ${prefix} provider row`],
   );
 }
 
@@ -174,7 +174,7 @@ export function auditableSourceFailures(rows: AuditRow[], sourcePaths: string[])
   return sourcePaths
     .filter(isAuditableProviderSource)
     .filter((sourcePath) => !auditRowsCoverSourcePath(rows, sourcePath))
-    .map((sourcePath) => `${sourcePath} is missing from lsp/docs/diagnostic-audit.md`);
+    .map((sourcePath) => `${sourcePath} is missing from docs/diagnostic-audit.md`);
 }
 
 function isAuditableProviderSource(sourcePath: string): boolean {
@@ -210,7 +210,7 @@ function rowTopicFailures(row: AuditRow, manifestTopics: Set<string>): string[] 
   failures.push(
     ...topics
       .filter((topic) => !manifestTopics.has(topic))
-      .map((topic) => `${row.file} ${row.provider}: ${topic} is not present in lsp/docs/topics.json`),
+      .map((topic) => `${row.file} ${row.provider}: ${topic} is not present in docs/topics.json`),
   );
 
   return failures;

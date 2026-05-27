@@ -5,8 +5,8 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const diagnosticsRoot = resolve(repoRoot, "lsp/src/diagnostics");
+const repoRoot = resolve(scriptDir, "..");
+const diagnosticsRoot = resolve(repoRoot, "src/diagnostics");
 
 type Pattern = {
   name: string;

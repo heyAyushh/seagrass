@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
+const repoRoot = resolve(scriptDir, "..");
 const defaultReportPath = resolve(repoRoot, "target/seagrass-hotpath-report.json");
 const hotpathServerBinary = resolve(repoRoot, "target/release/seagrass");
 const nanosPerMillisecond = 1_000_000;
@@ -88,7 +88,7 @@ function runPerfReplay() {
   mkdirSync(dirname(reportPath), { recursive: true });
   runChecked("cargo", ["build", "-p", "seagrass", "--features", "hotpath", "--release"]);
 
-  const result = spawnSync("bun", ["lsp/scripts/hotpath-replay-session.ts"], {
+  const result = spawnSync("bun", ["scripts/hotpath-replay-session.ts"], {
     cwd: repoRoot,
     stdio: "inherit",
     env: {

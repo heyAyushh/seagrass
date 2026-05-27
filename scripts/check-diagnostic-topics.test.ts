@@ -14,8 +14,8 @@ import {
 } from "./check-diagnostic-topics";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const topicsSchemaPath = resolve(repoRoot, "lsp/docs/topics.schema.json");
+const repoRoot = resolve(scriptDir, "..");
+const topicsSchemaPath = resolve(repoRoot, "docs/topics.schema.json");
 
 const accountUsage = {
   name: "seagrass/anchor.account.usage",
@@ -77,7 +77,7 @@ describe("diagnostic topic checker", () => {
   });
 
   test("ignores diagnostic test files when collecting emitted source topics", () => {
-    const diagnosticsRoot = resolve(repoRoot, "lsp/src/diagnostics");
+    const diagnosticsRoot = resolve(repoRoot, "src/diagnostics");
 
     expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "security.rs"))).toBe(true);
     expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "security/tests.rs"))).toBe(false);

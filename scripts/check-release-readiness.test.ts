@@ -13,7 +13,7 @@ const expectedRepoSlug = "heyAyushh/seagrass";
 process.env.GITHUB_REPOSITORY = expectedRepoSlug;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
+const repoRoot = resolve(scriptDir, "..");
 const releaseVersion = readFileSync(resolve(repoRoot, "VERSION"), "utf8").trim();
 
 describe("release readiness checker", () => {
@@ -48,7 +48,7 @@ describe("release readiness checker", () => {
 
   test("checked-in pending evidence is visibly non-final", () => {
     const readiness = JSON.parse(
-      readFileSync(resolve(repoRoot, "lsp/docs/release-readiness.json"), "utf8"),
+      readFileSync(resolve(repoRoot, "docs/release-readiness.json"), "utf8"),
     ) as ReleaseReadiness;
 
     expect(readiness.fuzzCleanRun.status).toBe("pending");

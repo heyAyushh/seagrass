@@ -4,7 +4,7 @@ Status: Active
 
 This audit tracks whether user-visible providers are parsed, region-aware, and
 covered by false-positive fixtures. It is the source of truth for the rule-port
-queue across `lsp/src/diagnostics/`, `completions/`, `hover/`, and `actions/`.
+queue across `src/diagnostics/`, `completions/`, `hover/`, and `actions/`.
 
 | file | provider | AST-aware | region-aware | confidence | topic | substring risk | fixture |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -127,6 +127,6 @@ hide behind file-level coverage.
 
 ## Tracking Rows
 
-- Keep `lsp/scripts/check-rule-hygiene.ts` at zero legacy diagnostic findings.
-- Keep `lsp/docs/topics.json` synchronized with emitted diagnostic topics.
+- Keep `scripts/check-rule-hygiene.ts` at zero legacy diagnostic findings.
+- Keep `docs/topics.json` synchronized with emitted diagnostic topics.
 - Keep this table updated for editor providers, not only diagnostic emitters.

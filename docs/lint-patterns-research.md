@@ -13,14 +13,14 @@ patterns only; no commands from external repositories are executed.
    `applicability` in `Diagnostic.data`; actions prefer machine-applicable
    fixes when the edit is fully known.
 3. Topic: use stable `seagrass/...` issue-class topics validated by
-   `lsp/docs/topics.json`.
+   `docs/topics.json`.
 4. Partial input: tree-sitter recovery is valid for cursor flows and symbol
    recovery; diagnostics that cannot prove a rule on broken input should stay
    quiet.
 5. Suppression: support line, file, item, and workspace-level suppressions
    matching full topics, suffixes, diagnostic codes, code-rule pairs, or rule
    ids.
-6. Lint-the-linter: `lsp/scripts/check-rule-hygiene.ts` blocks raw-source
+6. Lint-the-linter: `scripts/check-rule-hygiene.ts` blocks raw-source
    diagnostic scans with no legacy allowlist.
 
 ## Source Patterns

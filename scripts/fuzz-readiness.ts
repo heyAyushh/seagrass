@@ -238,7 +238,7 @@ function printHelp(): void {
   console.log(`Generate Seagrass fuzz readiness evidence.
 
 Usage:
-  bun lsp/scripts/fuzz-readiness.ts --status <passed|failed> --workflow-run-url <url> --commit <sha> [options]
+  bun scripts/fuzz-readiness.ts --status <passed|failed> --workflow-run-url <url> --commit <sha> [options]
 
 Options:
   --seconds-per-shard <n>  Seconds fuzzed by each matrix shard. Default: 3600.

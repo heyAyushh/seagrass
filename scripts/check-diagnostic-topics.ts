@@ -5,9 +5,9 @@ import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const diagnosticsRoot = resolve(repoRoot, "lsp/src/diagnostics");
-const topicsPath = resolve(repoRoot, "lsp/docs/topics.json");
+const repoRoot = resolve(scriptDir, "..");
+const diagnosticsRoot = resolve(repoRoot, "src/diagnostics");
+const topicsPath = resolve(repoRoot, "docs/topics.json");
 export const topicPattern = /^seagrass\/[a-z0-9][a-z0-9.-]*$/;
 const sourceTopicEvidenceRegexes = [
   /\bconst\s+[A-Z0-9_]*TOPIC[A-Z0-9_]*\s*:\s*&\s*(?:'static\s+)?str\s*=\s*"(?<topic>seagrass\/[a-z0-9][a-z0-9.-]*)"/g,
@@ -120,7 +120,7 @@ export function topicDriftFailures(manifestTopics: string[], sourceTopics: strin
   return [
     [
       "diagnostic topic manifest drift detected",
-      formatTopicList("missing from lsp/docs/topics.json", missing),
+      formatTopicList("missing from docs/topics.json", missing),
       formatTopicList("declared but not emitted by diagnostics source", stale),
     ].join("\n"),
   ];

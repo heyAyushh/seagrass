@@ -55,12 +55,12 @@ Use this when an AI coding agent or LSP bridge needs Solana framework semantics.
    ```
 
 2. For structured snapshots, use the execute-command examples in
-   `lsp/docs/agents.md`.
+   `docs/agents.md`.
 
 3. Before trusting editor-visible behavior, run:
 
    ```sh
-   bun lsp/scripts/verify-production.ts
+   bun scripts/verify-production.ts
    ```
 
 ## Zed Setup
@@ -69,13 +69,13 @@ Build the dev extension artifact:
 
 ```sh
 rustup target add wasm32-wasip2
-cd lsp/editors/zed
+cd editors/zed
 cargo build --target wasm32-wasip2 --release
 cp target/wasm32-wasip2/release/seagrass_zed.wasm extension.wasm
 ```
 
 In Zed, run `zed: extensions`, choose `Install Dev Extension`, and select
-`lsp/editors/zed`.
+`editors/zed`.
 
 Example settings for a local source run:
 
@@ -102,12 +102,12 @@ Example settings for a local source run:
 }
 ```
 
-See `lsp/editors/zed/README.md` for logging and full settings.
+See `editors/zed/README.md` for logging and full settings.
 
 ## VS Code Setup
 
 ```sh
-cd lsp/editors/vscode
+cd editors/vscode
 bun install
 bun run check
 code .
@@ -118,7 +118,7 @@ live under `seagrass.*`.
 
 ## Smoke Test
 
-Open `lsp/fixtures/broken.rs` in the editor. You should see:
+Open `fixtures/broken.rs` in the editor. You should see:
 
 ```text
 payer must be provided when initializing an account
@@ -135,7 +135,7 @@ Then confirm:
 Run this before publishing, handing off, or trusting editor-visible behavior:
 
 ```sh
-bun lsp/scripts/verify-production.ts
+bun scripts/verify-production.ts
 ```
 
 It checks formatting, editor UX parity, full LSP tests, protocol smoke, shared
@@ -144,14 +144,14 @@ generated support, and checked-in Zed wasm freshness.
 
 ## Generated Support
 
-Anchor support catalogs are checked in under `lsp/src/generated`. Normal builds
+Anchor support catalogs are checked in under `src/generated`. Normal builds
 do not scrape parent Anchor sources. Regenerate explicitly:
 
 ```sh
-bun lsp/scripts/regen-support.ts --anchor-path . --family v1
+bun scripts/regen-support.ts --anchor-path . --family v1
 ```
 
-See `lsp/SUPPORT_GENERATOR.md` for the source list, v1 policy, and v2 preview
+See `SUPPORT_GENERATOR.md` for the source list, v1 policy, and v2 preview
 workflow.
 
 ## Release Packages
@@ -177,5 +177,5 @@ Pre-release tags such as `lsp-v1.0.2-rc.1` create GitHub pre-releases.
 
 The Seagrass LSP overlay and local editor adapters are MIT licensed. The parent
 Anchor workspace keeps its top-level license unless a file explicitly says
-otherwise. See `lsp/NOTICE` for Apache-2.0 attribution covering generated
+otherwise. See `NOTICE` for Apache-2.0 attribution covering generated
 Anchor-derived support catalogs.

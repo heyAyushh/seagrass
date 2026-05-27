@@ -6,9 +6,9 @@ import { repoRoot } from "./release-evidence.ts";
 
 const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/lsp-release.yaml");
 const prWorkflowPath = resolve(repoRoot, ".github/workflows/lsp-pr.yaml");
-const verifyProductionPath = resolve(repoRoot, "lsp/scripts/verify-production.ts");
-const releaseReadinessDocPath = resolve(repoRoot, "lsp/docs/release-readiness.md");
-const completionAuditPath = resolve(repoRoot, "lsp/docs/10-10-completion-audit.md");
+const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
+const releaseReadinessDocPath = resolve(repoRoot, "docs/release-readiness.md");
+const completionAuditPath = resolve(repoRoot, "docs/10-10-completion-audit.md");
 const seagrassWorkflowPaths = [
   ".github/workflows/lsp-fuzz.yaml",
   ".github/workflows/lsp-perf.yaml",
@@ -23,7 +23,7 @@ describe("release workflow packaging", () => {
     const workflow = readFileSync(releaseWorkflowPath, "utf8");
     const packageFuzzCorpus = workflowSection(workflow, "package-fuzz-corpus:", "release:");
 
-    expect(packageFuzzCorpus).toContain("cp lsp/docs/release-readiness.json");
+    expect(packageFuzzCorpus).toContain("cp docs/release-readiness.json");
     expect(packageFuzzCorpus).toContain("release-readiness.json");
   });
 
@@ -31,7 +31,7 @@ describe("release workflow packaging", () => {
     const workflow = readFileSync(releaseWorkflowPath, "utf8");
     const packageFuzzCorpus = workflowSection(workflow, "package-fuzz-corpus:", "release:");
 
-    expect(packageFuzzCorpus).toContain("cp -R lsp/fuzz/fuzz_targets");
+    expect(packageFuzzCorpus).toContain("cp -R fuzz/fuzz_targets");
     expect(packageFuzzCorpus).toContain("cp .github/workflows/lsp-fuzz.yaml");
   });
 
@@ -64,33 +64,33 @@ describe("release workflow packaging", () => {
     );
 
     expect(buildVsCode).toContain(
-      "blob/${{ needs.verify-tag.outputs.tag }}/lsp/editors/vscode",
+      "blob/${{ needs.verify-tag.outputs.tag }}/editors/vscode",
     );
     expect(buildVsCode).toContain(
-      "raw/${{ needs.verify-tag.outputs.tag }}/lsp/editors/vscode",
+      "raw/${{ needs.verify-tag.outputs.tag }}/editors/vscode",
     );
-    expect(buildVsCode).not.toContain("blob/main/lsp/editors/vscode");
-    expect(buildVsCode).not.toContain("raw/main/lsp/editors/vscode");
+    expect(buildVsCode).not.toContain("blob/main/editors/vscode");
+    expect(buildVsCode).not.toContain("raw/main/editors/vscode");
   });
 
   test("keeps release evidence regressions in PR guardrails", () => {
     const workflow = readFileSync(prWorkflowPath, "utf8");
 
-    expect(workflow).toContain("bun test lsp/scripts/check-rule-hygiene.test.ts");
-    expect(workflow).toContain("bun test lsp/scripts/check-diagnostic-topics.test.ts");
-    expect(workflow).toContain("bun lsp/scripts/check-diagnostic-audit.ts");
-    expect(workflow).toContain("bun test lsp/scripts/check-diagnostic-audit.test.ts");
-    expect(workflow).toContain("bun lsp/scripts/check-research-citations.ts");
-    expect(workflow).toContain("bun test lsp/scripts/check-research-citations.test.ts");
-    expect(workflow).toContain("bun test lsp/scripts/check-lint-catalog.test.ts");
-    expect(workflow).toContain("bun test lsp/scripts/check-release-readiness.test.ts");
-    expect(workflow).toContain("bun test lsp/scripts/fuzz-readiness.test.ts");
-    expect(workflow).toContain("bun test lsp/scripts/import-fuzz-artifacts.test.ts");
-    expect(workflow).toContain("bun test lsp/scripts/review-readiness.test.ts");
-    expect(workflow).toContain("bun test lsp/scripts/apply-release-readiness.test.ts");
-    expect(workflow).toContain("bun test lsp/scripts/release-workflow.test.ts");
+    expect(workflow).toContain("bun test scripts/check-rule-hygiene.test.ts");
+    expect(workflow).toContain("bun test scripts/check-diagnostic-topics.test.ts");
+    expect(workflow).toContain("bun scripts/check-diagnostic-audit.ts");
+    expect(workflow).toContain("bun test scripts/check-diagnostic-audit.test.ts");
+    expect(workflow).toContain("bun scripts/check-research-citations.ts");
+    expect(workflow).toContain("bun test scripts/check-research-citations.test.ts");
+    expect(workflow).toContain("bun test scripts/check-lint-catalog.test.ts");
+    expect(workflow).toContain("bun test scripts/check-release-readiness.test.ts");
+    expect(workflow).toContain("bun test scripts/fuzz-readiness.test.ts");
+    expect(workflow).toContain("bun test scripts/import-fuzz-artifacts.test.ts");
+    expect(workflow).toContain("bun test scripts/review-readiness.test.ts");
+    expect(workflow).toContain("bun test scripts/apply-release-readiness.test.ts");
+    expect(workflow).toContain("bun test scripts/release-workflow.test.ts");
     expect(workflow).toContain(
-      'bun lsp/scripts/check-release-readiness.ts --allow-pending --version "$(tr -d',
+      'bun scripts/check-release-readiness.ts --allow-pending --version "$(tr -d',
     );
   });
 
@@ -110,14 +110,14 @@ describe("release workflow packaging", () => {
 
     expect(script).toContain('"--version"');
     expect(script).toContain("rootVersion");
-    expect(script).toContain('"lsp/scripts/check-rule-hygiene.test.ts"');
-    expect(script).toContain('"lsp/scripts/check-diagnostic-topics.test.ts"');
-    expect(script).toContain('"lsp/scripts/check-diagnostic-audit.ts"');
-    expect(script).toContain('"lsp/scripts/check-diagnostic-audit.test.ts"');
-    expect(script).toContain('"lsp/scripts/check-research-citations.ts"');
-    expect(script).toContain('"lsp/scripts/check-research-citations.test.ts"');
-    expect(script).toContain('"lsp/scripts/check-lint-catalog.test.ts"');
-    expect(script).toContain('"lsp/scripts/verify-proptest.ts"');
+    expect(script).toContain('"scripts/check-rule-hygiene.test.ts"');
+    expect(script).toContain('"scripts/check-diagnostic-topics.test.ts"');
+    expect(script).toContain('"scripts/check-diagnostic-audit.ts"');
+    expect(script).toContain('"scripts/check-diagnostic-audit.test.ts"');
+    expect(script).toContain('"scripts/check-research-citations.ts"');
+    expect(script).toContain('"scripts/check-research-citations.test.ts"');
+    expect(script).toContain('"scripts/check-lint-catalog.test.ts"');
+    expect(script).toContain('"scripts/verify-proptest.ts"');
   });
 
   test("documents the same concrete proof constraints as the validator", () => {

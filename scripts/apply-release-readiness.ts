@@ -7,7 +7,7 @@ import { dirname, resolve } from "node:path";
 import { checkReleaseReadiness } from "./check-release-readiness.ts";
 import { gitHead, isRecord, repoRoot } from "./release-evidence.ts";
 
-const defaultReadinessPath = resolve(repoRoot, "lsp/docs/release-readiness.json");
+const defaultReadinessPath = resolve(repoRoot, "docs/release-readiness.json");
 const defaultVersionPath = resolve(repoRoot, "VERSION");
 
 type ReleaseReadiness = {
@@ -192,14 +192,14 @@ function printHelp(): void {
   console.log(`Apply Seagrass release readiness evidence.
 
 Usage:
-  bun lsp/scripts/apply-release-readiness.ts --fuzz <path> --review <path> [options]
+  bun scripts/apply-release-readiness.ts --fuzz <path> --review <path> [options]
 
 Options:
   --version <version>  Release version. Default: VERSION.
   --commit <sha>       Release commit. Default: current git HEAD.
-  --out <path>         Output readiness file. Default: lsp/docs/release-readiness.json.
+  --out <path>         Output readiness file. Default: docs/release-readiness.json.
 
 Examples:
-  bun lsp/scripts/apply-release-readiness.ts --fuzz target/fuzz-readiness-<sha>.json --review target/review-readiness.json
-  bun lsp/scripts/apply-release-readiness.ts --fuzz target/fuzz.json --review target/review.json --version 0.1.0 --commit <sha>`);
+  bun scripts/apply-release-readiness.ts --fuzz target/fuzz-readiness-<sha>.json --review target/review-readiness.json
+  bun scripts/apply-release-readiness.ts --fuzz target/fuzz.json --review target/review.json --version 0.1.0 --commit <sha>`);
 }

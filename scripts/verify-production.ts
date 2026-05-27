@@ -7,9 +7,9 @@ import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const zedDir = resolve(repoRoot, "lsp/editors/zed");
-const vscodeDir = resolve(repoRoot, "lsp/editors/vscode");
+const repoRoot = resolve(scriptDir, "..");
+const zedDir = resolve(repoRoot, "editors/zed");
+const vscodeDir = resolve(repoRoot, "editors/vscode");
 const rootVersion = readReleaseVersion();
 
 checkVersionConsistency();
@@ -25,121 +25,121 @@ const steps = [
     name: "Seagrass source size",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/check-source-size.ts"],
+    args: ["scripts/check-source-size.ts"],
   },
   {
     name: "Seagrass rule hygiene",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/check-rule-hygiene.ts"],
+    args: ["scripts/check-rule-hygiene.ts"],
   },
   {
     name: "Rule hygiene checker tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/check-rule-hygiene.test.ts"],
+    args: ["test", "scripts/check-rule-hygiene.test.ts"],
   },
   {
     name: "Seagrass diagnostic topics",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/check-diagnostic-topics.ts"],
+    args: ["scripts/check-diagnostic-topics.ts"],
   },
   {
     name: "Diagnostic topic checker tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/check-diagnostic-topics.test.ts"],
+    args: ["test", "scripts/check-diagnostic-topics.test.ts"],
   },
   {
     name: "Seagrass diagnostic audit",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/check-diagnostic-audit.ts"],
+    args: ["scripts/check-diagnostic-audit.ts"],
   },
   {
     name: "Diagnostic audit checker tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/check-diagnostic-audit.test.ts"],
+    args: ["test", "scripts/check-diagnostic-audit.test.ts"],
   },
   {
     name: "Research citations",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/check-research-citations.ts"],
+    args: ["scripts/check-research-citations.ts"],
   },
   {
     name: "Research citation checker tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/check-research-citations.test.ts"],
+    args: ["test", "scripts/check-research-citations.test.ts"],
   },
   {
     name: "Seagrass lint catalog",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/check-lint-catalog.ts"],
+    args: ["scripts/check-lint-catalog.ts"],
   },
   {
     name: "Lint catalog checker tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/check-lint-catalog.test.ts"],
+    args: ["test", "scripts/check-lint-catalog.test.ts"],
   },
   {
     name: "Seagrass release readiness evidence shape",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/check-release-readiness.ts", "--allow-pending", "--version", rootVersion],
+    args: ["scripts/check-release-readiness.ts", "--allow-pending", "--version", rootVersion],
   },
   {
     name: "Release readiness checker tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/check-release-readiness.test.ts"],
+    args: ["test", "scripts/check-release-readiness.test.ts"],
   },
   {
     name: "Release readiness evidence apply tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/apply-release-readiness.test.ts"],
+    args: ["test", "scripts/apply-release-readiness.test.ts"],
   },
   {
     name: "Release workflow tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/release-workflow.test.ts"],
+    args: ["test", "scripts/release-workflow.test.ts"],
   },
   {
     name: "Generated Anchor support freshness",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/regen-support.ts", "--anchor-path", ".", "--family", "v1", "--check"],
+    args: ["scripts/regen-support.ts", "--anchor-path", ".", "--family", "v1", "--check"],
   },
   {
     name: "Anchor property tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/verify-proptest.ts"],
+    args: ["scripts/verify-proptest.ts"],
   },
   {
     name: "Fuzz readiness evidence tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/fuzz-readiness.test.ts"],
+    args: ["test", "scripts/fuzz-readiness.test.ts"],
   },
   {
     name: "Fuzz artifact import tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/import-fuzz-artifacts.test.ts"],
+    args: ["test", "scripts/import-fuzz-artifacts.test.ts"],
   },
   {
     name: "Review readiness evidence tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/review-readiness.test.ts"],
+    args: ["test", "scripts/review-readiness.test.ts"],
   },
   {
     name: "Framework crate tests",
@@ -185,7 +185,7 @@ const steps = [
     name: "Protocol smoke",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/protocol-smoke.ts"],
+    args: ["scripts/protocol-smoke.ts"],
     env: {
       SEAGRASS_SERVER_BINARY: resolve(repoRoot, "target/debug/seagrass"),
     },
@@ -194,32 +194,32 @@ const steps = [
     name: "Hotpath perf budget parser",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/perf-replay.test.ts"],
+    args: ["test", "scripts/perf-replay.test.ts"],
   },
   {
     name: "Perf workflow guardrail tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/perf-workflow.test.ts"],
+    args: ["test", "scripts/perf-workflow.test.ts"],
   },
   {
     name: "Synthetic workspace generator tests",
     cwd: repoRoot,
     command: "bun",
-    args: ["test", "lsp/scripts/synth-workspace.test.ts"],
+    args: ["test", "scripts/synth-workspace.test.ts"],
   },
   {
     name: "Hotpath perf replay",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/scripts/perf-replay.ts"],
+    args: ["scripts/perf-replay.ts"],
   },
   {
     name: "N=200 scale benchmark",
     cwd: repoRoot,
     command: "bun",
     args: [
-      "lsp/scripts/scale-benchmark.ts",
+      "scripts/scale-benchmark.ts",
       "--programs",
       "200",
       "--samples",
@@ -232,7 +232,7 @@ const steps = [
     name: "Shared editor UI contract",
     cwd: repoRoot,
     command: "bun",
-    args: ["lsp/editors/check-ui-contract.ts"],
+    args: ["editors/check-ui-contract.ts"],
   },
   {
     name: "VS Code extension",
@@ -276,7 +276,7 @@ if (checkedInHash !== builtHash) {
       `  extension.wasm: ${checkedInHash}`,
       `  built wasm:     ${builtHash}`,
       "Run:",
-      "  cp lsp/editors/zed/target/wasm32-wasip2/release/seagrass_zed.wasm lsp/editors/zed/extension.wasm",
+      "  cp editors/zed/target/wasm32-wasip2/release/seagrass_zed.wasm editors/zed/extension.wasm",
     ].join("\n"),
   );
 }

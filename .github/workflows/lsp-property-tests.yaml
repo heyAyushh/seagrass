@@ -10,8 +10,8 @@ on:
       - "Cargo.lock"
       - "idl/**"
       - "lang/**"
-      - "lsp/**"
-      - "lsp/scripts/verify-proptest.ts"
+      - "**"
+      - "scripts/verify-proptest.ts"
       - ".github/workflows/lsp-property-tests.yaml"
   push:
     branches:
@@ -21,8 +21,8 @@ on:
       - "Cargo.lock"
       - "idl/**"
       - "lang/**"
-      - "lsp/**"
-      - "lsp/scripts/verify-proptest.ts"
+      - "**"
+      - "scripts/verify-proptest.ts"
       - ".github/workflows/lsp-property-tests.yaml"
   workflow_dispatch:
 
@@ -51,4 +51,4 @@ jobs:
           npm install --global "bun@${BUN_VERSION}"
           bun --version
       - name: Run Anchor property tests
-        run: bun lsp/scripts/verify-proptest.ts
+        run: bun scripts/verify-proptest.ts

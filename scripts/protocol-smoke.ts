@@ -191,7 +191,7 @@ type InitializeResult = {
 };
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
+const repoRoot = resolve(scriptDir, "..");
 const trackedFixtureRoot = resolve(repoRoot, "target/seagrass-smoke-tracked");
 const artifactSmokeRoot = resolve(repoRoot, "target/seagrass-artifact-smoke");
 const artifactSmokeLibPath = resolve(artifactSmokeRoot, "programs/artifact-demo/src/lib.rs");
@@ -207,9 +207,9 @@ const ecosystemSmokeLibPath = resolve(ecosystemSmokeRoot, "programs/ecosystem-de
 const ecosystemSmokeUri = pathToFileURL(ecosystemSmokeLibPath).href;
 
 const mainUri = pathToFileURL(resolve(repoRoot, "target/seagrass-smoke.rs")).href;
-const splitLibUri = pathToFileURL(resolve(repoRoot, "lsp/fixtures/seagrass-split-lib.rs")).href;
+const splitLibUri = pathToFileURL(resolve(repoRoot, "fixtures/seagrass-split-lib.rs")).href;
 const splitAccountsUri = pathToFileURL(
-  resolve(repoRoot, "lsp/fixtures/seagrass-split-accounts.rs"),
+  resolve(repoRoot, "fixtures/seagrass-split-accounts.rs"),
 ).href;
 const splitContextCompletionUri = pathToFileURL(resolve(repoRoot, "target/seagrass-split-context-completion.rs")).href;
 const emptySlotCompletionUri = pathToFileURL(resolve(repoRoot, "target/seagrass-empty-slot-completion.rs")).href;

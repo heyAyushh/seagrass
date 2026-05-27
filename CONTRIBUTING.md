@@ -3,7 +3,7 @@
 Status: Active
 
 Work from the repository root unless a command explicitly changes directory.
-Preserve unrelated dirty state and keep LSP changes scoped to `lsp/`, editor
+Preserve unrelated dirty state and keep server changes scoped to `src/`, editor
 adapters, workflows, or generated support files unless the task requires parent
 Anchor changes.
 
@@ -13,13 +13,13 @@ Anchor changes.
 cargo build -p seagrass
 cargo test -p seagrass
 cargo install --path crates/seagrass
-bun lsp/scripts/verify-production.ts
+bun scripts/verify-production.ts
 ```
 
 VS Code adapter:
 
 ```sh
-cd lsp/editors/vscode
+cd editors/vscode
 bun install
 bun run check
 ```
@@ -27,32 +27,32 @@ bun run check
 Zed adapter:
 
 ```sh
-cd lsp/editors/zed
+cd editors/zed
 cargo test
 cargo build --target wasm32-wasip2 --release
 ```
 
 ## Generated Anchor Support
 
-Generated support lives in `lsp/src/generated/`. Normal builds do not scrape
+Generated support lives in `src/generated/`. Normal builds do not scrape
 Anchor sources.
 
 Regenerate v1 support:
 
 ```sh
-bun lsp/scripts/regen-support.ts --anchor-path . --family v1
+bun scripts/regen-support.ts --anchor-path . --family v1
 ```
 
 Check that generated files are current:
 
 ```sh
-bun lsp/scripts/regen-support.ts --anchor-path . --family v1 --check
+bun scripts/regen-support.ts --anchor-path . --family v1 --check
 ```
 
 Preview a v2 checkout:
 
 ```sh
-bun lsp/scripts/regen-support.ts \
+bun scripts/regen-support.ts \
   --anchor-path ../anchor-next \
   --family v2-preview \
   --out-dir crates/seagrass-anchor-v2-preview/src/generated \
@@ -62,7 +62,7 @@ bun lsp/scripts/regen-support.ts \
 When bumping Anchor support:
 
 - update the root `anchor-syn` git revision
-- regenerate `lsp/src/generated/*.rs`
+- regenerate `src/generated/*.rs`
 - inspect support-matrix and fingerprint changes
 - commit the dependency pin, generated files, and semantic LSP updates together
 
@@ -72,12 +72,12 @@ Use targeted tests while iterating, then run the production gate before review:
 
 ```sh
 cargo test -p seagrass
-bun lsp/scripts/check-rule-hygiene.ts
-bun lsp/scripts/check-source-size.ts
-bun lsp/scripts/verify-production.ts
+bun scripts/check-rule-hygiene.ts
+bun scripts/check-source-size.ts
+bun scripts/verify-production.ts
 ```
 
-See `lsp/docs/quality-kit.md` for fuzzing, property tests, and hotpath replay.
+See `docs/quality-kit.md` for fuzzing, property tests, and hotpath replay.
 
 ## Commit Messages
 

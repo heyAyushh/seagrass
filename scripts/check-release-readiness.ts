@@ -26,7 +26,7 @@ import {
   workflowMatrixFuzzTargets,
 } from "./release-evidence.ts";
 
-const defaultReadinessPath = resolve(repoRoot, "lsp/docs/release-readiness.json");
+const defaultReadinessPath = resolve(repoRoot, "docs/release-readiness.json");
 const FUZZ_HOURS_TOLERANCE = 0.01;
 const PENDING_PREFIX = "pending:";
 const RESERVED_EVIDENCE_SENTINELS = new Set(["pending"]);
@@ -297,14 +297,14 @@ function validateFuzzCorpusHash(cleanRun: FuzzCleanRun): string[] {
     return [];
   }
   if (!cleanRun.corpusSha256) {
-    return ["fuzzCleanRun.corpusSha256 must bind final evidence to lsp/fuzz/corpus"];
+    return ["fuzzCleanRun.corpusSha256 must bind final evidence to fuzz/corpus"];
   }
   if (!/^[a-f0-9]{64}$/i.test(cleanRun.corpusSha256)) {
     return ["fuzzCleanRun.corpusSha256 must be a SHA-256 hex digest"];
   }
   const actual = corpusTreeSha256();
   if (cleanRun.corpusSha256.toLowerCase() !== actual) {
-    return [`fuzzCleanRun.corpusSha256 must match lsp/fuzz/corpus, got ${cleanRun.corpusSha256}`];
+    return [`fuzzCleanRun.corpusSha256 must match fuzz/corpus, got ${cleanRun.corpusSha256}`];
   }
   return [];
 }
@@ -422,7 +422,7 @@ function validateFindingsDisposition(review: ExternalReview): string[] {
   }
   if (
     disposition.changelogPath !== "CHANGELOG.md" &&
-    disposition.changelogPath !== "lsp/CHANGELOG.md"
+    disposition.changelogPath !== "CHANGELOG.md"
   ) {
     failures.push("externalReview.findingsDisposition.changelogPath must point to CHANGELOG.md");
   }

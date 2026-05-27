@@ -11,7 +11,7 @@ describe("lint catalog checker", () => {
   test("rejects generic generated boilerplate pages", () => {
     const failures = pageContentFailures(
       topic,
-      "lsp/docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md",
+      "docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md",
       `
 # Unchecked Arithmetic
 
@@ -47,7 +47,7 @@ This page documents the user-facing diagnostic topic.
     const page = lintPage(topic);
     const failures = pageContentFailures(
       topic,
-      "lsp/docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md",
+      "docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md",
       page,
     );
 

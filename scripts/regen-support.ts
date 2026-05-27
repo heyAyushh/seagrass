@@ -34,21 +34,21 @@ type Options = {
 };
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const defaultOutDir = resolve(repoRoot, "lsp/src/generated");
-const generatorSource = resolve(repoRoot, "lsp/tools/regen-support/legacy_generator.rs");
+const repoRoot = resolve(scriptDir, "..");
+const defaultOutDir = resolve(repoRoot, "src/generated");
+const generatorSource = resolve(repoRoot, "tools/regen-support/legacy_generator.rs");
 const enginePath = resolve(repoRoot, "target/regen-support/regen-support");
 
 const options = parseOptions(process.argv.slice(2));
 
 if (!options.anchorPath) {
   fail(
-    "Missing --anchor-path.\nExample: bun lsp/scripts/regen-support.ts --anchor-path . --family v1",
+    "Missing --anchor-path.\nExample: bun scripts/regen-support.ts --anchor-path . --family v1",
   );
 }
 if (!options.family) {
   fail(
-    "Missing --family.\nExample: bun lsp/scripts/regen-support.ts --anchor-path . --family v1",
+    "Missing --family.\nExample: bun scripts/regen-support.ts --anchor-path . --family v1",
   );
 }
 if (options.check && options.dryRun) {
@@ -241,18 +241,18 @@ function printHelp(): void {
   console.log(`Regenerate checked-in Seagrass Anchor support catalogs.
 
 Usage:
-  bun lsp/scripts/regen-support.ts --anchor-path <path> --family <v1|v2-preview> [options]
+  bun scripts/regen-support.ts --anchor-path <path> --family <v1|v2-preview> [options]
 
 Options:
   --anchor-path <path>   Anchor checkout to scrape. Required.
   --family <family>      Support family: v1 or v2-preview. Required.
-  --out-dir <path>       Output directory. Default: lsp/src/generated.
+  --out-dir <path>       Output directory. Default: src/generated.
   --corpus-path <path>   Optional program corpus root. Defaults to Anchor examples and tests.
   --check                Generate to a temp directory and fail if checked-in files differ.
   --dry-run              Generate to a temp directory and report which files would change.
 
 Examples:
-  bun lsp/scripts/regen-support.ts --anchor-path . --family v1
-  bun lsp/scripts/regen-support.ts --anchor-path ../anchor-next --family v2-preview --dry-run
-  bun lsp/scripts/regen-support.ts --anchor-path . --family v1 --check`);
+  bun scripts/regen-support.ts --anchor-path . --family v1
+  bun scripts/regen-support.ts --anchor-path ../anchor-next --family v2-preview --dry-run
+  bun scripts/regen-support.ts --anchor-path . --family v1 --check`);
 }

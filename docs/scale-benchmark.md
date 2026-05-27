@@ -5,21 +5,21 @@ Status: Active
 Generate a synthetic Anchor workspace:
 
 ```sh
-bun lsp/scripts/synth-workspace.ts --programs 200
+bun scripts/synth-workspace.ts --programs 200
 ```
 
 Run the measured LSP initialization benchmark:
 
 ```sh
-bun lsp/scripts/scale-benchmark.ts --programs 200
+bun scripts/scale-benchmark.ts --programs 200
 ```
 
 Run repeated fresh server starts and publish p99:
 
 ```sh
-bun lsp/scripts/scale-benchmark.ts --programs 10 --samples 3 --report target/seagrass-scale-10.json
-bun lsp/scripts/scale-benchmark.ts --programs 50 --samples 3 --report target/seagrass-scale-50.json
-bun lsp/scripts/scale-benchmark.ts --programs 200 --samples 3 --report target/seagrass-scale-200.json
+bun scripts/scale-benchmark.ts --programs 10 --samples 3 --report target/seagrass-scale-10.json
+bun scripts/scale-benchmark.ts --programs 50 --samples 3 --report target/seagrass-scale-50.json
+bun scripts/scale-benchmark.ts --programs 200 --samples 3 --report target/seagrass-scale-200.json
 ```
 
 Default outputs:

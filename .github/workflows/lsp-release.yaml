@@ -71,9 +71,9 @@ jobs:
               exit
             }
           ' Cargo.toml)"
-          vscode_version="$(node -p "require('./lsp/editors/vscode/package.json').version")"
-          zed_cargo_version="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' lsp/editors/zed/Cargo.toml | head -1)"
-          zed_extension_version="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' lsp/editors/zed/extension.toml | head -1)"
+          vscode_version="$(node -p "require('./editors/vscode/package.json').version")"
+          zed_cargo_version="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' editors/zed/Cargo.toml | head -1)"
+          zed_extension_version="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' editors/zed/extension.toml | head -1)"
 
           if [[ "$root_version" != "$version" ]]; then
             echo "VERSION ($root_version) does not match tag version ($version)" >&2
@@ -123,7 +123,7 @@ jobs:
           bun --version
 
       - name: Verify production package inputs
-        run: bun lsp/scripts/verify-production.ts
+        run: bun scripts/verify-production.ts
 
   property-gate:
     name: Property gate
@@ -151,7 +151,7 @@ jobs:
           bun --version
 
       - name: Run property tests
-        run: bun lsp/scripts/verify-proptest.ts
+        run: bun scripts/verify-proptest.ts
 
   fuzz-corpus-gate:
     name: Fuzz corpus gate
@@ -214,7 +214,7 @@ jobs:
         run: |
           set -euo pipefail
           release_commit="$(git rev-parse HEAD)"
-          bun lsp/scripts/check-release-readiness.ts \
+          bun scripts/check-release-readiness.ts \
             --version "${{ needs.verify-tag.outputs.version }}" \
             --commit "$release_commit"
 
@@ -274,7 +274,7 @@ jobs:
 
           mkdir -p "dist/${package}" artifacts
           cp "target/${target}/release/seagrass${{ matrix.ext }}" "dist/${package}/"
-          cp lsp/README.md lsp/LICENSE "dist/${package}/"
+          cp README.md LICENSE "dist/${package}/"
 
           tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
           cd artifacts
@@ -311,7 +311,7 @@ jobs:
           target: wasm32-wasip2
 
       - name: Build Zed wasm
-        working-directory: lsp/editors/zed
+        working-directory: editors/zed
         run: cargo build --target wasm32-wasip2 --release --locked
 
       - name: Package Zed extension
@@ -323,10 +323,10 @@ jobs:
           package="seagrass-zed-${version}"
 
           mkdir -p "dist/${package}" artifacts
-          cp lsp/editors/zed/extension.toml "dist/${package}/"
-          cp lsp/editors/zed/target/wasm32-wasip2/release/seagrass_zed.wasm "dist/${package}/extension.wasm"
-          cp lsp/editors/zed/README.md "dist/${package}/"
-          cp lsp/LICENSE "dist/${package}/"
+          cp editors/zed/extension.toml "dist/${package}/"
+          cp editors/zed/target/wasm32-wasip2/release/seagrass_zed.wasm "dist/${package}/extension.wasm"
+          cp editors/zed/README.md "dist/${package}/"
+          cp LICENSE "dist/${package}/"
 
           tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
           cd artifacts
@@ -368,20 +368,20 @@ jobs:
           bun --version
 
       - name: Build extension
-        working-directory: lsp/editors/vscode
+        working-directory: editors/vscode
         run: |
           bun install --frozen-lockfile
           bun run check
 
       - name: Package VSIX
-        working-directory: lsp/editors/vscode
+        working-directory: editors/vscode
         run: |
           mkdir -p ../../../artifacts
           npm exec --yes "@vscode/vsce@${VSCE_VERSION}" -- package \
             --out "../../../artifacts/seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix" \
             --allow-missing-repository \
-            --baseContentUrl "https://github.com/${{ github.repository }}/blob/${{ needs.verify-tag.outputs.tag }}/lsp/editors/vscode" \
-            --baseImagesUrl "https://github.com/${{ github.repository }}/raw/${{ needs.verify-tag.outputs.tag }}/lsp/editors/vscode"
+            --baseContentUrl "https://github.com/${{ github.repository }}/blob/${{ needs.verify-tag.outputs.tag }}/editors/vscode" \
+            --baseImagesUrl "https://github.com/${{ github.repository }}/raw/${{ needs.verify-tag.outputs.tag }}/editors/vscode"
           cd ../../../artifacts
           sha256sum "seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix" \
             > "seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix.sha256"
@@ -419,10 +419,10 @@ jobs:
 
           mkdir -p "dist/${package}" artifacts
           mkdir -p "dist/${package}/.github/workflows"
-          cp -R lsp/fuzz/corpus "dist/${package}/"
-          cp -R lsp/fuzz/fuzz_targets "dist/${package}/"
-          cp lsp/fuzz/Cargo.toml "dist/${package}/"
-          cp lsp/docs/release-readiness.json "dist/${package}/"
+          cp -R fuzz/corpus "dist/${package}/"
+          cp -R fuzz/fuzz_targets "dist/${package}/"
+          cp fuzz/Cargo.toml "dist/${package}/"
+          cp docs/release-readiness.json "dist/${package}/"
           cp .github/workflows/lsp-fuzz.yaml "dist/${package}/.github/workflows/"
 
           tar -czf "artifacts/${package}.tar.gz" -C dist "$package"

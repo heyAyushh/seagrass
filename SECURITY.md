@@ -9,7 +9,7 @@ Security reports are in scope when they affect:
   could mislead users into unsafe Solana behavior
 - editor adapter behavior that executes unexpected commands
 - CI, release artifacts, generated support catalogs, or fuzz targets under
-  `lsp/`
+  `src/`
 
 Reports about upstream Anchor, Solana, Zed, VS Code, or Bun should also be sent
 to the affected upstream project.

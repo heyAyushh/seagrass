@@ -395,7 +395,7 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "sysvarTypeShape",
         ],
         code_actions: &["replaceAccountType", "replaceInvalidSysvar"],
-        evidence: &["lsp/src/diagnostics/anchor_syn.rs"],
+        evidence: &["src/diagnostics/anchor_syn.rs"],
         gaps: &[],
     },
     CapabilitySupport {
@@ -415,7 +415,7 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "replaceMissingReference",
             "removeInvalidConstraint",
         ],
-        evidence: &["lsp/src/constraint_catalog.rs", "lsp/build.rs"],
+        evidence: &["src/constraint_catalog.rs", "build.rs"],
         gaps: &[],
     },
     CapabilitySupport {
@@ -430,9 +430,9 @@ const CAPABILITIES: &[CapabilitySupport] = &[
         ],
         code_actions: &["addExecutableConstraint", "replaceAccountTypeWhenGenerated"],
         evidence: &[
-            "lsp/src/document.rs",
-            "lsp/src/workspace.rs",
-            "lsp/src/diagnostics/security.rs",
+            "src/document.rs",
+            "src/workspace.rs",
+            "src/diagnostics/security.rs",
         ],
         gaps: &["structuredExternalInstructionAccountValidation"],
     },
@@ -464,8 +464,8 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "checkedDataGuidance",
         ],
         evidence: &[
-            "lsp/src/diagnostics/code_quality.rs",
-            "lsp/src/anchor_support.rs",
+            "src/diagnostics/code_quality.rs",
+            "src/anchor_support.rs",
         ],
         gaps: &["versionSpecificTemplateRewriteSuggestions"],
     },
@@ -489,7 +489,7 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "addMissingAccountField",
             "addMutConstraint",
         ],
-        evidence: &["lsp/src/workspace.rs", "lsp/src/navigation/mod.rs"],
+        evidence: &["src/workspace.rs", "src/navigation/mod.rs"],
         gaps: &["fullRustModuleResolver"],
     },
     CapabilitySupport {
@@ -503,7 +503,7 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "cargoRegistrySourceScan",
         ],
         code_actions: &[],
-        evidence: &["lsp/src/definition_bridge.rs"],
+        evidence: &["src/definition_bridge.rs"],
         gaps: &[
             "arbitraryNonSolanaCrateSemantics",
             "macroExpandedDependencyBodies",
@@ -522,7 +522,7 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "staleness",
         ],
         code_actions: &[],
-        evidence: &["lsp/src/solana_project.rs", "lsp/src/program_artifacts.rs"],
+        evidence: &["src/solana_project.rs", "src/program_artifacts.rs"],
         gaps: &[],
     },
     CapabilitySupport {
@@ -537,7 +537,7 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "surfpoolDeployArtifact",
         ],
         code_actions: &[],
-        evidence: &["lsp/src/ecosystem.rs", "lsp/src/diagnostics/ecosystem.rs"],
+        evidence: &["src/ecosystem.rs", "src/diagnostics/ecosystem.rs"],
         gaps: &["toolSpecificRemediationActions"],
     },
     CapabilitySupport {
@@ -558,7 +558,7 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "protocolSmoke",
         ],
         code_actions: &[],
-        evidence: &["lsp/src/server.rs", "lsp/scripts/protocol-smoke.ts"],
+        evidence: &["src/server.rs", "scripts/protocol-smoke.ts"],
         gaps: &[],
     },
 ];

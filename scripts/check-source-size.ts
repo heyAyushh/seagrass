@@ -7,8 +7,8 @@ import { dirname } from "node:path";
 
 const MAX_SOURCE_LINES = 800;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const sourceRoot = resolve(repoRoot, "lsp/src");
+const repoRoot = resolve(scriptDir, "..");
+const sourceRoot = resolve(repoRoot, "src");
 const generatedRoot = resolve(sourceRoot, "generated");
 
 const oversized = rustFiles(sourceRoot)

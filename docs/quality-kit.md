@@ -21,12 +21,12 @@ completions, hovers, code actions, ranking, or execute commands change.
 Replay protocol sessions and enforce latency budgets:
 
 ```sh
-bun lsp/scripts/perf-replay.ts
-bun lsp/scripts/hotpath-replay-session.ts --fixture lsp/fixtures/broken.rs
+bun scripts/perf-replay.ts
+bun scripts/hotpath-replay-session.ts --fixture fixtures/broken.rs
 ```
 
 The CI hotpath job blocks regressions against the latency budgets enforced by
-`lsp/scripts/perf-replay.ts`: hover p99 < 50 ms, completion p99 < 100 ms,
+`scripts/perf-replay.ts`: hover p99 < 50 ms, completion p99 < 100 ms,
 diagnostics p99 < 150 ms, workspace scan p99 < 2 s.
 
 ## libFuzzer
@@ -38,7 +38,7 @@ readiness evidence.
 Local runs require nightly Rust:
 
 ```sh
-cd lsp/fuzz
+cd fuzz
 cargo +nightly fuzz run fuzz_document_parse
 cargo +nightly fuzz run fuzz_anchor_attr
 cargo +nightly fuzz run fuzz_manifest_parse
@@ -53,7 +53,7 @@ dependency.
 
 ```sh
 PROPTEST_CASES=10000 cargo test -p seagrass proptest
-bun lsp/scripts/verify-proptest.ts
+bun scripts/verify-proptest.ts
 ```
 
 Prefer invariants that survive formatting, renaming, and input order changes.
@@ -65,10 +65,10 @@ a clean 24h fuzz run and external review signoff. Generate the machine-readable
 objects with:
 
 ```sh
-bun lsp/scripts/fuzz-readiness.ts --help
-bun lsp/scripts/import-fuzz-artifacts.ts --help
-bun lsp/scripts/review-readiness.ts --help
-bun lsp/scripts/apply-release-readiness.ts --help
+bun scripts/fuzz-readiness.ts --help
+bun scripts/import-fuzz-artifacts.ts --help
+bun scripts/review-readiness.ts --help
+bun scripts/apply-release-readiness.ts --help
 ```
 
 The release checker binds fuzz evidence to the checked-in fuzz workflow matrix
@@ -81,5 +81,5 @@ the apply command merges the generated fuzz and review artifacts only after the
 strict checker passes. PR guardrails run the release-evidence test suite so
 those checks cannot drift before the tag workflow runs.
 
-See `lsp/docs/10-10-completion-audit.md` for the current requirement-by-
+See `docs/10-10-completion-audit.md` for the current requirement-by-
 requirement evidence map.

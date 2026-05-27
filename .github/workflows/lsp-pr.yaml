@@ -6,7 +6,7 @@ on:
       - master
       - anchor-next
     paths:
-      - "lsp/**"
+      - "**"
       - "VERSION"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -16,17 +16,17 @@ on:
       - ".github/workflows/lsp-pr.yaml"
       - ".github/workflows/lsp-property-tests.yaml"
       - ".github/workflows/lsp-release.yaml"
-      - "lsp/docs/topics.json"
-      - "lsp/docs/topics.schema.json"
-      - "lsp/docs/release-readiness.json"
-      - "lsp/scripts/check-diagnostic-topics.ts"
-      - "lsp/scripts/check-lint-catalog.ts"
-      - "lsp/scripts/check-release-readiness.ts"
+      - "docs/topics.json"
+      - "docs/topics.schema.json"
+      - "docs/release-readiness.json"
+      - "scripts/check-diagnostic-topics.ts"
+      - "scripts/check-lint-catalog.ts"
+      - "scripts/check-release-readiness.ts"
   push:
     branches:
       - master
     paths:
-      - "lsp/**"
+      - "**"
       - "VERSION"
       - "Cargo.toml"
       - "Cargo.lock"
@@ -36,12 +36,12 @@ on:
       - ".github/workflows/lsp-pr.yaml"
       - ".github/workflows/lsp-property-tests.yaml"
       - ".github/workflows/lsp-release.yaml"
-      - "lsp/docs/topics.json"
-      - "lsp/docs/topics.schema.json"
-      - "lsp/docs/release-readiness.json"
-      - "lsp/scripts/check-diagnostic-topics.ts"
-      - "lsp/scripts/check-lint-catalog.ts"
-      - "lsp/scripts/check-release-readiness.ts"
+      - "docs/topics.json"
+      - "docs/topics.schema.json"
+      - "docs/release-readiness.json"
+      - "scripts/check-diagnostic-topics.ts"
+      - "scripts/check-lint-catalog.ts"
+      - "scripts/check-release-readiness.ts"
   workflow_dispatch:
 
 env:
@@ -68,43 +68,43 @@ jobs:
           npm install --global "bun@${BUN_VERSION}"
           bun --version
       - name: Check source size
-        run: bun lsp/scripts/check-source-size.ts
+        run: bun scripts/check-source-size.ts
       - name: Check diagnostic rule hygiene
-        run: bun lsp/scripts/check-rule-hygiene.ts
+        run: bun scripts/check-rule-hygiene.ts
       - name: Test diagnostic rule hygiene checker
-        run: bun test lsp/scripts/check-rule-hygiene.test.ts
+        run: bun test scripts/check-rule-hygiene.test.ts
       - name: Check diagnostic topic manifest
-        run: bun lsp/scripts/check-diagnostic-topics.ts
+        run: bun scripts/check-diagnostic-topics.ts
       - name: Test diagnostic topic checker
-        run: bun test lsp/scripts/check-diagnostic-topics.test.ts
+        run: bun test scripts/check-diagnostic-topics.test.ts
       - name: Check diagnostic audit
-        run: bun lsp/scripts/check-diagnostic-audit.ts
+        run: bun scripts/check-diagnostic-audit.ts
       - name: Test diagnostic audit checker
-        run: bun test lsp/scripts/check-diagnostic-audit.test.ts
+        run: bun test scripts/check-diagnostic-audit.test.ts
       - name: Check research citations
-        run: bun lsp/scripts/check-research-citations.ts
+        run: bun scripts/check-research-citations.ts
       - name: Test research citation checker
-        run: bun test lsp/scripts/check-research-citations.test.ts
+        run: bun test scripts/check-research-citations.test.ts
       - name: Check lint catalog
-        run: bun lsp/scripts/check-lint-catalog.ts
+        run: bun scripts/check-lint-catalog.ts
       - name: Test lint catalog checker
-        run: bun test lsp/scripts/check-lint-catalog.test.ts
+        run: bun test scripts/check-lint-catalog.test.ts
       - name: Check release readiness evidence shape
-        run: bun lsp/scripts/check-release-readiness.ts --allow-pending --version "$(tr -d '[:space:]' < VERSION)"
+        run: bun scripts/check-release-readiness.ts --allow-pending --version "$(tr -d '[:space:]' < VERSION)"
       - name: Test release readiness checker
-        run: bun test lsp/scripts/check-release-readiness.test.ts
+        run: bun test scripts/check-release-readiness.test.ts
       - name: Test fuzz readiness evidence
-        run: bun test lsp/scripts/fuzz-readiness.test.ts
+        run: bun test scripts/fuzz-readiness.test.ts
       - name: Test fuzz artifact import
-        run: bun test lsp/scripts/import-fuzz-artifacts.test.ts
+        run: bun test scripts/import-fuzz-artifacts.test.ts
       - name: Test external review readiness evidence
-        run: bun test lsp/scripts/review-readiness.test.ts
+        run: bun test scripts/review-readiness.test.ts
       - name: Test release readiness apply
-        run: bun test lsp/scripts/apply-release-readiness.test.ts
+        run: bun test scripts/apply-release-readiness.test.ts
       - name: Test release workflow packaging
-        run: bun test lsp/scripts/release-workflow.test.ts
+        run: bun test scripts/release-workflow.test.ts
       - name: Test perf workflow guardrails
-        run: bun test lsp/scripts/perf-workflow.test.ts
+        run: bun test scripts/perf-workflow.test.ts
       - name: Run editor UX parity tests
         run: cargo test -p seagrass editor_ux_parity -- --nocapture
       - name: Run seagrass unit tests

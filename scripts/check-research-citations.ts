@@ -5,8 +5,8 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
-const repoRoot = resolve(scriptDir, "../..");
-const researchCitationPaths = [resolve(repoRoot, "lsp/docs/lint-patterns-research.md")];
+const repoRoot = resolve(scriptDir, "..");
+const researchCitationPaths = [resolve(repoRoot, "docs/lint-patterns-research.md")];
 const githubSourceCitationRegex =
   /https:\/\/github\.com\/[^/\s)]+\/[^/\s)]+\/(?:blob|tree|raw)\/([^/\s)]+)(?:\/[^\s)]*)?/g;
 const googlesourceCitationRegex =
