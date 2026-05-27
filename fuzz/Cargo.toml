@@ -7,8 +7,6 @@ edition = "2021"
 [package.metadata]
 cargo-fuzz = true
 
-[workspace]
-
 [dependencies]
 seagrass = { path = ".." }
 libfuzzer-sys = "0.4"
