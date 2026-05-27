@@ -1,0 +1,111 @@
+name: Seagrass PR Guardrails
+
+on:
+  pull_request:
+    branches:
+      - master
+      - anchor-next
+    paths:
+      - "lsp/**"
+      - "VERSION"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "bump-version.sh"
+      - ".github/workflows/lsp-fuzz.yaml"
+      - ".github/workflows/lsp-perf.yaml"
+      - ".github/workflows/lsp-pr.yaml"
+      - ".github/workflows/lsp-property-tests.yaml"
+      - ".github/workflows/lsp-release.yaml"
+      - "lsp/docs/topics.json"
+      - "lsp/docs/topics.schema.json"
+      - "lsp/docs/release-readiness.json"
+      - "lsp/scripts/check-diagnostic-topics.ts"
+      - "lsp/scripts/check-lint-catalog.ts"
+      - "lsp/scripts/check-release-readiness.ts"
+  push:
+    branches:
+      - master
+    paths:
+      - "lsp/**"
+      - "VERSION"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "bump-version.sh"
+      - ".github/workflows/lsp-fuzz.yaml"
+      - ".github/workflows/lsp-perf.yaml"
+      - ".github/workflows/lsp-pr.yaml"
+      - ".github/workflows/lsp-property-tests.yaml"
+      - ".github/workflows/lsp-release.yaml"
+      - "lsp/docs/topics.json"
+      - "lsp/docs/topics.schema.json"
+      - "lsp/docs/release-readiness.json"
+      - "lsp/scripts/check-diagnostic-topics.ts"
+      - "lsp/scripts/check-lint-catalog.ts"
+      - "lsp/scripts/check-release-readiness.ts"
+  workflow_dispatch:
+
+env:
+  BUN_VERSION: "1.3.8"
+  NODE_VERSION: "24"
+
+jobs:
+  source-guardrails:
+    name: Source guardrails
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ""
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+      - name: Check source size
+        run: bun lsp/scripts/check-source-size.ts
+      - name: Check diagnostic rule hygiene
+        run: bun lsp/scripts/check-rule-hygiene.ts
+      - name: Test diagnostic rule hygiene checker
+        run: bun test lsp/scripts/check-rule-hygiene.test.ts
+      - name: Check diagnostic topic manifest
+        run: bun lsp/scripts/check-diagnostic-topics.ts
+      - name: Test diagnostic topic checker
+        run: bun test lsp/scripts/check-diagnostic-topics.test.ts
+      - name: Check diagnostic audit
+        run: bun lsp/scripts/check-diagnostic-audit.ts
+      - name: Test diagnostic audit checker
+        run: bun test lsp/scripts/check-diagnostic-audit.test.ts
+      - name: Check research citations
+        run: bun lsp/scripts/check-research-citations.ts
+      - name: Test research citation checker
+        run: bun test lsp/scripts/check-research-citations.test.ts
+      - name: Check lint catalog
+        run: bun lsp/scripts/check-lint-catalog.ts
+      - name: Test lint catalog checker
+        run: bun test lsp/scripts/check-lint-catalog.test.ts
+      - name: Check release readiness evidence shape
+        run: bun lsp/scripts/check-release-readiness.ts --allow-pending --version "$(tr -d '[:space:]' < VERSION)"
+      - name: Test release readiness checker
+        run: bun test lsp/scripts/check-release-readiness.test.ts
+      - name: Test fuzz readiness evidence
+        run: bun test lsp/scripts/fuzz-readiness.test.ts
+      - name: Test fuzz artifact import
+        run: bun test lsp/scripts/import-fuzz-artifacts.test.ts
+      - name: Test external review readiness evidence
+        run: bun test lsp/scripts/review-readiness.test.ts
+      - name: Test release readiness apply
+        run: bun test lsp/scripts/apply-release-readiness.test.ts
+      - name: Test release workflow packaging
+        run: bun test lsp/scripts/release-workflow.test.ts
+      - name: Test perf workflow guardrails
+        run: bun test lsp/scripts/perf-workflow.test.ts
+      - name: Run editor UX parity tests
+        run: cargo test -p seagrass editor_ux_parity -- --nocapture
+      - name: Run seagrass unit tests
+        run: cargo test -p seagrass

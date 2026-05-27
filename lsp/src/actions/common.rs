@@ -1,0 +1,316 @@
+//! Shared helpers for building LSP code actions and edits.
+//! Extracted from the god module to improve cohesion and DRY (stacc structural rules).
+//! Includes diagnostic code/quickfix helpers used across action families for the thin router seam.
+
+use {
+    crate::{
+        diagnostics::SOURCE,
+        document::{ParsedDocument, SymbolRange},
+    },
+    std::collections::HashMap,
+    tower_lsp::lsp_types::{
+        CodeAction, CodeActionKind, Diagnostic, NumberOrString, Position, Range, TextEdit, Url,
+        WorkspaceEdit,
+    },
+};
+
+/// Creates a single TextEdit for the given range and replacement text.
+pub fn single_text_edit(range: Range, new_text: String) -> TextEdit {
+    TextEdit { range, new_text }
+}
+
+/// Creates a WorkspaceEdit containing a single TextEdit for one document.
+pub fn single_document_edit(uri: Url, edit: TextEdit) -> WorkspaceEdit {
+    WorkspaceEdit {
+        changes: Some([(uri, vec![edit])].into_iter().collect()),
+        document_changes: None,
+        change_annotations: None,
+    }
+}
+
+/// Extracts the Anchor diagnostic code if the source matches our SOURCE constant.
+/// Used by all action families to filter relevant diagnostics at the seam.
+pub fn diagnostic_code(diagnostic: &Diagnostic) -> Option<&str> {
+    if diagnostic.source.as_deref() != Some(SOURCE) {
+        return None;
+    }
+    match diagnostic.code.as_ref()? {
+        NumberOrString::String(code) => Some(code.as_str()),
+        NumberOrString::Number(_) => None,
+    }
+}
+
+/// Extracts the "quickfix" value from diagnostic.data if present.
+/// Allows specific quickfix variants (e.g. "add-instruction-argument") to be routed to the
+/// appropriate deeper module without leaking implementation details into the router.
+pub fn diagnostic_quickfix(diagnostic: &Diagnostic) -> Option<&str> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("quickfix"))
+        .and_then(|value| value.as_str())
+}
+
+/// Finds the line number of a struct declaration by name in the source text.
+/// Used by multiple action families (accounts, instructions, context types) to locate
+/// where to insert attributes like `#[derive(Accounts)]` or `#[instruction(...)]`.
+/// Simple linear scan is acceptable for LSP-scale files; concentrated here for locality.
+pub fn struct_line(source: &str, name: &str) -> Option<u32> {
+    source.lines().enumerate().find_map(|(idx, line)| {
+        line.contains("struct")
+            .then_some(line)
+            .filter(|line| {
+                line.split(|ch: char| !ch.is_ascii_alphanumeric() && ch != '_')
+                    .any(|word| word == name)
+            })
+            .and_then(|_| u32::try_from(idx).ok())
+    })
+}
+
+pub fn eof_range(source: &str) -> Range {
+    let mut line = 0u32;
+    let mut character = 0u32;
+    for ch in source.chars() {
+        if ch == '\n' {
+            line = line.saturating_add(1);
+            character = 0;
+        } else {
+            character = character.saturating_add(ch.len_utf16() as u32);
+        }
+    }
+    Range {
+        start: Position { line, character },
+        end: Position { line, character },
+    }
+}
+
+pub fn add_constraint_edit(
+    document: &ParsedDocument,
+    attribute_range: Range,
+    addition: &str,
+) -> Option<TextEdit> {
+    for line_number in attribute_range.start.line..=attribute_range.end.line {
+        let line = crate::range::line_at(document.source(), line_number)?;
+        if let Some(close_idx) = line.find(")]") {
+            let before_close = &line[..close_idx];
+            if before_close.trim().is_empty() {
+                let indent = before_close.to_string();
+                return Some(TextEdit {
+                    range: Range {
+                        start: Position {
+                            line: line_number,
+                            character: 0,
+                        },
+                        end: Position {
+                            line: line_number,
+                            character: 0,
+                        },
+                    },
+                    new_text: format!("{indent}{addition},\n"),
+                });
+            }
+
+            let separator = if before_close.trim_end().ends_with('(')
+                || before_close.trim_end().ends_with(',')
+            {
+                ""
+            } else {
+                ", "
+            };
+            return Some(TextEdit {
+                range: Range {
+                    start: Position {
+                        line: line_number,
+                        character: u32::try_from(close_idx).ok()?,
+                    },
+                    end: Position {
+                        line: line_number,
+                        character: u32::try_from(close_idx).ok()?,
+                    },
+                },
+                new_text: format!("{separator}{addition}"),
+            });
+        }
+    }
+
+    None
+}
+
+pub fn add_constraint_to_field_edit(
+    document: &ParsedDocument,
+    field: &SymbolRange,
+    addition: &str,
+) -> Option<TextEdit> {
+    if let Some(constraint) = field.account_constraints.first() {
+        return add_constraint_edit(document, constraint.range, addition);
+    }
+
+    let line = crate::range::line_at(document.source(), field.selection_range.start.line)?;
+    let indent = line
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .collect::<String>();
+    Some(TextEdit {
+        range: Range {
+            start: Position {
+                line: field.selection_range.start.line,
+                character: 0,
+            },
+            end: Position {
+                line: field.selection_range.start.line,
+                character: 0,
+            },
+        },
+        new_text: format!("{indent}#[account({addition})]\n"),
+    })
+}
+
+pub fn constraint_action(
+    uri: &Url,
+    diagnostic: &Diagnostic,
+    title: String,
+    edit: TextEdit,
+    is_preferred: bool,
+    data: serde_json::Value,
+) -> CodeAction {
+    let mut changes = HashMap::with_capacity(1);
+    changes.insert(uri.clone(), vec![edit]);
+    CodeAction {
+        title,
+        kind: Some(CodeActionKind::QUICKFIX),
+        diagnostics: Some(vec![diagnostic.clone()]),
+        edit: Some(WorkspaceEdit {
+            changes: Some(changes),
+            document_changes: None,
+            change_annotations: None,
+        }),
+        command: None,
+        is_preferred: Some(is_preferred),
+        disabled: None,
+        data: Some(data),
+    }
+}
+
+pub fn edit_distance(left: &str, right: &str) -> usize {
+    let right_chars = right.chars().collect::<Vec<_>>();
+    let mut previous = (0..=right_chars.len()).collect::<Vec<_>>();
+
+    for (left_idx, left_ch) in left.chars().enumerate() {
+        let mut current = Vec::with_capacity(right_chars.len() + 1);
+        current.push(left_idx + 1);
+        for (right_idx, right_ch) in right_chars.iter().enumerate() {
+            let substitution = previous[right_idx] + usize::from(left_ch != *right_ch);
+            let insertion = current[right_idx] + 1;
+            let deletion = previous[right_idx + 1] + 1;
+            current.push(substitution.min(insertion).min(deletion));
+        }
+        previous = current;
+    }
+
+    previous[right_chars.len()]
+}
+
+pub fn field_indent(document: &ParsedDocument, accounts: &SymbolRange) -> String {
+    (accounts.range.start.line..=accounts.range.end.line)
+        .filter_map(|line_number| crate::range::line_at(document.source(), line_number))
+        .find_map(|line: &str| {
+            let trimmed = line.trim_start();
+            (trimmed.starts_with("#[account")
+                || (trimmed.starts_with("pub ") && trimmed.contains(':')))
+            .then(|| line[..line.len() - trimmed.len()].to_string())
+        })
+        .unwrap_or_else(|| "    ".to_string())
+}
+
+pub fn account_struct_closing_line(
+    document: &ParsedDocument,
+    accounts: &SymbolRange,
+) -> Option<u32> {
+    (accounts.range.start.line..=accounts.range.end.line)
+        .rev()
+        .find(|line_number| {
+            crate::range::line_at(document.source(), *line_number)
+                .is_some_and(|line| line.trim_start().starts_with('}'))
+        })
+}
+
+// Shared parser and account-shape helpers used by sibling action modules.
+fn is_signer(field: &SymbolRange) -> bool {
+    field.type_name.as_deref() == Some("Signer") || field_has_constraint_key(field, "signer")
+}
+
+pub(super) fn signer_candidate<'a>(
+    fields: impl Iterator<Item = &'a SymbolRange>,
+) -> Option<&'a str> {
+    fields
+        .filter(|field| is_signer(field))
+        .min_by_key(|field| signer_score(field))
+        .map(|field| field.name.as_str())
+}
+
+fn signer_score(field: &SymbolRange) -> (u8, u32, u32) {
+    (
+        if field.type_name.as_deref() == Some("Signer") {
+            0
+        } else {
+            1
+        },
+        field.selection_range.start.line,
+        field.selection_range.start.character,
+    )
+}
+
+fn field_has_constraint_key(field: &SymbolRange, key: &str) -> bool {
+    field
+        .account_constraints
+        .iter()
+        .any(|constraint| constraint_has_key(&constraint.text, key))
+}
+
+fn constraint_has_key(text: &str, key: &str) -> bool {
+    let mut search_end = text.len();
+    while let Some(idx) = text[..search_end].rfind(key) {
+        if has_constraint_key_boundary(text, idx, key.len()) {
+            return true;
+        }
+        search_end = idx;
+    }
+    false
+}
+
+fn has_constraint_key_boundary(text: &str, idx: usize, key_len: usize) -> bool {
+    let previous = text[..idx].chars().next_back();
+    let next = text[idx + key_len..].chars().next();
+    previous
+        .map(|ch| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == ':'))
+        .unwrap_or(true)
+        && next
+            .map(|ch| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == ':'))
+            .unwrap_or(true)
+}
+
+pub(super) fn parser_rule_kind(diagnostic: &Diagnostic) -> Option<&str> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("parserRule"))
+        .and_then(|rule| rule.get("kind"))
+        .and_then(|value| value.as_str())
+}
+
+pub(super) fn previous_non_ws(chars: &[char], start: usize) -> Option<usize> {
+    chars
+        .get(..start)?
+        .iter()
+        .enumerate()
+        .rev()
+        .find_map(|(idx, ch)| (!ch.is_whitespace()).then_some(idx))
+}
+
+pub(super) fn next_non_ws(chars: &[char], start: usize) -> Option<usize> {
+    chars
+        .iter()
+        .enumerate()
+        .skip(start)
+        .find_map(|(idx, ch)| (!ch.is_whitespace()).then_some(idx))
+}

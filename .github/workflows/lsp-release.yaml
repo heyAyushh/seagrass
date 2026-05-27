@@ -1,0 +1,525 @@
+name: Seagrass Release Packages
+
+on:
+  push:
+    tags:
+      - "lsp-v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to package, e.g. lsp-v1.0.2"
+        required: true
+        type: string
+
+concurrency:
+  group: seagrass-release-${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: "1.3.8"
+  NODE_VERSION: "24"
+  PROPTEST_CASES: "10000"
+  RELEASE_FUZZ_SECONDS_PER_TARGET: "60"
+  VSCE_VERSION: "3.9.1"
+
+jobs:
+  verify-tag:
+    name: Verify release tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+      version: ${{ steps.meta.outputs.version }}
+      prerelease: ${{ steps.meta.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Extract and validate tag
+        id: meta
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}"
+          if [[ ! "$tag" =~ ^lsp-v[0-9]+\.[0-9]+\.[0-9]+(-.+)?$ ]]; then
+            echo "Expected an Seagrass tag like lsp-v1.0.2 or lsp-v1.0.2-rc.1, got: $tag" >&2
+            exit 1
+          fi
+
+          version="${tag#lsp-v}"
+          prerelease=false
+          if [[ "$version" == *-* ]]; then
+            prerelease=true
+          fi
+
+          root_version="$(tr -d '[:space:]' < VERSION)"
+          workspace_version="$(awk '
+            $0 == "[workspace.package]" { in_workspace = 1; next }
+            /^\[/ { in_workspace = 0 }
+            in_workspace && /^version = / {
+              gsub(/"/, "", $3);
+              print $3;
+              exit
+            }
+          ' Cargo.toml)"
+          vscode_version="$(node -p "require('./lsp/editors/vscode/package.json').version")"
+          zed_cargo_version="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' lsp/editors/zed/Cargo.toml | head -1)"
+          zed_extension_version="$(sed -n 's/^version = \"\\(.*\\)\"/\\1/p' lsp/editors/zed/extension.toml | head -1)"
+
+          if [[ "$root_version" != "$version" ]]; then
+            echo "VERSION ($root_version) does not match tag version ($version)" >&2
+            exit 1
+          fi
+          for pair in \
+            "workspace:$workspace_version" \
+            "vscode:$vscode_version" \
+            "zed-cargo:$zed_cargo_version" \
+            "zed-extension:$zed_extension_version"; do
+            name="${pair%%:*}"
+            value="${pair#*:}"
+            if [[ "$value" != "$version" ]]; then
+              echo "$name version ($value) does not match tag version ($version)" >&2
+              exit 1
+            fi
+          done
+
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+  production-gate:
+    name: Production gate
+    runs-on: ubuntu-latest
+    needs: verify-tag
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.verify-tag.outputs.tag }}
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+          target: wasm32-wasip2
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+
+      - name: Verify production package inputs
+        run: bun lsp/scripts/verify-production.ts
+
+  property-gate:
+    name: Property gate
+    runs-on: ubuntu-latest
+    needs: verify-tag
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.verify-tag.outputs.tag }}
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+
+      - name: Run property tests
+        run: bun lsp/scripts/verify-proptest.ts
+
+  fuzz-corpus-gate:
+    name: Fuzz corpus gate
+    runs-on: ubuntu-latest
+    needs: verify-tag
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_document_parse
+          - fuzz_anchor_attr
+          - fuzz_manifest_parse
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.verify-tag.outputs.tag }}
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: nightly
+
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+
+      - name: Build fuzz targets
+        working-directory: lsp
+        run: cargo fuzz build
+
+      - name: Replay corpus and fuzz briefly
+        working-directory: lsp
+        run: cargo fuzz run "${{ matrix.target }}" -- -max_total_time="${RELEASE_FUZZ_SECONDS_PER_TARGET}"
+
+  release-readiness-gate:
+    name: Release readiness evidence
+    runs-on: ubuntu-latest
+    needs: [verify-tag, fuzz-corpus-gate]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.verify-tag.outputs.tag }}
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+
+      - name: Verify fuzz and external review evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_commit="$(git rev-parse HEAD)"
+          bun lsp/scripts/check-release-readiness.ts \
+            --version "${{ needs.verify-tag.outputs.version }}" \
+            --commit "$release_commit"
+
+  build-server:
+    name: Build server (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    needs: [verify-tag, production-gate, property-gate, fuzz-corpus-gate, release-readiness-gate]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            os: macos-latest
+            ext: ""
+          - target: x86_64-apple-darwin
+            os: macos-latest
+            ext: ""
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-latest
+            ext: ""
+          - target: x86_64-pc-windows-msvc
+            os: windows-latest
+            ext: ".exe"
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.verify-tag.outputs.tag }}
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+
+      - name: Build server binary (macOS)
+        if: runner.os == 'macOS'
+        env:
+          CARGO_PROFILE_RELEASE_LTO: "off"
+          RUSTFLAGS: -C embed-bitcode=no
+        run: cargo build --package seagrass --release --locked --target ${{ matrix.target }}
+
+      - name: Build server binary
+        if: runner.os != 'macOS'
+        run: cargo build --package seagrass --release --locked --target ${{ matrix.target }}
+
+      - name: Package server binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ needs.verify-tag.outputs.version }}"
+          target="${{ matrix.target }}"
+          package="seagrass-${version}-${target}"
+
+          mkdir -p "dist/${package}" artifacts
+          cp "target/${target}/release/seagrass${{ matrix.ext }}" "dist/${package}/"
+          cp lsp/README.md lsp/LICENSE "dist/${package}/"
+
+          tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
+          cd artifacts
+          sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
+
+      - name: Attest server package
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: artifacts/seagrass-${{ needs.verify-tag.outputs.version }}-${{ matrix.target }}.tar.gz
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: seagrass-${{ needs.verify-tag.outputs.version }}-${{ matrix.target }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-zed:
+    name: Build Zed extension package
+    runs-on: ubuntu-latest
+    needs: [verify-tag, production-gate, property-gate, fuzz-corpus-gate, release-readiness-gate]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.verify-tag.outputs.tag }}
+
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+          target: wasm32-wasip2
+
+      - name: Build Zed wasm
+        working-directory: lsp/editors/zed
+        run: cargo build --target wasm32-wasip2 --release --locked
+
+      - name: Package Zed extension
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ needs.verify-tag.outputs.version }}"
+          package="seagrass-zed-${version}"
+
+          mkdir -p "dist/${package}" artifacts
+          cp lsp/editors/zed/extension.toml "dist/${package}/"
+          cp lsp/editors/zed/target/wasm32-wasip2/release/seagrass_zed.wasm "dist/${package}/extension.wasm"
+          cp lsp/editors/zed/README.md "dist/${package}/"
+          cp lsp/LICENSE "dist/${package}/"
+
+          tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
+          cd artifacts
+          sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
+
+      - name: Attest Zed package
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: artifacts/seagrass-zed-${{ needs.verify-tag.outputs.version }}.tar.gz
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: seagrass-zed-${{ needs.verify-tag.outputs.version }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-vscode:
+    name: Build VS Code VSIX
+    runs-on: ubuntu-latest
+    needs: [verify-tag, production-gate, property-gate, fuzz-corpus-gate, release-readiness-gate]
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.verify-tag.outputs.tag }}
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+
+      - name: Build extension
+        working-directory: lsp/editors/vscode
+        run: |
+          bun install --frozen-lockfile
+          bun run check
+
+      - name: Package VSIX
+        working-directory: lsp/editors/vscode
+        run: |
+          mkdir -p ../../../artifacts
+          npm exec --yes "@vscode/vsce@${VSCE_VERSION}" -- package \
+            --out "../../../artifacts/seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix" \
+            --allow-missing-repository \
+            --baseContentUrl "https://github.com/${{ github.repository }}/blob/${{ needs.verify-tag.outputs.tag }}/lsp/editors/vscode" \
+            --baseImagesUrl "https://github.com/${{ github.repository }}/raw/${{ needs.verify-tag.outputs.tag }}/lsp/editors/vscode"
+          cd ../../../artifacts
+          sha256sum "seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix" \
+            > "seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix.sha256"
+
+      - name: Attest VSIX
+        uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
+        with:
+          subject-path: artifacts/seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: seagrass-vscode-${{ needs.verify-tag.outputs.version }}
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  package-fuzz-corpus:
+    name: Package fuzz corpus
+    runs-on: ubuntu-latest
+    needs: [verify-tag, fuzz-corpus-gate, release-readiness-gate]
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.verify-tag.outputs.tag }}
+
+      - name: Package fuzz corpus
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          version="${{ needs.verify-tag.outputs.version }}"
+          package="seagrass-${version}-fuzz-corpus"
+
+          mkdir -p "dist/${package}" artifacts
+          mkdir -p "dist/${package}/.github/workflows"
+          cp -R lsp/fuzz/corpus "dist/${package}/"
+          cp -R lsp/fuzz/fuzz_targets "dist/${package}/"
+          cp lsp/fuzz/Cargo.toml "dist/${package}/"
+          cp lsp/docs/release-readiness.json "dist/${package}/"
+          cp .github/workflows/lsp-fuzz.yaml "dist/${package}/.github/workflows/"
+
+          tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
+          cd artifacts
+          sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
+
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: seagrass-${{ needs.verify-tag.outputs.version }}-fuzz-corpus
+          path: artifacts/*
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub release
+    runs-on: ubuntu-latest
+    needs: [verify-tag, build-server, build-zed, build-vscode, package-fuzz-corpus]
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7.0.0
+        with:
+          path: release-assets
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.verify-tag.outputs.tag }}
+          VERSION: ${{ needs.verify-tag.outputs.version }}
+          PRERELEASE: ${{ needs.verify-tag.outputs.prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected_assets=(
+            "seagrass-${VERSION}-aarch64-apple-darwin.tar.gz"
+            "seagrass-${VERSION}-x86_64-apple-darwin.tar.gz"
+            "seagrass-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
+            "seagrass-${VERSION}-x86_64-pc-windows-msvc.tar.gz"
+            "seagrass-zed-${VERSION}.tar.gz"
+            "seagrass-vscode-${VERSION}.vsix"
+            "seagrass-${VERSION}-fuzz-corpus.tar.gz"
+          )
+
+          mapfile -t actual_files < <(find release-assets -type f | sort)
+          expected_file_count=$(( ${#expected_assets[@]} * 2 ))
+          if [[ ${#actual_files[@]} -ne "$expected_file_count" ]]; then
+            printf 'Expected %s release files, got %s:\n' "$expected_file_count" "${#actual_files[@]}" >&2
+            printf '  %s\n' "${actual_files[@]}" >&2
+            exit 1
+          fi
+
+          files=()
+          for asset in "${expected_assets[@]}"; do
+            mapfile -t asset_matches < <(find release-assets -type f -name "$asset" | sort)
+            if [[ ${#asset_matches[@]} -ne 1 ]]; then
+              echo "Expected exactly one release asset named $asset" >&2
+              exit 1
+            fi
+
+            checksum="${asset}.sha256"
+            mapfile -t checksum_matches < <(find release-assets -type f -name "$checksum" | sort)
+            if [[ ${#checksum_matches[@]} -ne 1 ]]; then
+              echo "Expected exactly one checksum named $checksum" >&2
+              exit 1
+            fi
+
+            checksum_dir="$(dirname "${checksum_matches[0]}")"
+            checksum_file="$(basename "${checksum_matches[0]}")"
+            (cd "$checksum_dir" && sha256sum -c "$checksum_file")
+            files+=("${asset_matches[0]}" "${checksum_matches[0]}")
+          done
+          mapfile -t files < <(printf '%s\n' "${files[@]}" | sort)
+
+          notes="$(mktemp)"
+          cat > "$notes" <<EOF
+          Seagrass ${VERSION}
+
+          Packages:
+          - seagrass-${VERSION}-<target>.tar.gz: standalone stdio server binary.
+          - seagrass-zed-${VERSION}.tar.gz: Zed dev extension package.
+          - seagrass-vscode-${VERSION}.vsix: VS Code extension package.
+          - seagrass-${VERSION}-fuzz-corpus.tar.gz: fuzz corpus and release-readiness evidence promoted for release replay.
+
+          Verify downloads with the matching .sha256 files.
+          EOF
+
+          release_args=()
+          if [[ "$PRERELEASE" == "true" ]]; then
+            release_args+=(--prerelease)
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${files[@]}" --clobber
+          else
+            gh release create "$TAG" "${files[@]}" \
+              --title "Seagrass ${VERSION}" \
+              --notes-file "$notes" \
+              "${release_args[@]}"
+          fi

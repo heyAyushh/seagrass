@@ -1,0 +1,115 @@
+name: Seagrass Fuzz
+
+on:
+  schedule:
+    - cron: "17 8 * * *"
+  push:
+    tags:
+      - "lsp-v*"
+  workflow_dispatch:
+
+env:
+  BUN_VERSION: "1.3.8"
+  FUZZ_SECONDS_PER_SHARD: "3600"
+  FUZZ_SHARDS: "8"
+  NODE_VERSION: "24"
+
+jobs:
+  fuzz:
+    name: ${{ matrix.target }} shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      max-parallel: 1
+      matrix:
+        target:
+          - fuzz_document_parse
+          - fuzz_anchor_attr
+          - fuzz_manifest_parse
+        shard:
+          - 0
+          - 1
+          - 2
+          - 3
+          - 4
+          - 5
+          - 6
+          - 7
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz --locked
+      - name: Build fuzz targets
+        working-directory: lsp
+        run: cargo fuzz build
+      - name: Fuzz target shard
+        working-directory: lsp
+        run: |
+          mkdir -p "fuzz/artifacts/${{ matrix.target }}"
+          cargo fuzz run "${{ matrix.target }}" -- -max_total_time="${FUZZ_SECONDS_PER_SHARD}" -artifact_prefix="fuzz/artifacts/${{ matrix.target }}/shard-${{ matrix.shard }}-"
+      - name: Package fuzz corpus and crashes
+        if: always()
+        run: |
+          tar -czf "fuzz-corpus-${GITHUB_SHA}-${{ matrix.target }}-${{ matrix.shard }}.tar.gz" \
+            -C lsp \
+            fuzz/corpus \
+            fuzz/artifacts
+      - name: Upload fuzz artifacts
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fuzz-corpus-${{ github.sha }}-${{ matrix.target }}-${{ matrix.shard }}
+          path: |
+            fuzz-corpus-${{ github.sha }}-${{ matrix.target }}-${{ matrix.shard }}.tar.gz
+
+  fuzz-readiness:
+    name: Fuzz readiness artifact
+    runs-on: ubuntu-latest
+    needs: fuzz
+    if: always()
+    permissions:
+      actions: read
+      contents: read
+    env:
+      FUZZ_STATUS: ${{ needs.fuzz.result == 'success' && 'passed' || 'failed' }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ""
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+      - name: Write fuzz readiness evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p target
+          run_meta="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}")"
+          run_started_at="$(bun -e 'const input = await Bun.stdin.text(); const meta = JSON.parse(input); process.stdout.write(meta.run_started_at ?? meta.created_at);' <<< "${run_meta}")"
+          completed_at="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          bun lsp/scripts/fuzz-readiness.ts \
+            --status "${FUZZ_STATUS}" \
+            --workflow-run-url "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+            --commit "${GITHUB_SHA}" \
+            --started-at "${run_started_at}" \
+            --completed-at "${completed_at}" \
+            --seconds-per-shard "${FUZZ_SECONDS_PER_SHARD}" \
+            --shards "${FUZZ_SHARDS}" \
+            --out "target/fuzz-readiness-${GITHUB_SHA}.json"
+      - name: Upload fuzz readiness evidence
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: fuzz-readiness-${{ github.sha }}
+          path: target/fuzz-readiness-${{ github.sha }}.json

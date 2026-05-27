@@ -1,0 +1,203 @@
+{
+  "name": "seagrass-vscode",
+  "displayName": "Seagrass",
+  "description": "Anchor-specific diagnostics, completions, hovers, symbols, and fixes plus local artifact evidence for Anchor, Pinocchio, and native Solana Rust programs.",
+  "version": "1.0.2",
+  "license": "MIT",
+  "publisher": "seagrass-local",
+  "private": true,
+  "packageManager": "bun@1.3.8",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:rust",
+    "onCommand:seagrass.status",
+    "onCommand:seagrass.analyze",
+    "onCommand:seagrass.artifacts",
+    "onCommand:seagrass.errorCoverage",
+    "onCommand:seagrass.supportMatrix",
+    "onCommand:seagrass.generatorProfile",
+    "onCommand:seagrass.logs",
+    "onCommand:seagrass.restart",
+    "onCommand:seagrass.showOutput",
+    "workspaceContains:Anchor.toml"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "seagrass.status",
+        "title": "Seagrass: Status"
+      },
+      {
+        "command": "seagrass.analyze",
+        "title": "Seagrass: Analyze Document"
+      },
+      {
+        "command": "seagrass.artifacts",
+        "title": "Seagrass: Artifacts"
+      },
+      {
+        "command": "seagrass.errorCoverage",
+        "title": "Seagrass: Error Coverage"
+      },
+      {
+        "command": "seagrass.supportMatrix",
+        "title": "Seagrass: Support Matrix"
+      },
+      {
+        "command": "seagrass.generatorProfile",
+        "title": "Seagrass: Generator Profile"
+      },
+      {
+        "command": "seagrass.logs",
+        "title": "Seagrass: Recent Logs"
+      },
+      {
+        "command": "seagrass.restart",
+        "title": "Seagrass: Restart Server"
+      },
+      {
+        "command": "seagrass.showOutput",
+        "title": "Seagrass: Output"
+      }
+    ],
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "seagrass.status",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.analyze",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.artifacts",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.errorCoverage",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.supportMatrix",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.generatorProfile",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.logs",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.restart",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.showOutput"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Seagrass",
+      "properties": {
+        "seagrass.serverCommand": {
+          "type": "string",
+          "default": "cargo",
+          "description": "Command used to start Seagrass."
+        },
+        "seagrass.serverArgs": {
+          "type": "array",
+          "default": [
+            "run",
+            "-p",
+            "seagrass",
+            "--quiet"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Arguments passed to the Seagrass server command."
+        },
+        "seagrass.serverCwd": {
+          "type": "string",
+          "default": "",
+          "description": "Working directory for the server command. For local development, this must be the checkout that contains the seagrass Cargo package."
+        },
+        "seagrass.serverEnv": {
+          "type": "object",
+          "default": {},
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Extra environment variables passed to the seagrass server process."
+        },
+        "seagrass.diagnostics.security.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Anchor security diagnostics."
+        },
+        "seagrass.diagnostics.transport": {
+          "type": "string",
+          "enum": [
+            "push",
+            "pull",
+            "both"
+          ],
+          "default": "push",
+          "description": "Diagnostics transport used for VS Code. Use push by default to avoid duplicate diagnostics; pull enables LSP 3.17 pull diagnostics; both is useful only for protocol debugging and can duplicate diagnostics in VS Code."
+        },
+        "seagrass.diagnostics.coldPath": {
+          "type": "string",
+          "enum": [
+            "idle",
+            "save",
+            "manual"
+          ],
+          "default": "idle",
+          "description": "When Seagrass runs full cold-path diagnostics. idle runs after a typing pause, save runs on open/save but not every change, manual leaves full checks to pull diagnostics and explicit commands."
+        },
+        "seagrass.diagnostics.experimental.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable experimental Anchor diagnostics."
+        },
+        "seagrass.inlayHints.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable Anchor inlay hints."
+        },
+        "seagrass.workspaceIndex.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable project-aware Anchor workspace indexing."
+        },
+        "seagrass.trace.server": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable extra Seagrass server tracing."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "bun build ./src/extension.ts --target=node --format=cjs --external=vscode --outdir ./dist",
+    "check": "bun run typecheck && bun run build && node --check ./dist/extension.js && bun ../check-ui-contract.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.9.0"
+  }
+}

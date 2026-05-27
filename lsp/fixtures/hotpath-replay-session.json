@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 1,
+  "documents": [
+    {
+      "name": "main",
+      "relativePath": "programs/replay-demo/src/lib.rs",
+      "text": "use anchor_lang::prelude::*;\n\ndeclare_id!(\"11111111111111111111111111111111\");\n\n#[program]\npub mod replay_demo {\n    use super::*;\n\n    pub fn initialize(ctx: Context<Initialize>, amount: u64) -> Result<()> {\n        let balance = amount - 1;\n        let _ = ctx.accounts.state.count;\n        Ok(())\n    }\n}\n\n#[derive(Accounts)]\npub struct Initialize<'info> {\n    #[account(init, payer = payer, space = 8 + State::INIT_SPACE, seeds = [b\"state\", payer.key().as_ref()], bump)]\n    pub state: Account<'info, State>,\n    #[account(mut)]\n    pub payer: Signer<'info>,\n    pub system_program: Program<'info, System>,\n}\n\n#[account]\n#[derive(InitSpace)]\npub struct State {\n    pub count: u64,\n}\n"
+    },
+    {
+      "name": "completion",
+      "relativePath": "programs/replay-demo/src/completion.rs",
+      "text": "use anchor_lang::prelude::*;\n\n#[derive(Accounts)]\npub struct Initialize<'info> {\n    #[account(init, payer = p)]\n    pub state: Account<'info, State>,\n    #[account(mut)]\n    pub payer: Signer<'info>,\n    pub system_program: Program<'info, System>,\n}\n\n#[account]\npub struct State {\n    pub count: u64,\n}\n"
+    }
+  ],
+  "requests": [
+    {
+      "method": "textDocument/diagnostic",
+      "document": "main"
+    },
+    {
+      "method": "textDocument/completion",
+      "document": "completion",
+      "positionAfter": "payer = p",
+      "triggerCharacter": "p",
+      "expectLabel": "payer"
+    },
+    {
+      "method": "textDocument/hover",
+      "document": "main",
+      "positionAt": "count;",
+      "expectContains": "`State.count`"
+    }
+  ]
+}

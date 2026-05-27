@@ -1,0 +1,571 @@
+//! Account-related code actions for Anchor `#[derive(Accounts)]` structs,
+//! `Context<T>` types, missing account fields, mut constraints, system program,
+//! has_one targets, and duplicate account detection.
+
+mod context_structs;
+mod field_edits;
+
+use {
+    super::common::{
+        account_struct_closing_line, add_constraint_to_field_edit, constraint_action,
+        diagnostic_code, edit_distance, field_indent, single_document_edit, single_text_edit,
+    },
+    crate::document::{ParsedDocument, SymbolRange},
+    std::collections::HashMap,
+    tower_lsp::lsp_types::{
+        CodeAction, CodeActionKind, Diagnostic, Position, Range, TextEdit, Url, WorkspaceEdit,
+    },
+};
+
+/// Main seam for the accounts family. Thin router in mod.rs calls this to get all
+/// account-related quickfixes. Filters diagnostics by code and quickfix type.
+pub fn code_actions(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeAction> {
+    let mut actions = context_structs::code_actions(document, uri.clone(), diagnostics);
+    actions.extend(replace_missing_account_actions(
+        document,
+        uri.clone(),
+        diagnostics,
+    ));
+    actions.extend(field_edits::add_missing_account_field_actions(
+        document,
+        uri.clone(),
+        diagnostics,
+    ));
+    actions.extend(replace_has_one_target_actions(
+        document,
+        uri.clone(),
+        diagnostics,
+    ));
+    actions.extend(system_program_type_actions(uri.clone(), diagnostics));
+    actions.extend(add_missing_system_program_actions(
+        document,
+        uri.clone(),
+        diagnostics,
+    ));
+    actions.extend(add_mut_constraint_actions(
+        document,
+        uri.clone(),
+        diagnostics,
+    ));
+    actions.extend(duplicate_account_actions(
+        document,
+        uri.clone(),
+        diagnostics,
+    ));
+    actions
+}
+
+fn replace_missing_account_actions(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-missing-account-reference")
+        })
+        .filter_map(|diagnostic| {
+            let data = diagnostic.data.as_ref()?;
+            let missing = data.get("account").and_then(|value| value.as_str())?;
+            let accounts_name = data
+                .get("accountsStruct")
+                .and_then(|value| value.as_str())?;
+            let replacement = if data.get("reason").and_then(|value| value.as_str())
+                == Some("unknown-ctx-account-field")
+            {
+                closest_candidate(data, missing).or_else(|| {
+                    document
+                        .symbols()
+                        .accounts_structs
+                        .get(accounts_name)
+                        .and_then(|accounts| closest_context_account(accounts, missing))
+                })?
+            } else {
+                closest_candidate(data, missing).or_else(|| {
+                    document
+                        .symbols()
+                        .accounts_structs
+                        .get(accounts_name)
+                        .and_then(|accounts| closest_account(accounts, missing))
+                })?
+            };
+            let edit = single_text_edit(diagnostic.range, replacement.to_string());
+
+            Some(CodeAction {
+                title: format!("Replace `{missing}` with `{replacement}`"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(single_document_edit(uri.clone(), edit)),
+                command: None,
+                is_preferred: Some(false),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "replace-account-reference",
+                    "replacement": replacement,
+                })),
+            })
+        })
+        .collect()
+}
+
+fn system_program_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic_code(diagnostic) == Some("anchor-constraint-shape"))
+        .filter(|diagnostic| {
+            let quickfix = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfix"))
+                .and_then(|value| value.as_str());
+            matches!(quickfix, Some("system-program-type" | "program-field-type"))
+        })
+        .map(|diagnostic| {
+            let expected = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("expected"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("Program<'info, System>");
+            let field_name = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("field"))
+                .and_then(|value| value.as_str())
+                .unwrap_or("system_program");
+            let mut changes = HashMap::new();
+            changes.insert(
+                uri.clone(),
+                vec![TextEdit {
+                    range: diagnostic.range,
+                    new_text: expected.to_string(),
+                }],
+            );
+
+            CodeAction {
+                title: format!("Change `{field_name}` type to `{expected}`"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(changes),
+                    document_changes: None,
+                    change_annotations: None,
+                }),
+                command: None,
+                is_preferred: Some(true),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "program-field-type",
+                    "field": field_name,
+                    "expected": expected,
+                })),
+            }
+        })
+        .collect()
+}
+
+fn add_missing_system_program_actions(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic_code(diagnostic) == Some("anchor-constraint-shape"))
+        .filter_map(|diagnostic| {
+            let missing = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("missing"))
+                .and_then(|value| value.as_str())?;
+            if !matches!(
+                missing,
+                "system_program" | "token_program" | "associated_token_program"
+            ) {
+                return None;
+            }
+            let expected = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("expected"))
+                .and_then(|value| value.as_str())
+                .unwrap_or_else(|| default_program_field_type(missing));
+            let accounts_name = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("accountsStruct"))
+                .and_then(|value| value.as_str())?;
+            let accounts = document.symbols().accounts_structs.get(accounts_name)?;
+            let insert_line = account_struct_closing_line(document, accounts)?;
+            let indent = field_indent(document, accounts);
+            let edit = TextEdit {
+                range: Range {
+                    start: Position {
+                        line: insert_line,
+                        character: 0,
+                    },
+                    end: Position {
+                        line: insert_line,
+                        character: 0,
+                    },
+                },
+                new_text: format!("{indent}pub {missing}: {expected},\n"),
+            };
+            let mut changes = HashMap::new();
+            changes.insert(uri.clone(), vec![edit]);
+
+            Some(CodeAction {
+                title: format!("Add `{missing}` to `{accounts_name}`"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(changes),
+                    document_changes: None,
+                    change_annotations: None,
+                }),
+                command: None,
+                is_preferred: Some(true),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "add-program-field",
+                    "accountsStruct": accounts_name,
+                    "field": missing,
+                    "expected": expected,
+                })),
+            })
+        })
+        .collect()
+}
+
+fn default_program_field_type(field_name: &str) -> &'static str {
+    match field_name {
+        "token_program" => "Program<'info, Token>",
+        "associated_token_program" => "Program<'info, AssociatedToken>",
+        _ => "Program<'info, System>",
+    }
+}
+
+fn replace_has_one_target_actions(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic_code(diagnostic) == Some("anchor-constraint-shape"))
+        .filter(|diagnostic| {
+            diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfix"))
+                .and_then(|value| value.as_str())
+                == Some("replace-has-one-target")
+        })
+        .filter_map(|diagnostic| {
+            let data = diagnostic.data.as_ref()?;
+            let missing = data
+                .get("missingDataField")
+                .and_then(|value| value.as_str())?;
+            let replacement = closest_data_field(document, data, missing)?;
+
+            let edit = single_text_edit(diagnostic.range, replacement.to_string());
+
+            Some(CodeAction {
+                title: format!("Replace `{missing}` with `{replacement}`"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(single_document_edit(uri.clone(), edit)),
+                command: None,
+                is_preferred: Some(false),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "replace-account-reference",
+                    "replacement": replacement,
+                })),
+            })
+        })
+        .collect()
+}
+
+fn closest_data_field<'a>(
+    document: &'a ParsedDocument,
+    data: &'a serde_json::Value,
+    missing: &str,
+) -> Option<&'a str> {
+    let candidates = data
+        .get("candidates")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str())
+        .collect::<Vec<_>>();
+    if !candidates.is_empty() {
+        return candidates
+            .into_iter()
+            .min_by_key(|candidate| edit_distance(candidate, missing));
+    }
+
+    let account_type = data.get("accountType").and_then(|value| value.as_str())?;
+    document
+        .symbols()
+        .account_data_structs
+        .get(account_type)?
+        .fields
+        .iter()
+        .min_by_key(|field| edit_distance(&field.name, missing))
+        .map(|field| field.name.as_str())
+}
+
+fn add_mut_constraint_actions(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            matches!(
+                diagnostic_code(diagnostic),
+                Some("anchor-account-usage") | Some("anchor-constraint-shape")
+            )
+        })
+        .filter(|diagnostic| {
+            diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfix"))
+                .and_then(|value| value.as_str())
+                == Some("add-mut-constraint")
+        })
+        .filter_map(|diagnostic| {
+            let account = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("account"))
+                .and_then(|value| value.as_str())?;
+            let field = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("accountsStruct"))
+                .and_then(|value| value.as_str())
+                .and_then(|accounts_name| document.symbols().accounts_structs.get(accounts_name))
+                .and_then(|accounts| accounts.fields.iter().find(|field| field.name == account))
+                .or_else(|| {
+                    document
+                        .symbols()
+                        .accounts_structs
+                        .values()
+                        .flat_map(|accounts| accounts.fields.iter())
+                        .find(|field| field.name == account)
+                })?;
+            let edit = add_mut_edit(document, field)?;
+            let mut changes = HashMap::new();
+            changes.insert(uri.clone(), vec![edit]);
+
+            Some(CodeAction {
+                title: format!("Add #[account(mut)] to `{account}`"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(WorkspaceEdit {
+                    changes: Some(changes),
+                    document_changes: None,
+                    change_annotations: None,
+                }),
+                command: None,
+                is_preferred: Some(true),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "add-mut-constraint",
+                    "account": account,
+                })),
+            })
+        })
+        .collect()
+}
+
+fn add_mut_edit(document: &ParsedDocument, field: &SymbolRange) -> Option<TextEdit> {
+    if let Some(constraint) = field.account_constraints.first() {
+        let line = crate::range::line_at(document.source(), constraint.range.start.line)?;
+        let insert_at = line.find("#[account(")? + "#[account(".len();
+        return Some(TextEdit {
+            range: Range {
+                start: Position {
+                    line: constraint.range.start.line,
+                    character: u32::try_from(insert_at).ok()?,
+                },
+                end: Position {
+                    line: constraint.range.start.line,
+                    character: u32::try_from(insert_at).ok()?,
+                },
+            },
+            new_text: "mut, ".to_string(),
+        });
+    }
+
+    let line = crate::range::line_at(document.source(), field.selection_range.start.line)?;
+    let indent = line
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .collect::<String>();
+    Some(TextEdit {
+        range: Range {
+            start: Position {
+                line: field.selection_range.start.line,
+                character: 0,
+            },
+            end: Position {
+                line: field.selection_range.start.line,
+                character: 0,
+            },
+        },
+        new_text: format!("{indent}#[account(mut)]\n"),
+    })
+}
+
+fn duplicate_account_actions(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-security-duplicate-account")
+                && diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("quickfix"))
+                    .and_then(|value| value.as_str())
+                    == Some("duplicate-account-remediation")
+        })
+        .flat_map(|diagnostic| duplicate_account_actions_for_diagnostic(document, &uri, diagnostic))
+        .collect()
+}
+
+fn duplicate_account_actions_for_diagnostic(
+    document: &ParsedDocument,
+    uri: &Url,
+    diagnostic: &Diagnostic,
+) -> Vec<CodeAction> {
+    let Some(data) = diagnostic.data.as_ref() else {
+        return Vec::new();
+    };
+    let Some(account) = data.get("account").and_then(|value| value.as_str()) else {
+        return Vec::new();
+    };
+    let account_path = data
+        .get("accountPath")
+        .and_then(|value| value.as_str())
+        .unwrap_or(account);
+    let Some(peer) = data.get("peer").and_then(|value| value.as_str()) else {
+        return Vec::new();
+    };
+    let peer_path = data
+        .get("peerPath")
+        .and_then(|value| value.as_str())
+        .unwrap_or(peer);
+    let accounts_struct = data.get("accountsStruct").and_then(|value| value.as_str());
+    let Some(field) = document
+        .symbols()
+        .accounts_structs
+        .values()
+        .filter(|accounts| {
+            accounts_struct
+                .map(|name| accounts.name == name)
+                .unwrap_or(true)
+        })
+        .flat_map(|accounts| accounts.fields.iter())
+        .find(|field| field.name == account)
+    else {
+        return Vec::new();
+    };
+
+    let mut actions = Vec::with_capacity(2);
+
+    let allow_distinct = data
+        .get("allowDistinctConstraint")
+        .and_then(|value| value.as_bool())
+        .unwrap_or(true);
+    let distinct = format!("constraint = {account_path}.key() != {peer_path}.key()");
+    if allow_distinct {
+        if let Some(edit) = add_constraint_to_field_edit(document, field, &distinct) {
+            actions.push(constraint_action(
+                uri,
+                diagnostic,
+                format!("Require `{account_path}` and `{peer_path}` to be distinct"),
+                edit,
+                true,
+                serde_json::json!({
+                    "anchorAction": "add-distinct-account-constraint",
+                    "account": account,
+                    "accountPath": account_path,
+                    "peer": peer,
+                    "peerPath": peer_path,
+                    "insertText": distinct,
+                }),
+            ));
+        }
+    }
+
+    if let Some(edit) = add_constraint_to_field_edit(document, field, "dup") {
+        actions.push(constraint_action(
+            uri,
+            diagnostic,
+            format!("Allow duplicate mutable `{account}` with `dup`"),
+            edit,
+            false,
+            serde_json::json!({
+                "anchorAction": "add-dup-constraint",
+                "account": account,
+                "insertText": "dup",
+            }),
+        ));
+    }
+
+    actions
+}
+
+fn closest_account<'a>(accounts: &'a SymbolRange, missing: &str) -> Option<&'a str> {
+    accounts
+        .fields
+        .iter()
+        .min_by_key(|field| edit_distance(&field.name, missing))
+        .map(|field| field.name.as_str())
+}
+
+fn closest_context_account<'a>(accounts: &'a SymbolRange, missing: &str) -> Option<&'a str> {
+    accounts
+        .fields
+        .iter()
+        .min_by_key(|field| {
+            (
+                context_account_replacement_rank(field),
+                edit_distance(&field.name, missing),
+            )
+        })
+        .map(|field| field.name.as_str())
+}
+
+fn closest_candidate<'a>(data: &'a serde_json::Value, missing: &str) -> Option<&'a str> {
+    data.get("candidates")
+        .and_then(|value| value.as_array())
+        .into_iter()
+        .flatten()
+        .filter_map(|value| value.as_str())
+        .min_by_key(|candidate| edit_distance(candidate, missing))
+}
+
+fn context_account_replacement_rank(field: &SymbolRange) -> u8 {
+    match field.type_name.as_deref() {
+        Some("Account") | Some("AccountLoader") | Some("InterfaceAccount") => 0,
+        Some("UncheckedAccount") | Some("AccountInfo") => 1,
+        Some("Signer") => 2,
+        Some("Program") | Some("Interface") | Some("Sysvar") => 3,
+        _ => 1,
+    }
+}

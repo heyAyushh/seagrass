@@ -1,0 +1,8 @@
+[package]
+name = "native-demo"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+solana-program = "1"

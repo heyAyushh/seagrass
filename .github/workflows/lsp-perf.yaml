@@ -1,0 +1,88 @@
+name: Seagrass Perf
+
+on:
+  pull_request:
+    branches:
+      - master
+      - anchor-next
+    paths:
+      - "lsp/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/lsp-perf.yaml"
+  push:
+    branches:
+      - master
+    paths:
+      - "lsp/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/lsp-perf.yaml"
+  workflow_dispatch:
+
+env:
+  BUN_VERSION: "1.3.8"
+  NODE_VERSION: "24"
+
+jobs:
+  hotpath-replay:
+    name: Hotpath replay
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ""
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+      - name: Replay LSP request stream with hotpath budgets
+        run: bun lsp/scripts/perf-replay.ts
+      - name: Upload hotpath report
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: seagrass-hotpath-report
+          path: target/seagrass-hotpath-report.json
+
+  scale-benchmark:
+    name: Scale benchmark N=${{ matrix.programs }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        programs: [10, 50, 200]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: ""
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+      - name: Measure N=${{ matrix.programs }} workspace scale
+        run: |
+          bun lsp/scripts/scale-benchmark.ts \
+            --programs ${{ matrix.programs }} \
+            --samples 3 \
+            --report target/seagrass-scale-${{ matrix.programs }}.json
+      - name: Upload scale report
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: seagrass-scale-${{ matrix.programs }}-report
+          path: target/seagrass-scale-${{ matrix.programs }}.json

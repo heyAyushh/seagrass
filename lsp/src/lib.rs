@@ -1,0 +1,45 @@
+mod account_semantics;
+mod actions;
+mod anchor_analysis;
+pub mod anchor_errors;
+pub mod anchor_support;
+mod anchor_types;
+pub mod cli;
+mod code_lens;
+mod completions;
+mod constraint_catalog;
+mod constraint_ranges;
+mod constraint_text;
+mod debounce;
+mod definition_bridge;
+mod diagnostics;
+pub mod document;
+mod document_links;
+mod document_stub;
+mod ecosystem;
+mod evidence;
+mod folding;
+mod hotpath;
+mod hover;
+mod inlay_hints;
+mod navigation;
+mod program_artifacts;
+pub mod project;
+mod query_cache;
+pub mod range;
+mod renaming;
+mod salsa_db;
+mod selection_ranges;
+mod semantic_tokens;
+pub mod server;
+mod server_observability;
+mod server_types;
+mod signature_help;
+pub mod solana_project;
+pub mod syntax;
+mod workspace;
+
+pub mod fuzz_harness;
+
+#[cfg(test)]
+mod editor_ux_parity;

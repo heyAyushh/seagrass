@@ -1,0 +1,54 @@
+{
+  "releaseVersion": "1.0.2",
+  "fuzzCleanRun": {
+    "status": "pending",
+    "workflowRunUrl": "pending",
+    "commit": "pending",
+    "startedAt": "pending",
+    "completedAt": "pending",
+    "aggregateFuzzHours": 0,
+    "targets": [
+      "fuzz_anchor_attr",
+      "fuzz_document_parse",
+      "fuzz_manifest_parse"
+    ],
+    "workflowMatrixTargets": [
+      "fuzz_anchor_attr",
+      "fuzz_document_parse",
+      "fuzz_manifest_parse"
+    ],
+    "targetRuns": [
+      {
+        "target": "fuzz_anchor_attr",
+        "status": "pending",
+        "shards": 8,
+        "secondsPerShard": 3600,
+        "fuzzHours": 0
+      },
+      {
+        "target": "fuzz_document_parse",
+        "status": "pending",
+        "shards": 8,
+        "secondsPerShard": 3600,
+        "fuzzHours": 0
+      },
+      {
+        "target": "fuzz_manifest_parse",
+        "status": "pending",
+        "shards": 8,
+        "secondsPerShard": 3600,
+        "fuzzHours": 0
+      }
+    ]
+  },
+  "externalReview": {
+    "status": "pending",
+    "mode": "community",
+    "reviewer": "pending",
+    "artifactUrl": "pending",
+    "completedAt": "pending",
+    "auditOpenedAt": "pending",
+    "auditWindowDays": 0,
+    "announcementUrl": "pending"
+  }
+}

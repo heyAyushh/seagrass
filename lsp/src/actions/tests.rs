@@ -1,0 +1,130 @@
+use {
+    super::{code_actions, common::diagnostic_code, common::parser_rule_kind, resolve},
+    crate::{
+        constraint_catalog,
+        diagnostics::{self, ANCHOR_MISSING_INIT_CONSTRAINT_CODE},
+        document::ParsedDocument,
+        workspace::WorkspaceIndex,
+    },
+    tower_lsp::lsp_types::{Diagnostic, NumberOrString, Position, Range, TextEdit, Url},
+};
+
+#[path = "tests/account_refs.rs"]
+mod account_refs;
+#[path = "tests/account_types.rs"]
+mod account_types;
+#[path = "tests/context.rs"]
+mod context;
+#[path = "tests/features_project.rs"]
+mod features_project;
+#[path = "tests/generated_constraints.rs"]
+mod generated_constraints;
+#[path = "tests/instructions.rs"]
+mod instructions;
+#[path = "tests/missing_init.rs"]
+mod missing_init;
+#[path = "tests/security_mut.rs"]
+mod security_mut;
+#[path = "tests/token_constraints.rs"]
+mod token_constraints;
+
+fn apply_text_edit(source: &str, edit: &TextEdit) -> String {
+    let start = byte_offset(source, edit.range.start);
+    let end = byte_offset(source, edit.range.end);
+    let mut updated = String::new();
+    updated.push_str(&source[..start]);
+    updated.push_str(&edit.new_text);
+    updated.push_str(&source[end..]);
+    updated
+}
+
+fn byte_offset(source: &str, position: Position) -> usize {
+    let target_line = usize::try_from(position.line).unwrap();
+    let target_character = usize::try_from(position.character).unwrap();
+    let mut offset = 0usize;
+    for (idx, line) in source.split_inclusive('\n').enumerate() {
+        if idx == target_line {
+            let line = line.strip_suffix('\n').unwrap_or(line);
+            return offset
+                + line
+                    .char_indices()
+                    .nth(target_character)
+                    .map(|(idx, _)| idx)
+                    .unwrap_or(line.len());
+        }
+        offset += line.len();
+    }
+    source.len()
+}
+
+struct MissingReferenceActionScenario {
+    missing: &'static str,
+    replacement: &'static str,
+}
+
+fn missing_reference_action_scenario(
+    key: &str,
+    value_kind: constraint_catalog::ConstraintValueKind,
+) -> MissingReferenceActionScenario {
+    match value_kind {
+        constraint_catalog::ConstraintValueKind::AccountReference => match key {
+            "token::mint" | "associated_token::mint" => MissingReferenceActionScenario {
+                missing: "mnt",
+                replacement: "mint",
+            },
+            _ => MissingReferenceActionScenario {
+                missing: "recipent",
+                replacement: "recipient",
+            },
+        },
+        constraint_catalog::ConstraintValueKind::SignerReference => {
+            MissingReferenceActionScenario {
+                missing: "authorty",
+                replacement: "authority",
+            }
+        }
+        constraint_catalog::ConstraintValueKind::ProgramReference => {
+            if key.ends_with("token_program") {
+                MissingReferenceActionScenario {
+                    missing: "tokn_program",
+                    replacement: "token_program",
+                }
+            } else if key == "seeds::program" {
+                MissingReferenceActionScenario {
+                    missing: "metadata_programm",
+                    replacement: "metadata_program",
+                }
+            } else {
+                MissingReferenceActionScenario {
+                    missing: "hook_programm",
+                    replacement: "hook_program",
+                }
+            }
+        }
+        _ => unreachable!("only generated reference constraints are passed here"),
+    }
+}
+
+fn generated_missing_reference_source(key: &str, missing: &str) -> String {
+    format!(
+        r#"
+#[derive(Accounts)]
+pub struct Create<'info> {{
+    #[account({key} = {missing})]
+    pub state: Account<'info, State>,
+    pub user: Signer<'info>,
+    pub authority: Signer<'info>,
+    pub recipient: AccountInfo<'info>,
+    pub mint: Account<'info, Mint>,
+    pub token_program: Program<'info, Token>,
+    pub metadata_program: Program<'info, Metadata>,
+    pub hook_program: Program<'info, HookProgram>,
+}}
+
+#[account]
+pub struct State {{
+    pub recipient: Pubkey,
+}}
+"#
+    )
+}

@@ -1,0 +1,95 @@
+# Seagrass Editor UI Contract
+
+Seagrass should feel like the same tool in every editor. Keep the adapter thin, keep the words consistent, and let the server own Anchor intelligence.
+
+## Product Surface
+
+- Product name: `Seagrass`
+- Server id: `seagrass`
+- Output/log channel label: `Seagrass`
+- Visible status label: `Seagrass`
+- Role: Anchor-specific diagnostics, completions, hovers, symbols, and fixes for Solana programs using Anchor, plus local artifact evidence for Anchor, Pinocchio, and native Solana programs.
+- Relationship to Rust tooling: Seagrass runs standalone and owns Anchor semantics. Other Rust servers are optional.
+
+## Commands
+
+Use these labels anywhere an editor exposes commands:
+
+- `Seagrass: Status`
+- `Seagrass: Analyze Document`
+- `Seagrass: Artifacts`
+- `Seagrass: Recent Logs`
+- `Seagrass: Error Coverage`
+- `Seagrass: Support Matrix`
+- `Seagrass: Generator Profile`
+- `Seagrass: Restart Server`
+- `Seagrass: Output`
+
+The server-side execute-command ids stay stable:
+
+- `seagrass/status`
+- `seagrass/analyze`
+- `seagrass/artifacts`
+- `seagrass/logs`
+- `seagrass/errorCoverage`
+- `seagrass/supportMatrix`
+- `seagrass/generatorProfile`
+- `seagrass/projectCoverage`
+
+## Status Surface
+
+When an editor exposes a persistent status surface, use `Seagrass` as the label and keep it diagnostic-aware for the active file:
+
+- starting: `Seagrass` with a busy indicator
+- ready and clean: `Seagrass` with a success indicator
+- active-file errors: `Seagrass <error-count>` with an error indicator
+- active-file warnings: `Seagrass <warning-count>` with a warning indicator
+- stopped: `Seagrass` with a stopped indicator
+
+The status action should open `Seagrass: Status` where the editor supports commands.
+
+## Startup Summary
+
+Every adapter that can write startup output should use this shape:
+
+```text
+Seagrass
+server: <command> <args>
+cwd: <working directory>
+sync: full
+diagnostics: <push|pull|both>
+workspaces: <comma-separated roots|none>
+features: <short comma-separated feature list>
+```
+
+Each adapter should pick the default diagnostics transport that gives the best native editor UX without duplicating Problems entries. VS Code defaults to `push` because VS Code can duplicate pull and publish diagnostics. Zed defaults to `both` so diagnostics are available on open before the user types while publish diagnostics stay live after edits.
+
+Completion should wake on the first typed identifier character and on space in Anchor-aware contexts. The server advertises those trigger characters and then applies its own semantic gate, so normal Rust stays quiet while Anchor prefixes and delimiter-space flows do not wait for editor minimum-word heuristics.
+
+## Settings
+
+VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settings equivalent:
+
+- `diagnostics.security.enabled`
+- `diagnostics.security.<family>`
+- `security.strictNative.enabled`
+- `diagnostics.experimental.enabled`
+- `diagnostics.transport`
+- `diagnostics.coldPath`
+- `editor.client`
+- `editor.inlineValues.enabled`
+- `telemetry.completion.enabled`
+- `telemetry.diagnostics.enabled`
+- `inlayHints.enabled`
+- `workspaceIndex.enabled`
+- `trace.server`
+
+Server launch settings are editor-specific because each editor models binaries differently. The behavior should still resolve in this order when possible:
+
+1. Explicit editor binary setting.
+2. `seagrass` on `PATH`.
+3. Local `cargo run` fallback for development.
+
+## Visual Tone
+
+Keep editor-facing text compact, content-first, and concrete. Prefer labels over explanations in command names. Put operational detail in logs and README files, not popups.

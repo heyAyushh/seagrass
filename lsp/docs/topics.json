@@ -1,0 +1,166 @@
+{
+  "$schema": "./topics.schema.json",
+  "schemaVersion": 1,
+  "topics": [
+    {
+      "name": "seagrass/anchor.account.usage",
+      "description": "Anchor account mutability and usage diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.artifact.idl",
+      "description": "Anchor IDL artifact freshness and availability diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.artifact.program-keypair",
+      "description": "Anchor program keypair artifact diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.artifact.sbf",
+      "description": "Anchor SBF build artifact diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.artifact.types",
+      "description": "Anchor generated TypeScript type artifact diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.check-cfg",
+      "description": "Anchor Cargo feature diagnostics for Rust check-cfg compatibility."
+    },
+    {
+      "name": "seagrass/anchor.constraint.account-reference",
+      "description": "Anchor constraint references to missing accounts or arguments."
+    },
+    {
+      "name": "seagrass/anchor.constraint.shape",
+      "description": "Anchor account constraint parser and shape diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.context.accounts",
+      "description": "Anchor Context<T> account struct diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.init.constraints",
+      "description": "General Anchor init constraint diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.init.missing-companion",
+      "description": "Anchor init companion constraint diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.init.missing-payer",
+      "description": "Anchor init constraints missing payer evidence."
+    },
+    {
+      "name": "seagrass/anchor.init.missing-space",
+      "description": "Anchor init constraints missing account space evidence."
+    },
+    {
+      "name": "seagrass/anchor.instruction.argument",
+      "description": "Anchor instruction attribute argument diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.pda.seed-resolution",
+      "description": "Anchor PDA seed expression visibility and IDL diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.project-id",
+      "description": "Anchor declare_id and Anchor.toml project identity diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.spl-token-interface",
+      "description": "Anchor SPL token and token-interface semantic diagnostics."
+    },
+    {
+      "name": "seagrass/anchor.syntax",
+      "description": "Anchor parser syntax diagnostics."
+    },
+    {
+      "name": "seagrass/security.account.duplicate-mutable",
+      "description": "Duplicate mutable account security diagnostics."
+    },
+    {
+      "name": "seagrass/security.account.unchecked",
+      "description": "Unchecked account security diagnostics."
+    },
+    {
+      "name": "seagrass/security.cpi.program",
+      "description": "CPI program validation security diagnostics."
+    },
+    {
+      "name": "seagrass/security.owner-check",
+      "description": "Owner-check security diagnostics."
+    },
+    {
+      "name": "seagrass/security.pda.static-seed",
+      "description": "Static PDA seed security diagnostics."
+    },
+    {
+      "name": "seagrass/security.signer.authorization",
+      "description": "Signer authorization security diagnostics."
+    },
+    {
+      "name": "seagrass/security.sysvar.address",
+      "description": "Sysvar address validation diagnostics."
+    },
+    {
+      "name": "seagrass/security.token-account",
+      "description": "Token account validation security diagnostics."
+    },
+    {
+      "name": "seagrass/security.type-cosplay",
+      "description": "Type-cosplay and discriminator validation diagnostics."
+    },
+    {
+      "name": "seagrass/solana.artifact.idl",
+      "description": "Solana IDL artifact diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality",
+      "description": "General Solana code-quality diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality.account-closing",
+      "description": "Manual account close invariant diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality.bump-seed-canonicalization",
+      "description": "Manual PDA bump canonicalization diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality.initialization",
+      "description": "Unchecked initialization and reinitialization diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality.instruction-data-bounds",
+      "description": "Instruction data bounds validation diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality.pda-seed-collision",
+      "description": "PDA seed domain collision diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality.stale-account-after-cpi",
+      "description": "Stale account reads after CPI diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality.unchecked-arithmetic",
+      "description": "Unchecked balance and lamports arithmetic diagnostics."
+    },
+    {
+      "name": "seagrass/solana.code-quality.unsafe-unwrap",
+      "description": "Unsafe unwrap and expect diagnostics."
+    },
+    {
+      "name": "seagrass/solana.program-metadata",
+      "description": "Solana program metadata diagnostics."
+    },
+    {
+      "name": "seagrass/solana.surfpool-workspace",
+      "description": "Surfpool workspace diagnostics."
+    },
+    {
+      "name": "seagrass/solana.test-harness",
+      "description": "Solana test harness diagnostics."
+    }
+  ]
+}

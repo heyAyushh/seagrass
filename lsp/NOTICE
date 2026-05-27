@@ -1,0 +1,22 @@
+Seagrass LSP
+Copyright the Seagrass contributors.
+
+This LSP overlay is MIT licensed.
+
+Generated Anchor support catalogs include facts derived from Apache-2.0 Anchor
+source files in the `otter-sec/anchor` workspace:
+
+- `Cargo.toml`
+- `lang/syn/src/parser/accounts/constraints.rs`
+- `lang/syn/src/parser/accounts/mod.rs`
+- `lang/error/src/lib.rs`
+- `lang/src/lib.rs`
+- `spl/src/associated_token.rs`
+- `spl/src/token.rs`
+- `spl/src/token_2022.rs`
+- `spl/src/token_interface.rs`
+- `examples/**/programs/**/src/**/*.rs`
+- `tests/**/programs/**/src/**/*.rs`
+
+The generated catalogs are checked in under `lsp/src/generated/` so normal
+builds do not scrape those upstream files.
