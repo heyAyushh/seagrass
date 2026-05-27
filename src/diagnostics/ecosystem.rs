@@ -33,6 +33,10 @@ pub fn collect(
 }
 
 fn idl_diagnostics(document: &ParsedDocument, report: &EcosystemReport) -> Vec<Diagnostic> {
+    if !document_anchors_program(document) {
+        return Vec::new();
+    }
+
     report
         .idl_sources
         .iter()
@@ -119,6 +123,10 @@ fn program_metadata_diagnostics(
     document: &ParsedDocument,
     report: &EcosystemReport,
 ) -> Vec<Diagnostic> {
+    if !document_anchors_program(document) {
+        return Vec::new();
+    }
+
     if report.program_metadata.status != ProgramMetadataStatus::ConfiguredMissingPayload {
         return Vec::new();
     }
@@ -147,6 +155,10 @@ fn test_harness_diagnostics(
     document: &ParsedDocument,
     report: &EcosystemReport,
 ) -> Vec<Diagnostic> {
+    if !document_anchors_program(document) {
+        return Vec::new();
+    }
+
     report
         .test_harnesses
         .iter()
@@ -175,6 +187,10 @@ fn test_harness_diagnostics(
 }
 
 fn surfpool_diagnostics(document: &ParsedDocument, report: &EcosystemReport) -> Vec<Diagnostic> {
+    if !document_anchors_program(document) {
+        return Vec::new();
+    }
+
     if report.surfpool.status != SurfpoolStatus::ConfiguredMissingDeployArtifact {
         return Vec::new();
     }
@@ -258,6 +274,11 @@ fn diagnostic_range(document: &ParsedDocument) -> Range {
                 .map(|instruction| instruction.selection_range)
         })
         .unwrap_or_default()
+}
+
+fn document_anchors_program(document: &ParsedDocument) -> bool {
+    document.symbols().declared_program_id.is_some()
+        || !document.symbols().instructions.is_empty()
 }
 
 fn file_uri(path: &Path) -> Option<Url> {
