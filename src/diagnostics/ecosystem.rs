@@ -277,8 +277,7 @@ fn diagnostic_range(document: &ParsedDocument) -> Range {
 }
 
 fn document_anchors_program(document: &ParsedDocument) -> bool {
-    document.symbols().declared_program_id.is_some()
-        || !document.symbols().instructions.is_empty()
+    document.symbols().declared_program_id.is_some() || !document.symbols().instructions.is_empty()
 }
 
 fn file_uri(path: &Path) -> Option<Url> {

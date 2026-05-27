@@ -463,10 +463,7 @@ const CAPABILITIES: &[CapabilitySupport] = &[
             "reloadGuidance",
             "checkedDataGuidance",
         ],
-        evidence: &[
-            "src/diagnostics/code_quality.rs",
-            "src/anchor_support.rs",
-        ],
+        evidence: &["src/diagnostics/code_quality.rs", "src/anchor_support.rs"],
         gaps: &["versionSpecificTemplateRewriteSuggestions"],
     },
     CapabilitySupport {
