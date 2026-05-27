@@ -11,6 +11,13 @@ struct CompletionLog<'a> {
     context: Option<&'a CompletionContext>,
 }
 
+pub(super) fn feedback_response(url: &str) -> serde_json::Value {
+    serde_json::json!({
+        "url": url,
+        "label": "Join the Seagrass Telegram",
+    })
+}
+
 impl Backend {
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub(super) async fn refresh_workspace_index(&self) {
@@ -220,6 +227,17 @@ impl Backend {
             .lock()
             .unwrap_or_else(|err| err.into_inner());
         server_observability::recent_logs_snapshot_from_entries(&logs, RECENT_LOG_LIMIT)
+    }
+
+    pub(super) fn feedback_command(&self) -> serde_json::Value {
+        let url = self
+            .settings
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .feedback_url
+            .clone()
+            .unwrap_or_else(|| crate::SEAGRASS_FEEDBACK_URL.to_string());
+        feedback_response(&url)
     }
 
     pub(super) fn project_coverage_command(&self) -> serde_json::Value {

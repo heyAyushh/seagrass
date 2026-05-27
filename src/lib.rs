@@ -41,5 +41,8 @@ mod workspace;
 
 pub mod fuzz_harness;
 
+// TODO: replace this placeholder with the public invite before publishing builds.
+pub const SEAGRASS_FEEDBACK_URL: &str = "https://t.me/REPLACE_WITH_INVITE";
+
 #[cfg(test)]
 mod editor_ux_parity;

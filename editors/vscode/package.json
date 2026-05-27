@@ -18,6 +18,7 @@
     "onCommand:seagrass.status",
     "onCommand:seagrass.analyze",
     "onCommand:seagrass.artifacts",
+    "onCommand:seagrass.feedback",
     "onCommand:seagrass.errorCoverage",
     "onCommand:seagrass.supportMatrix",
     "onCommand:seagrass.generatorProfile",
@@ -40,6 +41,10 @@
       {
         "command": "seagrass.artifacts",
         "title": "Seagrass: Artifacts"
+      },
+      {
+        "command": "seagrass.feedback",
+        "title": "Seagrass: Send Feedback"
       },
       {
         "command": "seagrass.errorCoverage",
@@ -79,6 +84,9 @@
         {
           "command": "seagrass.artifacts",
           "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.feedback"
         },
         {
           "command": "seagrass.errorCoverage",
@@ -143,6 +151,11 @@
           "type": "boolean",
           "default": false,
           "description": "Fill unset Seagrass analysis settings with agent-friendly diagnostics, security, and tracing defaults. Explicit settings still win."
+        },
+        "seagrass.feedback.url": {
+          "type": "string",
+          "default": "",
+          "description": "Override the Seagrass feedback URL returned by the language server. Leave empty to use the bundled URL."
         },
         "seagrass.diagnostics.security.enabled": {
           "type": "boolean",

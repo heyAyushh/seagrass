@@ -74,6 +74,7 @@ const SUPPORT_MATRIX_COMMAND: &str = "seagrass/supportMatrix";
 const GENERATOR_PROFILE_COMMAND: &str = "seagrass/generatorProfile";
 const LOGS_COMMAND: &str = "seagrass/logs";
 const PROJECT_COVERAGE_COMMAND: &str = "seagrass/projectCoverage";
+const FEEDBACK_COMMAND: &str = "seagrass/feedback";
 const RECENT_LOG_LIMIT: usize = 200;
 const COLD_DIAGNOSTICS_DEBOUNCE_MILLIS: u64 = 700;
 const TYPING_DIAGNOSTIC_SUPPRESSION_MILLIS: u64 = 250;
@@ -724,6 +725,7 @@ impl LanguageServer for Backend {
             GENERATOR_PROFILE_COMMAND => Ok(Some(anchor_support::generator_profile())),
             LOGS_COMMAND => Ok(Some(self.recent_logs_snapshot())),
             PROJECT_COVERAGE_COMMAND => Ok(Some(self.project_coverage_command())),
+            FEEDBACK_COMMAND => Ok(Some(self.feedback_command())),
             _ => Ok(None),
         }
     }

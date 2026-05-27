@@ -340,6 +340,7 @@ pub(super) fn server_capabilities(
                 GENERATOR_PROFILE_COMMAND.to_string(),
                 LOGS_COMMAND.to_string(),
                 PROJECT_COVERAGE_COMMAND.to_string(),
+                FEEDBACK_COMMAND.to_string(),
             ],
             ..ExecuteCommandOptions::default()
         }),

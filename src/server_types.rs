@@ -95,6 +95,7 @@ pub(crate) struct ServerSettings {
     pub(crate) diagnostics_cold_path: DiagnosticsColdPath,
     pub(crate) workspace_index: bool,
     pub(crate) trace_server: bool,
+    pub(crate) feedback_url: Option<String>,
     pub(crate) editor_context: EditorContext,
 }
 
@@ -125,6 +126,7 @@ impl Default for ServerSettings {
             diagnostics_cold_path: DiagnosticsColdPath::Idle,
             workspace_index: true,
             trace_server: false,
+            feedback_url: None,
             editor_context: EditorContext::default(),
         }
     }
@@ -152,6 +154,9 @@ impl ServerSettings {
         self.workspace_index =
             bool_setting(anchor, "workspaceIndex.enabled").unwrap_or(self.workspace_index);
         self.trace_server = bool_setting(anchor, "trace.server").unwrap_or(self.trace_server);
+        if setting_value(anchor, "feedback.url").is_some() {
+            self.feedback_url = non_empty_string_setting(anchor, "feedback.url");
+        }
     }
 
     fn apply_agent_mode_defaults(&mut self, settings: &serde_json::Value) {
@@ -220,6 +225,13 @@ fn string_setting(settings: &serde_json::Value, key: &str) -> Option<String> {
     setting_value(settings, key)
         .and_then(|value| value.as_str())
         .map(str::to_string)
+}
+
+fn non_empty_string_setting(settings: &serde_json::Value, key: &str) -> Option<String> {
+    string_setting(settings, key).and_then(|value| {
+        let trimmed = value.trim();
+        (!trimmed.is_empty()).then(|| trimmed.to_string())
+    })
 }
 
 fn setting_value<'a>(settings: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {

@@ -18,6 +18,7 @@ Use these labels anywhere an editor exposes commands:
 - `Seagrass: Status`
 - `Seagrass: Analyze Document`
 - `Seagrass: Artifacts`
+- `Seagrass: Send Feedback`
 - `Seagrass: Recent Logs`
 - `Seagrass: Error Coverage`
 - `Seagrass: Support Matrix`
@@ -30,6 +31,7 @@ The server-side execute-command ids stay stable:
 - `seagrass/status`
 - `seagrass/analyze`
 - `seagrass/artifacts`
+- `seagrass/feedback`
 - `seagrass/logs`
 - `seagrass/errorCoverage`
 - `seagrass/supportMatrix`

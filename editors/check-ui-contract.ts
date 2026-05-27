@@ -8,6 +8,7 @@ const expectedCommands = new Map([
   ["seagrass.status", "Seagrass: Status"],
   ["seagrass.analyze", "Seagrass: Analyze Document"],
   ["seagrass.artifacts", "Seagrass: Artifacts"],
+  ["seagrass.feedback", "Seagrass: Send Feedback"],
   ["seagrass.logs", "Seagrass: Recent Logs"],
   ["seagrass.errorCoverage", "Seagrass: Error Coverage"],
   ["seagrass.supportMatrix", "Seagrass: Support Matrix"],
@@ -58,6 +59,7 @@ assert(
   "Zed extension description should match the shared product role",
 );
 assert(vscodeSettings["seagrass.agent.mode"], "VS Code package is missing seagrass.agent.mode");
+assert(vscodeSettings["seagrass.feedback.url"], "VS Code package is missing seagrass.feedback.url");
 assert(contract.includes("`agent.mode`"), "UI contract is missing agent.mode");
 
 for (const family of securityFamilies) {

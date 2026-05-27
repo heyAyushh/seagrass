@@ -59,6 +59,7 @@ fn capabilities_advertise_support_commands() {
         GENERATOR_PROFILE_COMMAND,
         LOGS_COMMAND,
         PROJECT_COVERAGE_COMMAND,
+        FEEDBACK_COMMAND,
     ] {
         assert!(
             commands.contains(&command.to_string()),
@@ -184,6 +185,7 @@ fn status_text_reports_observable_server_state() {
         diagnostics_cold_path: crate::server_types::DiagnosticsColdPath::Save,
         workspace_index: false,
         trace_server: true,
+        feedback_url: None,
         editor_context: crate::server_types::EditorContext::default(),
     };
 
@@ -404,6 +406,7 @@ fn agent_mode_fills_unset_server_settings() {
         diagnostics_cold_path: crate::server_types::DiagnosticsColdPath::Save,
         workspace_index: true,
         trace_server: false,
+        feedback_url: None,
         editor_context: crate::server_types::EditorContext::default(),
     };
 
@@ -476,6 +479,43 @@ fn agent_mode_preserves_explicit_server_settings() {
     assert_eq!(
         settings.security_levels.get("security.pdaSeedCollision"),
         Some(&diagnostics::DiagnosticLevel::Hint)
+    );
+}
+
+#[test]
+fn feedback_url_setting_tracks_non_empty_values() {
+    let mut settings = ServerSettings::default();
+
+    settings.apply(serde_json::json!({
+        "seagrass": {
+            "feedback": {
+                "url": " https://example.test/seagrass "
+            }
+        }
+    }));
+
+    assert_eq!(
+        settings.feedback_url.as_deref(),
+        Some("https://example.test/seagrass")
+    );
+
+    settings.apply(serde_json::json!({
+        "seagrass": {
+            "feedback.url": ""
+        }
+    }));
+
+    assert_eq!(settings.feedback_url, None);
+}
+
+#[test]
+fn feedback_response_uses_server_owned_shape() {
+    assert_eq!(
+        super::backend_features::feedback_response("https://example.test/seagrass"),
+        serde_json::json!({
+            "url": "https://example.test/seagrass",
+            "label": "Join the Seagrass Telegram",
+        })
     );
 }
 

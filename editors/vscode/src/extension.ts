@@ -8,6 +8,7 @@ const DIAGNOSTIC_SOURCE = "seagrass";
 const STATUS_COMMAND = "seagrass/status";
 const ANALYZE_COMMAND = "seagrass/analyze";
 const ARTIFACTS_COMMAND = "seagrass/artifacts";
+const FEEDBACK_COMMAND = "seagrass/feedback";
 const ERROR_COVERAGE_COMMAND = "seagrass/errorCoverage";
 const SUPPORT_MATRIX_COMMAND = "seagrass/supportMatrix";
 const GENERATOR_PROFILE_COMMAND = "seagrass/generatorProfile";
@@ -55,6 +56,7 @@ const SERVER_CAPABILITIES = [
   STATUS_COMMAND,
   ANALYZE_COMMAND,
   ARTIFACTS_COMMAND,
+  FEEDBACK_COMMAND,
   ERROR_COVERAGE_COMMAND,
   SUPPORT_MATRIX_COMMAND,
   GENERATOR_PROFILE_COMMAND,
@@ -93,6 +95,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("seagrass.status", showStatus),
     vscode.commands.registerCommand("seagrass.analyze", showAnalysis),
     vscode.commands.registerCommand("seagrass.artifacts", showArtifacts),
+    vscode.commands.registerCommand("seagrass.feedback", showFeedback),
     vscode.commands.registerCommand("seagrass.errorCoverage", showErrorCoverage),
     vscode.commands.registerCommand("seagrass.supportMatrix", showSupportMatrix),
     vscode.commands.registerCommand("seagrass.generatorProfile", showGeneratorProfile),
@@ -259,6 +262,48 @@ async function showArtifacts(): Promise<void> {
   outputChannel?.appendLine("Seagrass artifacts:");
   outputChannel?.appendLine(JSON.stringify(artifacts, null, 2));
   outputChannel?.show(true);
+}
+
+type FeedbackLink = {
+  url: string;
+  label: string;
+};
+
+async function showFeedback(): Promise<void> {
+  if (!client) {
+    outputChannel?.appendLine("Seagrass is not running.");
+    outputChannel?.show(true);
+    return;
+  }
+
+  const response = await client.sendRequest<unknown>("workspace/executeCommand", {
+    command: FEEDBACK_COMMAND,
+    arguments: [],
+  });
+  const feedback = parseFeedbackResponse(response);
+  if (!feedback) {
+    void vscode.window.showWarningMessage("Seagrass did not return a feedback URL.");
+    return;
+  }
+
+  outputChannel?.appendLine(`Opening ${feedback.label}: ${feedback.url}`);
+  await vscode.env.openExternal(vscode.Uri.parse(feedback.url));
+}
+
+function parseFeedbackResponse(value: unknown): FeedbackLink | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const record = value as Record<string, unknown>;
+  const url = stringField(record, "url");
+  const label = stringField(record, "label") ?? "Join the Seagrass Telegram";
+  return url ? { url, label } : undefined;
+}
+
+function stringField(record: Record<string, unknown>, key: string): string | undefined {
+  const value = record[key];
+  return typeof value === "string" && value.trim().length > 0 ? value : undefined;
 }
 
 async function showErrorCoverage(): Promise<void> {
