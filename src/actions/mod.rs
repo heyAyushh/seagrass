@@ -150,9 +150,7 @@ pub fn rank_and_filter_for_cursor(
             .diagnostics
             .as_ref()
             .and_then(|attached| attached.first())
-            .map_or(true, |diagnostic| {
-                common::diagnostic_touches_range(diagnostic, cursor)
-            })
+            .is_none_or(|diagnostic| common::diagnostic_touches_range(diagnostic, cursor))
     });
     actions
 }
