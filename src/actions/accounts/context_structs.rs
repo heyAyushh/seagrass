@@ -1,13 +1,13 @@
 use {
     super::super::common::{
         diagnostic_code, diagnostic_quickfix, eof_range, single_document_edit, single_text_edit,
-        struct_line,
+        snippet_text_edit, struct_line,
     },
     super::field_edits::{accounts_struct_stub, inferred_account_fields},
     crate::document::ParsedDocument,
     std::collections::HashMap,
     tower_lsp::lsp_types::{
-        CodeAction, CodeActionKind, Diagnostic, Position, Range, TextEdit, Url, WorkspaceEdit,
+        CodeAction, CodeActionKind, Diagnostic, Position, Range, Url, WorkspaceEdit,
     },
 };
 
@@ -93,14 +93,14 @@ fn create_accounts_struct_actions(
             let mut changes = HashMap::new();
             changes.insert(
                 uri.clone(),
-                vec![TextEdit {
-                    range: eof_range(document.source()),
-                    new_text: accounts_struct_stub(
+                vec![snippet_text_edit(
+                    eof_range(document.source()),
+                    &accounts_struct_stub(
                         document.source(),
                         context_type,
                         &inferred_account_fields(document, context_type),
                     ),
-                }],
+                )],
             );
 
             Some(CodeAction {
@@ -155,10 +155,7 @@ fn fill_context_type_actions(
             let mut changes = HashMap::new();
             changes.insert(
                 uri.clone(),
-                vec![TextEdit {
-                    range: diagnostic.range,
-                    new_text: context_type.to_string(),
-                }],
+                vec![snippet_text_edit(diagnostic.range, context_type)],
             );
 
             let mut actions = vec![CodeAction {
@@ -185,18 +182,15 @@ fn fill_context_type_actions(
                 changes.insert(
                     uri.clone(),
                     vec![
-                        TextEdit {
-                            range: diagnostic.range,
-                            new_text: context_type.to_string(),
-                        },
-                        TextEdit {
-                            range: eof_range(document.source()),
-                            new_text: accounts_struct_stub(
+                        snippet_text_edit(diagnostic.range, context_type),
+                        snippet_text_edit(
+                            eof_range(document.source()),
+                            &accounts_struct_stub(
                                 document.source(),
                                 context_type,
                                 &inferred_account_fields(document, context_type),
                             ),
-                        },
+                        ),
                     ],
                 );
                 actions.push(CodeAction {

@@ -1,6 +1,7 @@
 use {
     super::common::{
         diagnostic_code, diagnostic_touches_range, signer_candidate, single_document_edit,
+        snippet_text_edit,
     },
     crate::{
         diagnostics::ANCHOR_MISSING_INIT_CONSTRAINT_CODE,
@@ -168,8 +169,8 @@ fn missing_init_edit(document: &ParsedDocument, diagnostic: &Diagnostic) -> Opti
         .take_while(|ch| ch.is_whitespace())
         .collect::<String>();
     let payer = payer_candidate(accounts).unwrap_or("payer");
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: Position {
                 line: line_number,
                 character: 0,
@@ -179,10 +180,10 @@ fn missing_init_edit(document: &ParsedDocument, diagnostic: &Diagnostic) -> Opti
                 character: 0,
             },
         },
-        new_text: format!(
+        &format!(
             "{indent}#[account(init, payer = {payer}, space = 8 + {account_type}::INIT_SPACE)]\n"
         ),
-    })
+    ))
 }
 fn payer_candidate(accounts: &SymbolRange) -> Option<&str> {
     signer_candidate(accounts.fields.iter())

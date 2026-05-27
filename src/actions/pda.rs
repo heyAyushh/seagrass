@@ -1,9 +1,9 @@
 use {
+    super::common::snippet_text_edit,
     crate::diagnostics::ANCHOR_PDA_SEED_RESOLUTION_CODE,
     std::collections::HashMap,
     tower_lsp::lsp_types::{
-        CodeAction, CodeActionKind, Diagnostic, NumberOrString, Position, Range, TextEdit, Url,
-        WorkspaceEdit,
+        CodeAction, CodeActionKind, Diagnostic, NumberOrString, Position, Range, Url, WorkspaceEdit,
     },
 };
 
@@ -36,8 +36,8 @@ fn document_idl_limitation_action(uri: Url, diagnostic: &Diagnostic) -> Option<C
     let mut changes = HashMap::new();
     changes.insert(
         uri.clone(),
-        vec![TextEdit {
-            range: Range {
+        vec![snippet_text_edit(
+            Range {
                 start: Position {
                     line: diagnostic.range.start.line,
                     character: 0,
@@ -47,8 +47,8 @@ fn document_idl_limitation_action(uri: Url, diagnostic: &Diagnostic) -> Option<C
                     character: 0,
                 },
             },
-            new_text: format!("    /// NOTE: PDA seed `{seed}` is not serializable to the Anchor IDL.\n    /// Clients must manually replicate this seed derivation.\n"),
-        }],
+            &format!("    /// NOTE: PDA seed `{seed}` is not serializable to the Anchor IDL.\n    /// Clients must manually replicate this seed derivation.\n"),
+        )],
     );
 
     Some(CodeAction {
@@ -118,8 +118,8 @@ fn copy_pda_derivation_action(uri: Url, diagnostic: &Diagnostic) -> Option<CodeA
     let mut changes = HashMap::new();
     changes.insert(
         uri.clone(),
-        vec![TextEdit {
-            range: Range {
+        vec![snippet_text_edit(
+            Range {
                 start: Position {
                     line: diagnostic.range.end.line + 1,
                     character: 0,
@@ -129,8 +129,8 @@ fn copy_pda_derivation_action(uri: Url, diagnostic: &Diagnostic) -> Option<CodeA
                     character: 0,
                 },
             },
-            new_text: format!("{ts_comment}\n"),
-        }],
+            &format!("{ts_comment}\n"),
+        )],
     );
 
     Some(CodeAction {

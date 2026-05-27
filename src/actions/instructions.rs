@@ -12,7 +12,8 @@
 
 use {
     super::common::{
-        diagnostic_code, diagnostic_quickfix, single_document_edit, single_text_edit, struct_line,
+        diagnostic_code, diagnostic_quickfix, single_document_edit, single_text_edit,
+        snippet_text_edit, struct_line,
     },
     crate::{
         document::{ParsedDocument, SymbolRange},
@@ -118,8 +119,8 @@ fn add_instruction_argument_edit(
             } else {
                 ", "
             };
-        return Some(TextEdit {
-            range: Range {
+        return Some(snippet_text_edit(
+            Range {
                 start: Position {
                     line: line_number,
                     character: u32::try_from(close_idx).ok()?,
@@ -129,8 +130,8 @@ fn add_instruction_argument_edit(
                     character: u32::try_from(close_idx).ok()?,
                 },
             },
-            new_text: format!("{separator}{argument}: {type_name}"),
-        });
+            &format!("{separator}{argument}: {type_name}"),
+        ));
     }
 
     let insert_line = struct_line(document.source(), accounts_name)?;
@@ -139,8 +140,8 @@ fn add_instruction_argument_edit(
         .chars()
         .take_while(|ch| ch.is_whitespace())
         .collect::<String>();
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: Position {
                 line: insert_line,
                 character: 0,
@@ -150,8 +151,8 @@ fn add_instruction_argument_edit(
                 character: 0,
             },
         },
-        new_text: format!("{indent}#[instruction({argument}: {type_name})]\n"),
-    })
+        &format!("{indent}#[instruction({argument}: {type_name})]\n"),
+    ))
 }
 
 fn instruction_attribute_line(document: &ParsedDocument, accounts: &SymbolRange) -> Option<u32> {
@@ -328,8 +329,8 @@ fn remove_instruction_argument_edit(
 
     let comma = line.get(..start)?.rfind(',')?;
     let end = instruction_argument_end_byte(line, start)?;
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: Position {
                 line: line_number,
                 character: u32::try_from(comma).ok()?,
@@ -339,8 +340,8 @@ fn remove_instruction_argument_edit(
                 character: u32::try_from(end).ok()?,
             },
         },
-        new_text: String::new(),
-    })
+        "",
+    ))
 }
 
 fn instruction_argument_end_byte(line: &str, start: usize) -> Option<usize> {

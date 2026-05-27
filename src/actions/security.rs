@@ -2,7 +2,7 @@
 //! Single seam (`code_actions`) for the thin central router.
 
 use {
-    super::common::{diagnostic_code, single_document_edit, single_text_edit},
+    super::common::{diagnostic_code, single_document_edit, single_text_edit, snippet_text_edit},
     crate::{
         anchor_types,
         document::{ParsedDocument, SymbolRange},
@@ -76,8 +76,8 @@ fn owner_constraint_actions(
                 diagnostics: Some(vec![diagnostic.clone()]),
                 edit: Some(single_document_edit(
                     uri.clone(),
-                    TextEdit {
-                        range: Range {
+                    snippet_text_edit(
+                        Range {
                             start: Position {
                                 line: line_number,
                                 character: 0,
@@ -87,8 +87,8 @@ fn owner_constraint_actions(
                                 character: 0,
                             },
                         },
-                        new_text: format!("{indent}#[account(owner = crate::ID)]\n"),
-                    },
+                        &format!("{indent}#[account(owner = crate::ID)]\n"),
+                    ),
                 )),
                 command: None,
                 is_preferred: Some(true),
@@ -244,13 +244,13 @@ fn bounds_guard_edit(document: &ParsedDocument, diagnostic: &Diagnostic) -> Opti
 }
 
 fn static_pda_seed_edit(diagnostic: &Diagnostic) -> Option<TextEdit> {
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: diagnostic.range.end,
             end: diagnostic.range.end,
         },
-        new_text: "b\"state\", ".to_string(),
-    })
+        "b\"state\", ",
+    ))
 }
 
 fn native_owner_guard_edit(document: &ParsedDocument, diagnostic: &Diagnostic) -> Option<TextEdit> {
@@ -286,13 +286,13 @@ fn indent_at(document: &ParsedDocument, line_number: u32) -> String {
 }
 
 fn insert_line_edit(line: u32, new_text: String) -> TextEdit {
-    TextEdit {
-        range: Range {
+    snippet_text_edit(
+        Range {
             start: Position { line, character: 0 },
             end: Position { line, character: 0 },
         },
-        new_text,
-    }
+        &new_text,
+    )
 }
 
 fn replace_account_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
@@ -372,10 +372,7 @@ fn replace_invalid_sysvar_actions(
             let mut changes = HashMap::new();
             changes.insert(
                 uri.clone(),
-                vec![TextEdit {
-                    range: replacement_range,
-                    new_text: replacement.to_string(),
-                }],
+                vec![snippet_text_edit(replacement_range, replacement)],
             );
 
             Some(CodeAction {

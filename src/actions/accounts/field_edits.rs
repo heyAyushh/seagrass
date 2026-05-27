@@ -1,5 +1,5 @@
 use {
-    super::super::common::{diagnostic_code, single_document_edit},
+    super::super::common::{diagnostic_code, single_document_edit, snippet_text_edit},
     crate::{
         anchor_types,
         constraint_catalog::{self, ConstraintValueKind},
@@ -262,8 +262,8 @@ fn add_account_field_edit(
         .take_while(|ch| ch.is_whitespace())
         .collect::<String>();
     let field_indent = format!("{closing_indent}    ");
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: Position {
                 line: closing_line_number,
                 character: 0,
@@ -273,6 +273,6 @@ fn add_account_field_edit(
                 character: 0,
             },
         },
-        new_text: account_field_stub(field, &field_indent),
-    })
+        &account_field_stub(field, &field_indent),
+    ))
 }

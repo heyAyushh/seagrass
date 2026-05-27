@@ -18,7 +18,14 @@ const POSITION_CHARACTER_STRIDE: u64 = 1_000_000;
 
 /// Creates a single TextEdit for the given range and replacement text.
 pub fn single_text_edit(range: Range, new_text: String) -> TextEdit {
-    TextEdit { range, new_text }
+    snippet_text_edit(range, &new_text)
+}
+
+pub fn snippet_text_edit(range: Range, template: &str) -> TextEdit {
+    TextEdit {
+        range,
+        new_text: materialize_snippet_template(template),
+    }
 }
 
 /// Creates a WorkspaceEdit containing a single TextEdit for one document.
@@ -115,6 +122,78 @@ fn position_key(position: Position) -> u64 {
         .saturating_add(u64::from(position.character))
 }
 
+fn materialize_snippet_template(template: &str) -> String {
+    let mut output = String::with_capacity(template.len());
+    let mut chars = template.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch == '\\' && chars.peek() == Some(&'$') {
+            chars.next();
+            output.push('$');
+            continue;
+        }
+        if ch != '$' {
+            output.push(ch);
+            continue;
+        }
+        match chars.peek().copied() {
+            Some('{') => {
+                chars.next();
+                let placeholder = take_until_placeholder_end(&mut chars);
+                output.push_str(&materialize_placeholder(&placeholder));
+            }
+            Some(ch) if ch.is_ascii_digit() => {
+                consume_digits(&mut chars);
+            }
+            _ => output.push('$'),
+        }
+    }
+    output
+}
+
+fn take_until_placeholder_end<I>(chars: &mut std::iter::Peekable<I>) -> String
+where
+    I: Iterator<Item = char>,
+{
+    let mut placeholder = String::new();
+    while let Some(ch) = chars.next() {
+        if ch == '}' {
+            break;
+        }
+        placeholder.push(ch);
+    }
+    placeholder
+}
+
+fn materialize_placeholder(placeholder: &str) -> String {
+    let digits_len = placeholder
+        .bytes()
+        .take_while(|byte| byte.is_ascii_digit())
+        .count();
+    if digits_len == 0 {
+        return format!("${{{placeholder}}}");
+    }
+    let value = &placeholder[digits_len..];
+    if let Some(default) = value.strip_prefix(':') {
+        return materialize_snippet_template(default);
+    }
+    if let Some(choices) = value
+        .strip_prefix('|')
+        .and_then(|value| value.strip_suffix('|'))
+    {
+        return choices.split(',').next().unwrap_or("").to_string();
+    }
+    String::new()
+}
+
+fn consume_digits<I>(chars: &mut std::iter::Peekable<I>)
+where
+    I: Iterator<Item = char>,
+{
+    while chars.peek().is_some_and(|ch| ch.is_ascii_digit()) {
+        chars.next();
+    }
+}
+
 /// Finds the line number of a struct declaration by name in the source text.
 /// Used by multiple action families (accounts, instructions, context types) to locate
 /// where to insert attributes like `#[derive(Accounts)]` or `#[instruction(...)]`.
@@ -159,8 +238,8 @@ pub fn add_constraint_edit(
             let before_close = &line[..close_idx];
             if before_close.trim().is_empty() {
                 let indent = before_close.to_string();
-                return Some(TextEdit {
-                    range: Range {
+                return Some(snippet_text_edit(
+                    Range {
                         start: Position {
                             line: line_number,
                             character: 0,
@@ -170,8 +249,8 @@ pub fn add_constraint_edit(
                             character: 0,
                         },
                     },
-                    new_text: format!("{indent}{addition},\n"),
-                });
+                    &format!("{indent}{addition},\n"),
+                ));
             }
 
             let separator = if before_close.trim_end().ends_with('(')
@@ -181,8 +260,8 @@ pub fn add_constraint_edit(
             } else {
                 ", "
             };
-            return Some(TextEdit {
-                range: Range {
+            return Some(snippet_text_edit(
+                Range {
                     start: Position {
                         line: line_number,
                         character: u32::try_from(close_idx).ok()?,
@@ -192,8 +271,8 @@ pub fn add_constraint_edit(
                         character: u32::try_from(close_idx).ok()?,
                     },
                 },
-                new_text: format!("{separator}{addition}"),
-            });
+                &format!("{separator}{addition}"),
+            ));
         }
     }
 
@@ -214,8 +293,8 @@ pub fn add_constraint_to_field_edit(
         .chars()
         .take_while(|ch| ch.is_whitespace())
         .collect::<String>();
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: Position {
                 line: field.selection_range.start.line,
                 character: 0,
@@ -225,8 +304,8 @@ pub fn add_constraint_to_field_edit(
                 character: 0,
             },
         },
-        new_text: format!("{indent}#[account({addition})]\n"),
-    })
+        &format!("{indent}#[account({addition})]\n"),
+    ))
 }
 
 pub fn constraint_action(
@@ -377,4 +456,72 @@ pub(super) fn next_non_ws(chars: &[char], start: usize) -> Option<usize> {
         .enumerate()
         .skip(start)
         .find_map(|(idx, ch)| (!ch.is_whitespace()).then_some(idx))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn sample_range() -> Range {
+        Range {
+            start: Position {
+                line: 1,
+                character: 2,
+            },
+            end: Position {
+                line: 3,
+                character: 4,
+            },
+        }
+    }
+
+    #[test]
+    fn snippet_text_edit_materializes_default_placeholder() {
+        let edit = snippet_text_edit(
+            sample_range(),
+            "pub ${1:state}: ${2:Account<'info, State>},",
+        );
+
+        assert_eq!(edit.range, sample_range());
+        assert_eq!(edit.new_text, "pub state: Account<'info, State>,");
+    }
+
+    #[test]
+    fn snippet_text_edit_materializes_choice_placeholder() {
+        let edit = snippet_text_edit(sample_range(), "#[account(${1|mut,signer,init|})]");
+
+        assert_eq!(edit.new_text, "#[account(mut)]");
+    }
+
+    #[test]
+    fn snippet_text_edit_unescapes_dollar() {
+        let edit = snippet_text_edit(sample_range(), "msg!(\"cost: \\${1:amount}\");");
+
+        assert_eq!(edit.new_text, "msg!(\"cost: ${1:amount}\");");
+    }
+
+    #[test]
+    fn snippet_text_edit_materializes_multiple_tabstops() {
+        let edit = snippet_text_edit(
+            sample_range(),
+            "pub ${1:authority}: ${2:Signer<'info>},${0}",
+        );
+
+        assert_eq!(edit.new_text, "pub authority: Signer<'info>,");
+    }
+
+    #[test]
+    fn snippet_text_edit_drops_final_cursor_marker() {
+        let edit = snippet_text_edit(sample_range(), "Ok(())$0");
+
+        assert_eq!(edit.new_text, "Ok(())");
+    }
+
+    #[test]
+    fn snippet_text_edit_keeps_plain_text_idempotent() {
+        let plain = "#[account(mut, has_one = authority)]";
+        let edit = snippet_text_edit(sample_range(), plain);
+
+        assert_eq!(edit.new_text, plain);
+    }
 }

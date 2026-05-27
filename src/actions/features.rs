@@ -2,10 +2,10 @@
 //! Single seam (`code_actions`) for the thin central router.
 
 use {
-    super::common::{diagnostic_code, edit_distance},
+    super::common::{diagnostic_code, edit_distance, snippet_text_edit},
     crate::diagnostics::{check_cfg, project_identity},
     std::{collections::HashMap, fs},
-    tower_lsp::lsp_types::{CodeAction, CodeActionKind, Diagnostic, TextEdit, Url, WorkspaceEdit},
+    tower_lsp::lsp_types::{CodeAction, CodeActionKind, Diagnostic, Url, WorkspaceEdit},
 };
 
 pub fn code_actions(
@@ -46,10 +46,7 @@ fn replace_keyword_value_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Co
             let mut changes = HashMap::new();
             changes.insert(
                 uri.clone(),
-                vec![TextEdit {
-                    range: diagnostic.range,
-                    new_text: replacement.to_string(),
-                }],
+                vec![snippet_text_edit(diagnostic.range, replacement)],
             );
 
             Some(CodeAction {
@@ -191,10 +188,7 @@ fn sync_declare_id_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<CodeActi
             let mut changes = HashMap::new();
             changes.insert(
                 uri.clone(),
-                vec![TextEdit {
-                    range: diagnostic.range,
-                    new_text: expected.to_string(),
-                }],
+                vec![snippet_text_edit(diagnostic.range, expected)],
             );
 
             Some(CodeAction {

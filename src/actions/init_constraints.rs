@@ -1,4 +1,5 @@
 use {
+    super::common::snippet_text_edit,
     crate::{
         diagnostics::{ANCHOR_INIT_CONSTRAINTS_CODE, INIT_PLACEHOLDERS_QUICKFIX, SOURCE},
         document::{ParsedDocument, SymbolRange},
@@ -6,8 +7,7 @@ use {
     },
     std::collections::HashMap,
     tower_lsp::lsp_types::{
-        CodeAction, CodeActionKind, Diagnostic, NumberOrString, Position, Range, TextEdit, Url,
-        WorkspaceEdit,
+        CodeAction, CodeActionKind, Diagnostic, NumberOrString, Position, Range, Url, WorkspaceEdit,
     },
 };
 
@@ -144,13 +144,7 @@ pub fn code_actions(
     };
 
     let mut changes = HashMap::new();
-    changes.insert(
-        uri,
-        vec![TextEdit {
-            range: line_range,
-            new_text: replacement,
-        }],
-    );
+    changes.insert(uri, vec![snippet_text_edit(line_range, &replacement)]);
 
     vec![CodeAction {
         title: "Add Anchor init payer/space placeholders".to_string(),

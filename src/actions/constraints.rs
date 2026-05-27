@@ -9,7 +9,7 @@
 use {
     super::common::{
         add_constraint_to_field_edit, diagnostic_code, next_non_ws, parser_rule_kind,
-        previous_non_ws, signer_candidate,
+        previous_non_ws, signer_candidate, snippet_text_edit,
     },
     crate::{
         account_semantics,
@@ -102,10 +102,7 @@ fn remove_duplicate_constraint_edit(
 ) -> Option<TextEdit> {
     let line = crate::range::line_at(document.source(), diagnostic.range.start.line)?;
     if diagnostic.range.start.line != diagnostic.range.end.line {
-        return Some(TextEdit {
-            range: diagnostic.range,
-            new_text: String::new(),
-        });
+        return Some(snippet_text_edit(diagnostic.range, ""));
     }
 
     let chars = line.chars().collect::<Vec<_>>();
@@ -132,8 +129,8 @@ fn remove_duplicate_constraint_edit(
         }
     }
 
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: Position {
                 line: diagnostic.range.start.line,
                 character: u32::try_from(remove_start).ok()?,
@@ -143,8 +140,8 @@ fn remove_duplicate_constraint_edit(
                 character: u32::try_from(remove_end).ok()?,
             },
         },
-        new_text: String::new(),
-    })
+        "",
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -241,13 +238,13 @@ fn remove_constraint_keys_edit(
         })
         .collect::<Vec<_>>();
 
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: position_at_byte_offset(document.source(), attribute.inner_start)?,
             end: position_at_byte_offset(document.source(), attribute.inner_end)?,
         },
-        new_text: reordered_constraint_inner(attribute.inner, &segments),
-    })
+        &reordered_constraint_inner(attribute.inner, &segments),
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -333,13 +330,13 @@ fn reorder_constraint_edit(
     let required_segment = segments.remove(required_idx);
     segments.insert(before_idx, required_segment);
 
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: position_at_byte_offset(document.source(), attribute.inner_start)?,
             end: position_at_byte_offset(document.source(), attribute.inner_end)?,
         },
-        new_text: reordered_constraint_inner(attribute.inner, &segments),
-    })
+        &reordered_constraint_inner(attribute.inner, &segments),
+    ))
 }
 
 #[derive(Debug)]

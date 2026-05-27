@@ -9,6 +9,7 @@ use {
     super::common::{
         account_struct_closing_line, add_constraint_to_field_edit, constraint_action,
         diagnostic_code, edit_distance, field_indent, single_document_edit, single_text_edit,
+        snippet_text_edit,
     },
     crate::document::{ParsedDocument, SymbolRange},
     std::collections::HashMap,
@@ -142,10 +143,7 @@ fn system_program_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Code
             let mut changes = HashMap::new();
             changes.insert(
                 uri.clone(),
-                vec![TextEdit {
-                    range: diagnostic.range,
-                    new_text: expected.to_string(),
-                }],
+                vec![snippet_text_edit(diagnostic.range, expected)],
             );
 
             CodeAction {
@@ -204,8 +202,8 @@ fn add_missing_system_program_actions(
             let accounts = document.symbols().accounts_structs.get(accounts_name)?;
             let insert_line = account_struct_closing_line(document, accounts)?;
             let indent = field_indent(document, accounts);
-            let edit = TextEdit {
-                range: Range {
+            let edit = snippet_text_edit(
+                Range {
                     start: Position {
                         line: insert_line,
                         character: 0,
@@ -215,8 +213,8 @@ fn add_missing_system_program_actions(
                         character: 0,
                     },
                 },
-                new_text: format!("{indent}pub {missing}: {expected},\n"),
-            };
+                &format!("{indent}pub {missing}: {expected},\n"),
+            );
             let mut changes = HashMap::new();
             changes.insert(uri.clone(), vec![edit]);
 
@@ -393,8 +391,8 @@ fn add_mut_edit(document: &ParsedDocument, field: &SymbolRange) -> Option<TextEd
     if let Some(constraint) = field.account_constraints.first() {
         let line = crate::range::line_at(document.source(), constraint.range.start.line)?;
         let insert_at = line.find("#[account(")? + "#[account(".len();
-        return Some(TextEdit {
-            range: Range {
+        return Some(snippet_text_edit(
+            Range {
                 start: Position {
                     line: constraint.range.start.line,
                     character: u32::try_from(insert_at).ok()?,
@@ -404,8 +402,8 @@ fn add_mut_edit(document: &ParsedDocument, field: &SymbolRange) -> Option<TextEd
                     character: u32::try_from(insert_at).ok()?,
                 },
             },
-            new_text: "mut, ".to_string(),
-        });
+            "mut, ",
+        ));
     }
 
     let line = crate::range::line_at(document.source(), field.selection_range.start.line)?;
@@ -413,8 +411,8 @@ fn add_mut_edit(document: &ParsedDocument, field: &SymbolRange) -> Option<TextEd
         .chars()
         .take_while(|ch| ch.is_whitespace())
         .collect::<String>();
-    Some(TextEdit {
-        range: Range {
+    Some(snippet_text_edit(
+        Range {
             start: Position {
                 line: field.selection_range.start.line,
                 character: 0,
@@ -424,8 +422,8 @@ fn add_mut_edit(document: &ParsedDocument, field: &SymbolRange) -> Option<TextEd
                 character: 0,
             },
         },
-        new_text: format!("{indent}#[account(mut)]\n"),
-    })
+        &format!("{indent}#[account(mut)]\n"),
+    ))
 }
 
 fn duplicate_account_actions(
