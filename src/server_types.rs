@@ -3,6 +3,36 @@ use {
     std::collections::BTreeMap,
 };
 
+const SECURITY_LEVEL_SETTINGS: &[(&str, &str)] = &[
+    ("diagnostics.security.ownerChecks", "security.ownerChecks"),
+    ("diagnostics.security.typeCosplay", "security.typeCosplay"),
+    (
+        "diagnostics.security.accountClosing",
+        "security.accountClosing",
+    ),
+    (
+        "diagnostics.security.initialization",
+        "security.initialization",
+    ),
+    (
+        "diagnostics.security.staleCpiReload",
+        "security.staleCpiReload",
+    ),
+    (
+        "diagnostics.security.signerAuthorization",
+        "security.signerAuthorization",
+    ),
+    ("diagnostics.security.arbitraryCpi", "security.arbitraryCpi"),
+    (
+        "diagnostics.security.instructionDataBounds",
+        "security.instructionDataBounds",
+    ),
+    (
+        "diagnostics.security.pdaSeedCollision",
+        "security.pdaSeedCollision",
+    ),
+];
+
 #[derive(Debug, Clone)]
 pub(crate) struct OpenDocument {
     pub(crate) text: String,
@@ -103,6 +133,10 @@ impl Default for ServerSettings {
 impl ServerSettings {
     pub(crate) fn apply(&mut self, settings: serde_json::Value) {
         let anchor = settings.get("seagrass").unwrap_or(&settings);
+        let agent_mode = bool_setting(anchor, "agent.mode").unwrap_or(false);
+        if agent_mode {
+            self.apply_agent_mode_defaults(anchor);
+        }
         self.editor_context.apply(anchor);
         self.security_diagnostics = bool_setting(anchor, "diagnostics.security.enabled")
             .unwrap_or(self.security_diagnostics);
@@ -111,13 +145,34 @@ impl ServerSettings {
         self.strict_native_security = bool_setting(anchor, "security.strictNative.enabled")
             .or_else(|| bool_setting(anchor, "diagnostics.security.strictNative.enabled"))
             .unwrap_or(self.strict_native_security);
-        self.security_levels = security_levels(anchor);
+        self.security_levels = security_levels(anchor, agent_mode);
         self.diagnostics_cold_path = string_setting(anchor, "diagnostics.coldPath")
             .and_then(DiagnosticsColdPath::from_str)
             .unwrap_or(self.diagnostics_cold_path);
         self.workspace_index =
             bool_setting(anchor, "workspaceIndex.enabled").unwrap_or(self.workspace_index);
         self.trace_server = bool_setting(anchor, "trace.server").unwrap_or(self.trace_server);
+    }
+
+    fn apply_agent_mode_defaults(&mut self, settings: &serde_json::Value) {
+        if setting_value(settings, "diagnostics.security.enabled").is_none() {
+            self.security_diagnostics = true;
+        }
+        if setting_value(settings, "diagnostics.experimental.enabled").is_none() {
+            self.experimental_diagnostics = true;
+        }
+        if setting_value(settings, "security.strictNative.enabled")
+            .or_else(|| setting_value(settings, "diagnostics.security.strictNative.enabled"))
+            .is_none()
+        {
+            self.strict_native_security = true;
+        }
+        if setting_value(settings, "diagnostics.coldPath").is_none() {
+            self.diagnostics_cold_path = DiagnosticsColdPath::Idle;
+        }
+        if setting_value(settings, "trace.server").is_none() {
+            self.trace_server = true;
+        }
     }
 }
 
@@ -158,64 +213,51 @@ impl ServerLogEntry {
 }
 
 fn bool_setting(settings: &serde_json::Value, key: &str) -> Option<bool> {
-    settings
-        .get(key)
-        .and_then(|value| value.as_bool())
-        .or_else(|| {
-            key.split('.')
-                .try_fold(settings, |value, part| value.get(part))
-                .and_then(|value| value.as_bool())
-        })
+    setting_value(settings, key).and_then(|value| value.as_bool())
 }
 
 fn string_setting(settings: &serde_json::Value, key: &str) -> Option<String> {
-    settings
-        .get(key)
+    setting_value(settings, key)
         .and_then(|value| value.as_str())
         .map(str::to_string)
-        .or_else(|| {
-            key.split('.')
-                .try_fold(settings, |value, part| value.get(part))
-                .and_then(|value| value.as_str())
-                .map(str::to_string)
-        })
 }
 
-fn security_levels(settings: &serde_json::Value) -> BTreeMap<String, diagnostics::DiagnosticLevel> {
-    let mut levels = BTreeMap::new();
-    for (setting, config_key) in [
-        ("diagnostics.security.ownerChecks", "security.ownerChecks"),
-        ("diagnostics.security.typeCosplay", "security.typeCosplay"),
-        (
-            "diagnostics.security.accountClosing",
-            "security.accountClosing",
-        ),
-        (
-            "diagnostics.security.initialization",
-            "security.initialization",
-        ),
-        (
-            "diagnostics.security.staleCpiReload",
-            "security.staleCpiReload",
-        ),
-        (
-            "diagnostics.security.signerAuthorization",
-            "security.signerAuthorization",
-        ),
-        ("diagnostics.security.arbitraryCpi", "security.arbitraryCpi"),
-        (
-            "diagnostics.security.instructionDataBounds",
-            "security.instructionDataBounds",
-        ),
-        (
-            "diagnostics.security.pdaSeedCollision",
-            "security.pdaSeedCollision",
-        ),
-    ] {
+fn setting_value<'a>(settings: &'a serde_json::Value, key: &str) -> Option<&'a serde_json::Value> {
+    settings.get(key).or_else(|| {
+        key.split('.')
+            .try_fold(settings, |value, part| value.get(part))
+    })
+}
+
+fn security_levels(
+    settings: &serde_json::Value,
+    agent_mode: bool,
+) -> BTreeMap<String, diagnostics::DiagnosticLevel> {
+    let mut levels = if agent_mode {
+        agent_mode_security_levels(settings)
+    } else {
+        BTreeMap::new()
+    };
+    for (setting, config_key) in SECURITY_LEVEL_SETTINGS {
         if let Some(level) = string_setting(settings, setting)
             .and_then(|value| diagnostics::DiagnosticLevel::from_str(&value))
         {
-            levels.insert(config_key.to_string(), level);
+            levels.insert((*config_key).to_string(), level);
+        }
+    }
+    levels
+}
+
+fn agent_mode_security_levels(
+    settings: &serde_json::Value,
+) -> BTreeMap<String, diagnostics::DiagnosticLevel> {
+    let mut levels = BTreeMap::new();
+    for (setting, config_key) in SECURITY_LEVEL_SETTINGS {
+        if setting_value(settings, setting).is_none() {
+            levels.insert(
+                (*config_key).to_string(),
+                diagnostics::DiagnosticLevel::Warn,
+            );
         }
     }
     levels

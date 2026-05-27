@@ -45,13 +45,21 @@ The default dev-extension fallback should work on this machine after installing 
         ]
       },
       "settings": {
+        "agent.mode": false,
         "diagnostics.security.enabled": true,
         "diagnostics.security.ownerChecks": "warn",
         "diagnostics.security.typeCosplay": "warn",
+        "diagnostics.security.accountClosing": "warn",
+        "diagnostics.security.initialization": "warn",
+        "diagnostics.security.staleCpiReload": "warn",
+        "diagnostics.security.signerAuthorization": "warn",
+        "diagnostics.security.arbitraryCpi": "warn",
+        "diagnostics.security.instructionDataBounds": "warn",
+        "diagnostics.security.pdaSeedCollision": "warn",
         "security.strictNative.enabled": true,
         "diagnostics.experimental.enabled": true,
         "diagnostics.coldPath": "idle",
-        "diagnostics.transport": "both",
+        "diagnostics.transport": "push",
         "editor.client": "zed",
         "editor.inlineValues.enabled": true,
         "telemetry.completion.enabled": true,
@@ -82,11 +90,13 @@ export SEAGRASS_MANIFEST_PATH=<seagrass-checkout>/Cargo.toml
 
 The extension registers `seagrass` with Rust's `rust` language id and advertises quick-fix/source code-action kinds to Zed. The server still owns the real LSP capability negotiation: diagnostics, completions, hovers, signature help, semantic tokens, code actions, document/workspace symbols, document links to Anchor docs, definition, references, workspace-backed Anchor rename/prepare-rename, highlights, selection ranges, folding ranges, watched files, workspace folders, and execute commands for status/artifacts/recent logs/error coverage/support matrix/generator profile. Artifact reports include Anchor projects plus deployable Pinocchio and native Solana Cargo programs.
 
-Zed settings under `lsp.seagrass.settings` are passed through to `workspace/didChangeConfiguration`. The extension also sends `diagnostics.transport` during initialization. Zed defaults to `both` so pull diagnostics can populate Problems on open before the user types, while push diagnostics keep feedback live after edits. Use `pull` if your Zed build shows duplicate diagnostics, or `push` if you only want publish diagnostics after server analysis.
+Zed settings under `lsp.seagrass.settings` are passed through to `workspace/didChangeConfiguration`. The extension also sends `diagnostics.transport` during initialization. Zed defaults to `push` so each Seagrass diagnostic has one editor transport. Use `pull` only if your Zed build needs pull-based Problems population. Mixed push-and-pull transport is intentionally rejected because Zed can display duplicate diagnostics for the same range.
 
 Completions are expected to wake on the first typed Anchor prefix and after delimiter spaces such as `#[account(init, `, not after Zed's generic minimum-word heuristic. The server advertises identifier and space trigger characters, then filters requests semantically so normal Rust spaces stay quiet.
 
 `diagnostics.coldPath` defaults to `idle`: hot parser/Anchor-structure diagnostics stay live while full usage, security, and project diagnostics wait for a typing pause. Use `save` to run full diagnostics on open/save only, or `manual` to leave full checks to explicit pull/command-driven flows.
+
+`agent.mode` defaults to `false`. When enabled, Seagrass fills unset settings with agent-friendly defaults: security and experimental diagnostics on, strict native security on, all nine security families at `warn`, `diagnostics.coldPath` at `idle`, and `trace.server` on. Set any specific key beside it to override that preset.
 
 ## Logs And Support
 
@@ -99,7 +109,7 @@ Seagrass
 server: <command> <args>
 cwd: <worktree or configured command cwd>
 sync: full
-diagnostics: both
+diagnostics: push
 workspaces: <opened worktree>
 features: diagnostics, completion, hover, symbols, fixes, logs
 ```

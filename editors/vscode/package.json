@@ -139,10 +139,114 @@
           },
           "description": "Extra environment variables passed to the seagrass server process."
         },
+        "seagrass.agent.mode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Fill unset Seagrass analysis settings with agent-friendly diagnostics, security, and tracing defaults. Explicit settings still win."
+        },
         "seagrass.diagnostics.security.enabled": {
           "type": "boolean",
           "default": true,
           "description": "Enable Anchor security diagnostics."
+        },
+        "seagrass.diagnostics.security.ownerChecks": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for owner-check security diagnostics."
+        },
+        "seagrass.diagnostics.security.typeCosplay": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for type-cosplay security diagnostics."
+        },
+        "seagrass.diagnostics.security.accountClosing": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for account-closing security diagnostics."
+        },
+        "seagrass.diagnostics.security.initialization": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for account-initialization security diagnostics."
+        },
+        "seagrass.diagnostics.security.staleCpiReload": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for stale-CPI-reload security diagnostics."
+        },
+        "seagrass.diagnostics.security.signerAuthorization": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for signer-authorization security diagnostics."
+        },
+        "seagrass.diagnostics.security.arbitraryCpi": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for arbitrary-CPI security diagnostics."
+        },
+        "seagrass.diagnostics.security.instructionDataBounds": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for instruction-data-bounds security diagnostics."
+        },
+        "seagrass.diagnostics.security.pdaSeedCollision": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for PDA seed-collision security diagnostics."
         },
         "seagrass.diagnostics.transport": {
           "type": "string",

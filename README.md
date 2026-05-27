@@ -88,8 +88,11 @@ Example settings for a local source run:
         "arguments": ["run", "-p", "seagrass", "--quiet"]
       },
       "settings": {
-        "diagnostics.transport": "both",
+        "agent.mode": false,
+        "diagnostics.transport": "push",
         "diagnostics.coldPath": "idle",
+        "diagnostics.security.ownerChecks": "warn",
+        "diagnostics.security.typeCosplay": "warn",
         "workspaceIndex.enabled": true
       }
     }

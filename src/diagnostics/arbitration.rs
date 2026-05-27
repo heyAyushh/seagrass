@@ -27,6 +27,7 @@ pub enum DiagnosticLevel {
     Off,
     Warn,
     Error,
+    Hint,
 }
 
 impl DiagnosticLevel {
@@ -35,6 +36,7 @@ impl DiagnosticLevel {
             "off" | "disabled" | "false" => Some(Self::Off),
             "warn" | "warning" | "true" => Some(Self::Warn),
             "error" => Some(Self::Error),
+            "hint" => Some(Self::Hint),
             _ => None,
         }
     }
@@ -44,6 +46,7 @@ impl DiagnosticLevel {
             Self::Off => None,
             Self::Warn => Some(DiagnosticSeverity::WARNING),
             Self::Error => Some(DiagnosticSeverity::ERROR),
+            Self::Hint => Some(DiagnosticSeverity::HINT),
         }
     }
 }

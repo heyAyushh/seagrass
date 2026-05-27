@@ -62,7 +62,7 @@ workspaces: <comma-separated roots|none>
 features: <short comma-separated feature list>
 ```
 
-Each adapter should pick the default diagnostics transport that gives the best native editor UX without duplicating Problems entries. VS Code defaults to `push` because VS Code can duplicate pull and publish diagnostics. Zed defaults to `both` so diagnostics are available on open before the user types while publish diagnostics stay live after edits.
+Each adapter should pick the default diagnostics transport that gives the best native editor UX without duplicating Problems entries. VS Code defaults to `push` because VS Code can duplicate pull and publish diagnostics. Zed also defaults to `push` so each Seagrass diagnostic has one native Problems transport.
 
 Completion should wake on the first typed identifier character and on space in Anchor-aware contexts. The server advertises those trigger characters and then applies its own semantic gate, so normal Rust stays quiet while Anchor prefixes and delimiter-space flows do not wait for editor minimum-word heuristics.
 
@@ -70,12 +70,22 @@ Completion should wake on the first typed identifier character and on space in A
 
 VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settings equivalent:
 
+- `agent.mode`
 - `diagnostics.security.enabled`
-- `diagnostics.security.<family>`
+- `diagnostics.security.ownerChecks`
+- `diagnostics.security.typeCosplay`
+- `diagnostics.security.accountClosing`
+- `diagnostics.security.initialization`
+- `diagnostics.security.staleCpiReload`
+- `diagnostics.security.signerAuthorization`
+- `diagnostics.security.arbitraryCpi`
+- `diagnostics.security.instructionDataBounds`
+- `diagnostics.security.pdaSeedCollision`
 - `security.strictNative.enabled`
 - `diagnostics.experimental.enabled`
 - `diagnostics.transport`
 - `diagnostics.coldPath`
+- `feedback.url`
 - `editor.client`
 - `editor.inlineValues.enabled`
 - `telemetry.completion.enabled`
@@ -83,6 +93,12 @@ VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settin
 - `inlayHints.enabled`
 - `workspaceIndex.enabled`
 - `trace.server`
+
+Security family settings accept `off`, `warn`, `error`, or `hint`. `agent.mode`
+defaults to `false`; when enabled, the server fills unset analysis settings with
+agent-friendly defaults: every security family at `warn`, cold-path diagnostics
+at `idle`, security and experimental diagnostics enabled, strict native security
+enabled, and server tracing enabled. Explicit user settings always win.
 
 Server launch settings are editor-specific because each editor models binaries differently. The behavior should still resolve in this order when possible:
 

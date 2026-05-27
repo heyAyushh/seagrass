@@ -3,9 +3,20 @@ use zed_extension_api::{self as zed, settings::LspSettings};
 const SERVER_ID: &str = "seagrass";
 const SERVER_BINARY: &str = "seagrass";
 const SERVER_MANIFEST_ENV: &str = "SEAGRASS_MANIFEST_PATH";
-const DEFAULT_DIAGNOSTICS_TRANSPORT: &str = "both";
+const DEFAULT_DIAGNOSTICS_TRANSPORT: &str = "push";
 const SERVER_MANIFEST_FROM_EXTENSION: &str =
     concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml");
+const SECURITY_LEVEL_SETTINGS: &[&str] = &[
+    "diagnostics.security.ownerChecks",
+    "diagnostics.security.typeCosplay",
+    "diagnostics.security.accountClosing",
+    "diagnostics.security.initialization",
+    "diagnostics.security.staleCpiReload",
+    "diagnostics.security.signerAuthorization",
+    "diagnostics.security.arbitraryCpi",
+    "diagnostics.security.instructionDataBounds",
+    "diagnostics.security.pdaSeedCollision",
+];
 
 struct SeagrassExtension;
 
@@ -178,6 +189,10 @@ fn workspace_configuration(settings: Option<zed::serde_json::Value>) -> zed::ser
     if !settings.is_object() {
         settings = zed::serde_json::json!({});
     }
+    ensure_default(&mut settings, "agent.mode", false);
+    if bool_setting(&settings, "agent.mode").unwrap_or(false) {
+        apply_agent_mode_defaults(&mut settings);
+    }
     ensure_default(&mut settings, "diagnostics.security.enabled", true);
     ensure_default(&mut settings, "diagnostics.experimental.enabled", true);
     ensure_default(&mut settings, "security.strictNative.enabled", true);
@@ -197,38 +212,55 @@ fn workspace_configuration(settings: Option<zed::serde_json::Value>) -> zed::ser
     settings
 }
 
+fn apply_agent_mode_defaults(settings: &mut zed::serde_json::Value) {
+    ensure_default(settings, "diagnostics.security.enabled", true);
+    ensure_default(settings, "diagnostics.experimental.enabled", true);
+    ensure_default(settings, "security.strictNative.enabled", true);
+    ensure_default(settings, "trace.server", true);
+    ensure_string_default(settings, "diagnostics.coldPath", "idle");
+    for setting in SECURITY_LEVEL_SETTINGS {
+        ensure_string_default(settings, setting, "warn");
+    }
+}
+
 fn diagnostics_transport(settings: Option<&zed::serde_json::Value>) -> String {
     let Some(settings) = settings else {
         return DEFAULT_DIAGNOSTICS_TRANSPORT.to_string();
     };
 
     string_setting(settings, "diagnostics.transport")
-        .or_else(|| {
-            settings
-                .get("diagnostics")
-                .and_then(|diagnostics| diagnostics.get("transport"))
-                .and_then(|value| value.as_str())
-                .map(str::to_string)
-        })
-        .filter(|value| matches!(value.as_str(), "push" | "pull" | "both"))
+        .filter(|value| matches!(value.as_str(), "push" | "pull"))
         .unwrap_or_else(|| DEFAULT_DIAGNOSTICS_TRANSPORT.to_string())
 }
 
+fn bool_setting(settings: &zed::serde_json::Value, key: &str) -> Option<bool> {
+    setting_value(settings, key).and_then(|value| value.as_bool())
+}
+
 fn string_setting(settings: &zed::serde_json::Value, key: &str) -> Option<String> {
-    settings
-        .get(key)
+    setting_value(settings, key)
         .and_then(|value| value.as_str())
         .map(str::to_string)
 }
 
+fn setting_value<'a>(
+    settings: &'a zed::serde_json::Value,
+    key: &str,
+) -> Option<&'a zed::serde_json::Value> {
+    settings.get(key).or_else(|| {
+        key.split('.')
+            .try_fold(settings, |value, part| value.get(part))
+    })
+}
+
 fn ensure_default(settings: &mut zed::serde_json::Value, key: &str, default: bool) {
-    if settings.get(key).is_none() {
+    if setting_value(settings, key).is_none() {
         settings[key] = zed::serde_json::Value::Bool(default);
     }
 }
 
 fn ensure_string_default(settings: &mut zed::serde_json::Value, key: &str, default: &str) {
-    if settings.get(key).is_none() {
+    if setting_value(settings, key).is_none() {
         settings[key] = zed::serde_json::Value::String(default.to_string());
     }
 }
@@ -255,11 +287,52 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_to_pull_and_push_diagnostics_for_on_open_feedback() {
-        assert_eq!(diagnostics_transport(None), "both");
+    fn defaults_to_push_diagnostics_to_avoid_transport_duplicates() {
+        assert_eq!(diagnostics_transport(None), "push");
 
         let config = workspace_configuration(None);
-        assert_eq!(config["diagnostics.transport"], "both");
+        assert_eq!(config["diagnostics.transport"], "push");
+    }
+
+    #[test]
+    fn agent_mode_fills_unset_workspace_settings() {
+        let config = workspace_configuration(Some(zed::serde_json::json!({
+            "agent.mode": true
+        })));
+
+        assert_eq!(config["diagnostics.security.enabled"], true);
+        assert_eq!(config["diagnostics.experimental.enabled"], true);
+        assert_eq!(config["security.strictNative.enabled"], true);
+        assert_eq!(config["diagnostics.coldPath"], "idle");
+        assert_eq!(config["trace.server"], true);
+        assert_eq!(config["diagnostics.security.ownerChecks"], "warn");
+        assert_eq!(config["diagnostics.security.pdaSeedCollision"], "warn");
+    }
+
+    #[test]
+    fn agent_mode_preserves_explicit_workspace_settings() {
+        let config = workspace_configuration(Some(zed::serde_json::json!({
+            "agent": {
+                "mode": true
+            },
+            "diagnostics": {
+                "coldPath": "manual"
+            },
+            "trace": {
+                "server": false
+            },
+            "diagnostics.security.ownerChecks": "error",
+            "diagnostics.security.typeCosplay": "off"
+        })));
+
+        assert_eq!(
+            string_setting(&config, "diagnostics.coldPath"),
+            Some("manual".to_string())
+        );
+        assert_eq!(bool_setting(&config, "trace.server"), Some(false));
+        assert_eq!(config["diagnostics.security.ownerChecks"], "error");
+        assert_eq!(config["diagnostics.security.typeCosplay"], "off");
+        assert_eq!(config["diagnostics.security.arbitraryCpi"], "warn");
     }
 
     #[test]
@@ -288,7 +361,16 @@ mod tests {
             "diagnostics.transport": "invalid"
         });
 
-        assert_eq!(diagnostics_transport(Some(&settings)), "both");
+        assert_eq!(diagnostics_transport(Some(&settings)), "push");
+    }
+
+    #[test]
+    fn diagnostics_transport_rejects_mixed_transport() {
+        let settings = zed::serde_json::json!({
+            "diagnostics.transport": "both"
+        });
+
+        assert_eq!(diagnostics_transport(Some(&settings)), "push");
     }
 
     #[test]

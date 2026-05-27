@@ -395,6 +395,91 @@ fn settings_accept_flat_and_nested_vscode_shapes() {
 }
 
 #[test]
+fn agent_mode_fills_unset_server_settings() {
+    let mut settings = ServerSettings {
+        security_diagnostics: false,
+        experimental_diagnostics: false,
+        security_levels: BTreeMap::new(),
+        strict_native_security: false,
+        diagnostics_cold_path: crate::server_types::DiagnosticsColdPath::Save,
+        workspace_index: true,
+        trace_server: false,
+        editor_context: crate::server_types::EditorContext::default(),
+    };
+
+    settings.apply(serde_json::json!({
+        "seagrass": {
+            "agent.mode": true
+        }
+    }));
+
+    assert!(settings.security_diagnostics);
+    assert!(settings.experimental_diagnostics);
+    assert!(settings.strict_native_security);
+    assert_eq!(
+        settings.diagnostics_cold_path,
+        crate::server_types::DiagnosticsColdPath::Idle
+    );
+    assert!(settings.trace_server);
+    assert_eq!(settings.security_levels.len(), 9);
+    assert_eq!(
+        settings.security_levels.get("security.ownerChecks"),
+        Some(&diagnostics::DiagnosticLevel::Warn)
+    );
+    assert_eq!(
+        settings.security_levels.get("security.pdaSeedCollision"),
+        Some(&diagnostics::DiagnosticLevel::Warn)
+    );
+}
+
+#[test]
+fn agent_mode_preserves_explicit_server_settings() {
+    let mut settings = ServerSettings::default();
+
+    settings.apply(serde_json::json!({
+        "seagrass": {
+            "agent": {
+                "mode": true
+            },
+            "diagnostics.security.enabled": false,
+            "diagnostics.experimental.enabled": false,
+            "security.strictNative.enabled": false,
+            "diagnostics.coldPath": "manual",
+            "trace.server": false,
+            "diagnostics.security.ownerChecks": "error",
+            "diagnostics.security.typeCosplay": "off",
+            "diagnostics.security.pdaSeedCollision": "hint"
+        }
+    }));
+
+    assert!(!settings.security_diagnostics);
+    assert!(!settings.experimental_diagnostics);
+    assert!(!settings.strict_native_security);
+    assert_eq!(
+        settings.diagnostics_cold_path,
+        crate::server_types::DiagnosticsColdPath::Manual
+    );
+    assert!(!settings.trace_server);
+    assert_eq!(settings.security_levels.len(), 9);
+    assert_eq!(
+        settings.security_levels.get("security.ownerChecks"),
+        Some(&diagnostics::DiagnosticLevel::Error)
+    );
+    assert_eq!(
+        settings.security_levels.get("security.typeCosplay"),
+        Some(&diagnostics::DiagnosticLevel::Off)
+    );
+    assert_eq!(
+        settings.security_levels.get("security.arbitraryCpi"),
+        Some(&diagnostics::DiagnosticLevel::Warn)
+    );
+    assert_eq!(
+        settings.security_levels.get("security.pdaSeedCollision"),
+        Some(&diagnostics::DiagnosticLevel::Hint)
+    );
+}
+
+#[test]
 fn analysis_uri_from_args_accepts_string_and_object_arguments() {
     let uri = Url::parse("file:///workspace/programs/demo/src/lib.rs").unwrap();
 
