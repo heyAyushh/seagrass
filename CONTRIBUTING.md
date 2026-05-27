@@ -49,6 +49,10 @@ Check that generated files are current:
 bun scripts/regen-support.ts --anchor-path . --family v1 --check
 ```
 
+Standalone Seagrass checkouts can run the production gate with an adjacent
+Anchor checkout by setting `SEAGRASS_ANCHOR_PATH`. If the variable is unset, the
+gate tries this checkout, then `../upstream-anchor`, then `../anchor-next`.
+
 Preview a v2 checkout:
 
 ```sh

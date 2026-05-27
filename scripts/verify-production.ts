@@ -2,15 +2,18 @@
 
 import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
+
+import { resolveAnchorSourcePath } from "./anchor-source.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const zedDir = resolve(repoRoot, "editors/zed");
 const vscodeDir = resolve(repoRoot, "editors/vscode");
 const rootVersion = readReleaseVersion();
+const anchorSourcePath = resolveAnchorSourcePath(repoRoot);
 
 checkVersionConsistency();
 
@@ -115,7 +118,14 @@ const steps = [
     name: "Generated Anchor support freshness",
     cwd: repoRoot,
     command: "bun",
-    args: ["scripts/regen-support.ts", "--anchor-path", ".", "--family", "v1", "--check"],
+    args: [
+      "scripts/regen-support.ts",
+      "--anchor-path",
+      anchorSourcePath,
+      "--family",
+      "v1",
+      "--check",
+    ],
   },
   {
     name: "Anchor property tests",
@@ -259,12 +269,21 @@ for (const step of steps) {
 }
 
 const checkedInWasm = resolve(zedDir, "extension.wasm");
-const builtWasm = resolve(zedDir, "target/wasm32-wasip2/release/seagrass_zed.wasm");
+const builtWasmCandidates = [
+  resolve(zedDir, "target/wasm32-wasip2/release/seagrass_zed.wasm"),
+  resolve(repoRoot, "target/wasm32-wasip2/release/seagrass_zed.wasm"),
+] as const;
+const builtWasm = builtWasmCandidates.find(existsSync);
 if (!existsSync(checkedInWasm)) {
   fail(`Zed extension artifact is missing: ${checkedInWasm}`);
 }
-if (!existsSync(builtWasm)) {
-  fail(`Zed release wasm was not built: ${builtWasm}`);
+if (!builtWasm) {
+  fail(
+    [
+      "Zed release wasm was not built. Checked:",
+      ...builtWasmCandidates.map((path) => `  ${path}`),
+    ].join("\n"),
+  );
 }
 
 const checkedInHash = sha256(checkedInWasm);
@@ -276,7 +295,7 @@ if (checkedInHash !== builtHash) {
       `  extension.wasm: ${checkedInHash}`,
       `  built wasm:     ${builtHash}`,
       "Run:",
-      "  cp editors/zed/target/wasm32-wasip2/release/seagrass_zed.wasm editors/zed/extension.wasm",
+      `  cp ${relative(repoRoot, builtWasm)} editors/zed/extension.wasm`,
     ].join("\n"),
   );
 }

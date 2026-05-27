@@ -4,8 +4,11 @@ import { spawnSync } from "node:child_process";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { resolveAnchorSourcePath } from "./anchor-source.ts";
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
+const anchorSourcePath = resolveAnchorSourcePath(repoRoot);
 
 const propertyTestSteps = [
   {
@@ -52,6 +55,7 @@ const propertyTestSteps = [
   {
     name: "Seagrass account semantics properties",
     args: ["test", "-p", "seagrass", "account_semantics"],
+    cwd: repoRoot,
   },
   {
     name: "current IDL conversion JSON roundtrip properties",
@@ -84,7 +88,7 @@ function runCargoTest(step) {
   console.log(`\n==> ${step.name}`);
   console.log(`$ cargo ${step.args.join(" ")}`);
   const result = spawnSync("cargo", step.args, {
-    cwd: repoRoot,
+    cwd: step.cwd ?? anchorSourcePath,
     stdio: "inherit",
     env: {
       ...process.env,
