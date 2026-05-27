@@ -330,6 +330,145 @@ mod tests {
     }
 
     #[test]
+    fn ecosystem_does_not_fire_in_non_anchoring_file() {
+        let root = unique_temp_dir("seagrass-helper-file-ecosystem");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            r#"
+[package]
+name = "demo"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dev-dependencies]
+litesvm = "0.6"
+"#,
+        )
+        .unwrap();
+        let document = ParsedDocument::parse_or_empty(non_anchoring_helper_source());
+        let program = program(&root);
+
+        let diagnostics = collect(
+            &document,
+            &Url::from_file_path(root.join("src/instructions/foo.rs")).unwrap(),
+            Some(&program),
+        );
+
+        assert!(
+            !has_code(&diagnostics, "solana-test-harness"),
+            "ecosystem diagnostic must not fire in a file that does not declare the program id and has no #[program] instructions; got: {diagnostics:?}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn ecosystem_fires_in_program_root_file() {
+        let root = unique_temp_dir("seagrass-root-file-ecosystem");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            r#"
+[package]
+name = "demo"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dev-dependencies]
+litesvm = "0.6"
+"#,
+        )
+        .unwrap();
+        let document = ParsedDocument::parse_or_empty(program_root_source());
+        let program = program(&root);
+
+        let diagnostics = collect(
+            &document,
+            &Url::from_file_path(root.join("src/lib.rs")).unwrap(),
+            Some(&program),
+        );
+
+        assert!(
+            has_code(&diagnostics, "solana-test-harness"),
+            "ecosystem diagnostic should fire in the file that declares the program id; got: {diagnostics:?}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn surfpool_does_not_fire_in_non_anchoring_file() {
+        let root = unique_temp_dir("seagrass-helper-file-surfpool");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("surfpool.toml"), "[surfpool]\n").unwrap();
+        let document = ParsedDocument::parse_or_empty(non_anchoring_helper_source());
+        let program = program(&root);
+
+        let diagnostics = collect(
+            &document,
+            &Url::from_file_path(root.join("src/instructions/foo.rs")).unwrap(),
+            Some(&program),
+        );
+
+        assert!(
+            !has_code(&diagnostics, "solana-surfpool-workspace"),
+            "Surfpool diagnostic must not fire in a non-anchoring helper file; got: {diagnostics:?}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn program_metadata_does_not_fire_in_non_anchoring_file() {
+        let root = unique_temp_dir("seagrass-helper-file-program-metadata");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("package.json"),
+            r#"{"devDependencies":{"@solana-program/program-metadata":"latest"}}"#,
+        )
+        .unwrap();
+        let document = ParsedDocument::parse_or_empty(non_anchoring_helper_source());
+        let program = program(&root);
+
+        let diagnostics = collect(
+            &document,
+            &Url::from_file_path(root.join("src/instructions/foo.rs")).unwrap(),
+            Some(&program),
+        );
+
+        assert!(
+            !has_code(&diagnostics, "solana-program-metadata"),
+            "Program Metadata diagnostic must not fire in a non-anchoring helper file; got: {diagnostics:?}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn idl_artifact_does_not_fire_in_non_anchoring_file() {
+        let root = unique_temp_dir("seagrass-helper-file-idl");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("codama.json"),
+            r#"{ "idl": "idls/missing.json" }"#,
+        )
+        .unwrap();
+        let document = ParsedDocument::parse_or_empty(non_anchoring_helper_source());
+        let program = program(&root);
+
+        let diagnostics = collect(
+            &document,
+            &Url::from_file_path(root.join("src/instructions/foo.rs")).unwrap(),
+            Some(&program),
+        );
+
+        assert!(
+            !has_code(&diagnostics, "solana-idl-artifact"),
+            "IDL artifact diagnostic must not fire in a non-anchoring helper file; got: {diagnostics:?}"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn stays_quiet_for_codama_package_marker_without_idl_config() {
         let root = unique_temp_dir("seagrass-codama-marker-diagnostic");
         fs::create_dir_all(root.join("src")).unwrap();
@@ -431,6 +570,34 @@ litesvm = "0.6"
 
     fn source() -> &'static str {
         r#"declare_id!("Demo111111111111111111111111111111111");"#
+    }
+
+    fn non_anchoring_helper_source() -> &'static str {
+        r#"
+use anchor_lang::prelude::*;
+use crate::{events::*, state::*};
+
+pub fn helper() -> Result<()> { Ok(()) }
+"#
+    }
+
+    fn program_root_source() -> &'static str {
+        r#"
+use anchor_lang::prelude::*;
+
+declare_id!("Demo111111111111111111111111111111111");
+
+#[program]
+mod my_program {
+    use super::*;
+    pub fn initialize(_ctx: Context<Initialize>) -> Result<()> { Ok(()) }
+}
+
+#[derive(Accounts)]
+pub struct Initialize<'info> {
+    pub system_program: Program<'info, System>,
+}
+"#
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {
