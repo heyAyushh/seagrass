@@ -242,7 +242,7 @@ Usage:
 
 Options:
   --seconds-per-shard <n>  Seconds fuzzed by each matrix shard. Default: 3600.
-  --shards <n>             Number of shards per target. Must match lsp-fuzz.yaml. Default: 8.
+  --shards <n>             Number of shards per target. Must match fuzz.yaml. Default: 8.
   --started-at <iso>       Workflow start timestamp. Default: computed from aggregate hours.
   --completed-at <iso>     Completion timestamp. Default: now.
   --out <path>             Write JSON to this path instead of stdout.`);

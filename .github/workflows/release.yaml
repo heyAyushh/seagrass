@@ -423,7 +423,7 @@ jobs:
           cp -R fuzz/fuzz_targets "dist/${package}/"
           cp fuzz/Cargo.toml "dist/${package}/"
           cp docs/release-readiness.json "dist/${package}/"
-          cp .github/workflows/lsp-fuzz.yaml "dist/${package}/.github/workflows/"
+          cp .github/workflows/fuzz.yaml "dist/${package}/.github/workflows/"
 
           tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
           cd artifacts

@@ -12,7 +12,7 @@ on:
       - "lang/**"
       - "**"
       - "scripts/verify-proptest.ts"
-      - ".github/workflows/lsp-property-tests.yaml"
+      - ".github/workflows/property-tests.yaml"
   push:
     branches:
       - master
@@ -23,7 +23,7 @@ on:
       - "lang/**"
       - "**"
       - "scripts/verify-proptest.ts"
-      - ".github/workflows/lsp-property-tests.yaml"
+      - ".github/workflows/property-tests.yaml"
   workflow_dispatch:
 
 env:

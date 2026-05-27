@@ -4,8 +4,8 @@ import { resolve } from "node:path";
 
 import { repoRoot } from "./release-evidence.ts";
 
-const perfWorkflowPath = resolve(repoRoot, ".github/workflows/lsp-perf.yaml");
-const prWorkflowPath = resolve(repoRoot, ".github/workflows/lsp-pr.yaml");
+const perfWorkflowPath = resolve(repoRoot, ".github/workflows/perf.yaml");
+const prWorkflowPath = resolve(repoRoot, ".github/workflows/pr.yaml");
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
 
 describe("perf workflow guardrails", () => {

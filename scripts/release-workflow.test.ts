@@ -4,17 +4,17 @@ import { resolve } from "node:path";
 
 import { repoRoot } from "./release-evidence.ts";
 
-const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/lsp-release.yaml");
-const prWorkflowPath = resolve(repoRoot, ".github/workflows/lsp-pr.yaml");
+const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/release.yaml");
+const prWorkflowPath = resolve(repoRoot, ".github/workflows/pr.yaml");
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
 const releaseReadinessDocPath = resolve(repoRoot, "docs/release-readiness.md");
 const completionAuditPath = resolve(repoRoot, "docs/10-10-completion-audit.md");
 const seagrassWorkflowPaths = [
-  ".github/workflows/lsp-fuzz.yaml",
-  ".github/workflows/lsp-perf.yaml",
-  ".github/workflows/lsp-pr.yaml",
-  ".github/workflows/lsp-property-tests.yaml",
-  ".github/workflows/lsp-release.yaml",
+  ".github/workflows/fuzz.yaml",
+  ".github/workflows/perf.yaml",
+  ".github/workflows/pr.yaml",
+  ".github/workflows/property-tests.yaml",
+  ".github/workflows/release.yaml",
 ];
 const pinnedActionReferencePattern = /^[a-z0-9._-]+\/[a-z0-9._-]+@[a-f0-9]{40}$/i;
 
@@ -32,7 +32,7 @@ describe("release workflow packaging", () => {
     const packageFuzzCorpus = workflowSection(workflow, "package-fuzz-corpus:", "release:");
 
     expect(packageFuzzCorpus).toContain("cp -R fuzz/fuzz_targets");
-    expect(packageFuzzCorpus).toContain("cp .github/workflows/lsp-fuzz.yaml");
+    expect(packageFuzzCorpus).toContain("cp .github/workflows/fuzz.yaml");
   });
 
   test("verifies the exact release asset inventory before publishing", () => {
@@ -97,10 +97,10 @@ describe("release workflow packaging", () => {
   test("runs PR guardrails when release evidence workflows change", () => {
     const workflow = readFileSync(prWorkflowPath, "utf8");
 
-    expect(workflow).toContain('".github/workflows/lsp-fuzz.yaml"');
-    expect(workflow).toContain('".github/workflows/lsp-perf.yaml"');
-    expect(workflow).toContain('".github/workflows/lsp-property-tests.yaml"');
-    expect(workflow).toContain('".github/workflows/lsp-release.yaml"');
+    expect(workflow).toContain('".github/workflows/fuzz.yaml"');
+    expect(workflow).toContain('".github/workflows/perf.yaml"');
+    expect(workflow).toContain('".github/workflows/property-tests.yaml"');
+    expect(workflow).toContain('".github/workflows/release.yaml"');
     expect(workflow).toContain('"VERSION"');
     expect(workflow).toContain('"bump-version.sh"');
   });

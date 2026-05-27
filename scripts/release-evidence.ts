@@ -21,7 +21,7 @@ export const repoRoot = resolve(scriptDir, "..");
 
 const rootManifestPath = resolve(repoRoot, "Cargo.toml");
 const fuzzManifestPath = resolve(repoRoot, "fuzz/Cargo.toml");
-const fuzzWorkflowPath = resolve(repoRoot, ".github/workflows/lsp-fuzz.yaml");
+const fuzzWorkflowPath = resolve(repoRoot, ".github/workflows/fuzz.yaml");
 const defaultCorpusRoot = resolve(repoRoot, "fuzz/corpus");
 
 export function gitHead(): string {

@@ -9,7 +9,7 @@ on:
       - "**"
       - "Cargo.toml"
       - "Cargo.lock"
-      - ".github/workflows/lsp-perf.yaml"
+      - ".github/workflows/perf.yaml"
   push:
     branches:
       - master
@@ -17,7 +17,7 @@ on:
       - "**"
       - "Cargo.toml"
       - "Cargo.lock"
-      - ".github/workflows/lsp-perf.yaml"
+      - ".github/workflows/perf.yaml"
   workflow_dispatch:
 
 env:

@@ -39,8 +39,8 @@ bun scripts/check-release-readiness.ts \
 | `fuzzCleanRun.aggregateFuzzHours` | Must be at least 24 and no more than elapsed workflow time. |
 | `fuzzCleanRun.corpusSha256` | Required after `status` is `passed`; SHA-256 tree hash of `fuzz/corpus` after importing the workflow artifacts. |
 | `fuzzCleanRun.targets` | Must list the fuzz targets covered. |
-| `fuzzCleanRun.workflowMatrixTargets` | Must match `.github/workflows/lsp-fuzz.yaml` and `fuzz/Cargo.toml`. |
-| `fuzzCleanRun.targetRuns` | Required per-target proof rows; `shards` must match `.github/workflows/lsp-fuzz.yaml`, and hours must sum to `aggregateFuzzHours`. |
+| `fuzzCleanRun.workflowMatrixTargets` | Must match `.github/workflows/fuzz.yaml` and `fuzz/Cargo.toml`. |
+| `fuzzCleanRun.targetRuns` | Required per-target proof rows; `shards` must match `.github/workflows/fuzz.yaml`, and hours must sum to `aggregateFuzzHours`. |
 | `externalReview.status` | Must be `signed-off`. |
 | `externalReview.mode` | `paid` or `community`. |
 | `externalReview.reviewer` | Reviewer, firm, or audit-period owner. |
