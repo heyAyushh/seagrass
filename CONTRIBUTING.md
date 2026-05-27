@@ -113,3 +113,18 @@ the project license.
 Security fixes get first review. Normal pull requests should receive an initial
 maintainer response within two business days. Release-blocking LSP regressions
 should include a failing fixture or protocol transcript when possible.
+
+## Agent skills
+
+The `skills/seagrass-*` directory contains markdown-driven skills for Claude Code,
+Cursor, and similar agent environments. These are the primary user-facing
+documentation for the diagnostics CLI, suppression forms, and lint topics.
+
+When you:
+- add or rename a lint topic
+- change CLI output shape or flags in `src/cli.rs`
+- modify suppression syntax in `src/diagnostics/suppression.rs`
+- add/remove docs in `docs/lints/`
+
+...also update the affected `SKILL.md` files and `skills/README.md` in the same
+change. See `AGENTS.md` (Verification Matrix + Maintenance) for the contract.

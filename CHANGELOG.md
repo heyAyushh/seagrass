@@ -9,6 +9,9 @@ keep future entries aligned with release-plz output.
   source scraping.
 - lsp: add agent-friendly JSON diagnostics CLI mode.
 - ci: add hotpath, property-test, and fuzz workflow gates for the LSP overlay.
+- docs: add bundled agent skills (`skills/seagrass-*`) for Claude Code, Cursor,
+  and compatible agents. Covers install, lint, explain, suppress, debug-fp, and
+  full audit workflows. Includes fixes to skill docs for accurate CLI JSON shapes.
 
 ## [0.1.0] - 2026-05-26
 

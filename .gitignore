@@ -4,3 +4,6 @@
 /.antigravitycli/
 /node_modules/
 *.tsbuildinfo
+
+# Editor build artifacts (not published)
+editors/vscode/dist/

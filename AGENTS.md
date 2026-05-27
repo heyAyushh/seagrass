@@ -27,6 +27,10 @@ especially:
 - `editors/vscode` and `editors/zed`.
 - Release metadata such as `VERSION`, `CHANGELOG.md`, `CONTRIBUTING.md`, and
   `bump-version.sh`.
+- `skills/seagrass-*` — high-level agent skills (Claude Code, Cursor, etc.) that
+  wrap the diagnostics CLI, suppression syntax, and `docs/lints/`. When lint
+  topics, CLI output shape, or suppression forms change, the corresponding
+  SKILL.md files and `skills/README.md` must be updated in the same PR.
 
 ## Working Rules
 
@@ -144,6 +148,7 @@ otherwise.
 | Zed wasm release artifact | `cd editors/zed && cargo build --target wasm32-wasip2 --release`, then copy the release wasm to `extension.wasm`. |
 | Root Anchor Rust change | Relevant `cargo test`, `cargo build`, and formatting checks. |
 | TypeScript package change | Relevant `yarn build`, `yarn test`, or package-local lint/check command. |
+| Agent skills (`skills/seagrass-*`) | Manual review of each SKILL.md against current CLI shapes (`src/cli.rs`), suppression logic (`src/diagnostics/suppression.rs`), lint docs (`docs/lints/`), and the install steps in `skills/README.md`. Update when topics, output, or UX contracts change. |
 
 If you cannot run a relevant check, say exactly why and report the residual
 risk.
@@ -153,6 +158,10 @@ risk.
 Audit this file whenever the LSP production gate, editor startup contract,
 release process, or repository layout changes. At minimum, refresh it quarterly.
 
+When adding or modifying lint topics, CLI flags/output, suppression syntax, or
+the `docs/lints/` catalog, also update the matching entries in `skills/`.
+The agent skills are the primary on-ramp for Claude Code / Cursor users.
+
 Keep examples concrete and local. If a command or path no longer works in this
 checkout, update the guide in the same change that breaks it.
 
@@ -160,3 +169,6 @@ checkout, update the guide in the same change that breaks it.
 
 - 2026-05-25: Initial agent guide for Anchor LSP production work, editor UX
   expectations, release version alignment, and verification requirements.
+- 2026-05-28: Added `skills/seagrass-*` (install, lint, explain, suppress,
+  debug-fp, audit) + corresponding updates to Scope, Verification Matrix,
+  and Maintenance sections.

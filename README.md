@@ -45,6 +45,23 @@ when any `ERROR` severity finding is emitted.
 
 Use this when an AI coding agent or LSP bridge needs Solana framework semantics.
 
+### For AI coding agents (Claude Code, Cursor, Aider, etc.)
+
+Symlink the bundled skills once:
+
+```bash
+mkdir -p ~/.claude/skills
+for skill in skills/seagrass-*; do
+  ln -sfn "$(pwd)/$skill" "$HOME/.claude/skills/$(basename $skill)"
+done
+```
+
+Then just say things like "lint my program", "explain seagrass/security.owner-check", "suppress this", or "audit my Anchor code for production".
+
+See `skills/README.md` for the full catalog and install for other agents.
+
+### For LSP / low-level agent bridges
+
 1. Start the server over stdio:
 
    ```json
