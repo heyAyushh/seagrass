@@ -1,8 +1,8 @@
 use dashmap::DashMap;
 use std::hash::{Hash, Hasher};
 use tower_lsp::lsp_types::{
-    CompletionItem, Diagnostic, DocumentSymbol, FoldingRange, Hover, InlayHint, Location, Position,
-    Range, SemanticTokens, Url,
+    CodeAction, CompletionItem, Diagnostic, DocumentSymbol, FoldingRange, Hover, InlayHint,
+    Location, Position, Range, SemanticTokens, Url,
 };
 
 /// Pre-allocated capacity for the inner [`DashMap`].
@@ -191,7 +191,10 @@ impl From<(Url, QueryKind)> for CacheKey {
 /// Discriminant for the type of LSP query being cached.
 ///
 /// Variants that operate at a specific cursor position carry a [`Position`];
-/// range-based queries carry a [`Range`].
+/// range-based queries carry a [`Range`].  Document-scoped variants (e.g.
+/// [`QueryKind::CodeActions`]) carry a [`Url`] so one entry per document holds
+/// the full unfiltered result set — cursor-level filtering is applied on read
+/// at the call site.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum QueryKind {
     /// Full-document diagnostics.
@@ -213,6 +216,13 @@ pub enum QueryKind {
     InlayHints(Range),
     /// Full-document semantic tokens.
     SemanticTokens,
+    /// Full unfiltered code-action set for an entire document, keyed by [`Url`].
+    ///
+    /// A single entry per document stores all actions computed for the last
+    /// known document version.  Cursor-aware filtering is applied at the call
+    /// site when the caller selects which actions to surface to the editor.
+    #[allow(dead_code)]
+    CodeActions(Url),
 }
 
 impl Hash for QueryKind {
@@ -236,6 +246,9 @@ impl Hash for QueryKind {
                 range.end.character.hash(state);
             }
             QueryKind::SemanticTokens => {}
+            QueryKind::CodeActions(uri) => {
+                uri.as_str().hash(state);
+            }
         }
     }
 }
@@ -284,4 +297,136 @@ pub enum CacheValue {
     InlayHints(Vec<InlayHint>),
     /// Result of [`QueryKind::SemanticTokens`].
     SemanticTokens(SemanticTokens),
+    /// Result of [`QueryKind::CodeActions`].
+    ///
+    /// Holds the **full, unfiltered** action set for the document.  The caller
+    /// is responsible for filtering to the actions relevant to the current
+    /// cursor range before returning them to the editor.
+    #[allow(dead_code)]
+    CodeActions(Vec<CodeAction>),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tower_lsp::lsp_types::{CodeAction, Url};
+
+    fn make_uri(path: &str) -> Url {
+        Url::parse(&format!("file://{path}")).expect("valid test URI")
+    }
+
+    fn make_action(title: &str) -> CodeAction {
+        CodeAction {
+            title: title.to_owned(),
+            ..Default::default()
+        }
+    }
+
+    /// Inserting at version 7 and reading at version 7 returns the stored vec.
+    #[test]
+    fn code_actions_round_trip_at_same_version() {
+        let cache = QueryCache::new();
+        let uri = make_uri("/project/src/lib.rs");
+        let actions = vec![make_action("Fix lint")];
+
+        cache.insert(
+            (uri.clone(), QueryKind::CodeActions(uri.clone())),
+            7,
+            CacheValue::CodeActions(actions.clone()),
+        );
+
+        let hit = cache.get((uri.clone(), QueryKind::CodeActions(uri.clone())), 7);
+        assert!(hit.is_some(), "expected a cache hit at the same version");
+
+        match hit.unwrap() {
+            CacheValue::CodeActions(stored) => {
+                assert_eq!(stored.len(), actions.len());
+                assert_eq!(stored[0].title, actions[0].title);
+            }
+            other => panic!("unexpected cache value variant: {other:?}"),
+        }
+    }
+
+    /// Inserting at version 7 and reading at version 8 returns None (stale).
+    #[test]
+    fn code_actions_miss_after_newer_version() {
+        let cache = QueryCache::new();
+        let uri = make_uri("/project/src/lib.rs");
+
+        cache.insert(
+            (uri.clone(), QueryKind::CodeActions(uri.clone())),
+            7,
+            CacheValue::CodeActions(vec![make_action("Old action")]),
+        );
+
+        let miss = cache.get((uri.clone(), QueryKind::CodeActions(uri.clone())), 8);
+        assert!(
+            miss.is_none(),
+            "expected None because stored version (7) differs from current (8)"
+        );
+    }
+
+    /// Each URI has an independent slot; inserting for one does not affect the other.
+    #[test]
+    fn code_actions_per_uri_isolation() {
+        let cache = QueryCache::new();
+        let uri1 = make_uri("/project/src/a.rs");
+        let uri2 = make_uri("/project/src/b.rs");
+
+        let actions_a = vec![make_action("Action A")];
+        let actions_b = vec![make_action("Action B1"), make_action("Action B2")];
+
+        cache.insert(
+            (uri1.clone(), QueryKind::CodeActions(uri1.clone())),
+            1,
+            CacheValue::CodeActions(actions_a.clone()),
+        );
+        cache.insert(
+            (uri2.clone(), QueryKind::CodeActions(uri2.clone())),
+            1,
+            CacheValue::CodeActions(actions_b.clone()),
+        );
+
+        let result_a = cache.get((uri1.clone(), QueryKind::CodeActions(uri1.clone())), 1);
+        let result_b = cache.get((uri2.clone(), QueryKind::CodeActions(uri2.clone())), 1);
+
+        match result_a.unwrap() {
+            CacheValue::CodeActions(stored) => assert_eq!(stored[0].title, "Action A"),
+            other => panic!("unexpected variant for uri1: {other:?}"),
+        }
+
+        match result_b.unwrap() {
+            CacheValue::CodeActions(stored) => {
+                assert_eq!(stored.len(), 2);
+                assert_eq!(stored[0].title, "Action B1");
+                assert_eq!(stored[1].title, "Action B2");
+            }
+            other => panic!("unexpected variant for uri2: {other:?}"),
+        }
+    }
+
+    /// An empty Vec<CodeAction> stored at version 1 must return Some(empty) on get at version 1.
+    #[test]
+    fn code_actions_empty_vec_is_still_a_hit() {
+        let cache = QueryCache::new();
+        let uri = make_uri("/project/src/empty.rs");
+
+        cache.insert(
+            (uri.clone(), QueryKind::CodeActions(uri.clone())),
+            1,
+            CacheValue::CodeActions(vec![]),
+        );
+
+        let hit = cache.get((uri.clone(), QueryKind::CodeActions(uri.clone())), 1);
+        assert!(hit.is_some(), "empty action list must still be a cache hit");
+
+        match hit.unwrap() {
+            CacheValue::CodeActions(stored) => assert!(
+                stored.is_empty(),
+                "expected empty vec, got {} actions",
+                stored.len()
+            ),
+            other => panic!("unexpected variant: {other:?}"),
+        }
+    }
 }
