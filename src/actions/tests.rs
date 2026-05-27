@@ -145,13 +145,13 @@ pub struct Create<'info> {
 
     let wrapper = code_actions(&document, uri.clone(), cursor, &diagnostics);
 
-    let relevant = super::common::ranked_diagnostics_for_range(&diagnostics, cursor);
-    let mut split = code_actions_unfiltered(&document, uri.clone(), relevant.as_slice());
+    // The wrapper composes the same three steps the cached LSP handler unrolls.
+    let mut split = code_actions_unfiltered(&document, uri.clone(), &diagnostics);
     split.extend(cursor_dependent_code_actions(
         &document,
         uri,
         cursor,
-        relevant.as_slice(),
+        &diagnostics,
     ));
     let split = rank_and_filter_for_cursor(split, cursor);
 

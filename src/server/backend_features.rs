@@ -674,20 +674,19 @@ impl Backend {
     ///
     /// Called exactly once per `publish_analysis` invocation so callers can detect
     /// whether a cached code-action set is still fresh.
-    pub(super) fn bump_code_action_epoch(&self, uri: &Url) -> u64 {
+    pub(super) fn bump_code_action_epoch(&self, uri: &Url) -> i32 {
         let entry = self
             .code_action_epoch
             .entry(uri.clone())
-            .or_insert_with(|| AtomicU64::new(0));
-        entry.fetch_add(1, Ordering::Relaxed) + 1
+            .or_insert_with(|| AtomicI32::new(0));
+        entry.fetch_add(1, Ordering::Relaxed).wrapping_add(1)
     }
 
     /// Returns the current publish epoch for `uri`, or 0 if no diagnostics have
     /// been published for it yet.
     ///
-    /// Not yet used outside tests; consumed by the upcoming code-action cache.
-    #[allow(dead_code)]
-    pub(super) fn code_action_epoch(&self, uri: &Url) -> u64 {
+    /// Consumed by the code-action cache in `code_action` to detect staleness.
+    pub(super) fn code_action_epoch(&self, uri: &Url) -> i32 {
         self.code_action_epoch
             .get(uri)
             .map(|entry| entry.load(Ordering::Relaxed))
@@ -811,6 +810,53 @@ mod epoch_tests {
             backend.code_action_epoch(&uri2),
             0,
             "bumping uri1 three times must not affect uri2's epoch"
+        );
+    }
+
+    /// Regression for the Cargo.toml staleness scenario: after a publish bumps
+    /// the epoch, the cached code-action entry from the previous epoch must miss
+    /// without any explicit cache clear. This is what makes the manifest watcher
+    /// fix deliver end-to-end UX — diagnostics AND quickfixes both refresh on
+    /// `did_change_watched_files`, even though `document.version` is unchanged.
+    #[test]
+    fn epoch_bump_invalidates_cached_code_actions_for_uri() {
+        use tower_lsp::lsp_types::CodeAction;
+
+        let backend = make_backend();
+        let uri = test_uri();
+        let cache_key = (
+            uri.clone(),
+            query_cache::QueryKind::CodeActions(uri.clone()),
+        );
+
+        let epoch_before = backend.code_action_epoch(&uri);
+        let stale_actions = vec![CodeAction {
+            title: "stale fix".to_string(),
+            ..CodeAction::default()
+        }];
+        backend.query_cache.insert(
+            cache_key.clone(),
+            epoch_before,
+            query_cache::CacheValue::CodeActions(stale_actions),
+        );
+
+        assert!(
+            matches!(
+                backend.query_cache.get(cache_key.clone(), epoch_before),
+                Some(query_cache::CacheValue::CodeActions(_))
+            ),
+            "seeded entry should hit at the epoch it was inserted under"
+        );
+
+        let epoch_after = backend.bump_code_action_epoch(&uri);
+        assert_ne!(
+            epoch_before, epoch_after,
+            "bump must produce a different freshness token"
+        );
+
+        assert!(
+            backend.query_cache.get(cache_key, epoch_after).is_none(),
+            "cached entry from previous epoch must miss after the bump, with no explicit clear"
         );
     }
 }

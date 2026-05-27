@@ -18,7 +18,7 @@ use {
         fs,
         panic::{catch_unwind, AssertUnwindSafe},
         sync::{
-            atomic::{AtomicBool, AtomicU64, Ordering},
+            atomic::{AtomicBool, AtomicI32, Ordering},
             Arc, Mutex, RwLock,
         },
         time::{Duration, Instant},
@@ -151,7 +151,7 @@ struct Backend {
     completion_memo: DashMap<Url, CompletionMemo>,
     /// Per-URI publish epoch, bumped once per `publish_analysis` call.
     /// Used as a freshness token by the code-action cache.
-    code_action_epoch: Arc<DashMap<Url, AtomicU64>>,
+    code_action_epoch: Arc<DashMap<Url, AtomicI32>>,
     query_cache: query_cache::QueryCache,
     // Salsa DB (wrapped in Mutex for thread safety - LspSalsaDb uses RefCell internally and is not Sync).
     // Architecture:
@@ -536,7 +536,35 @@ impl LanguageServer for Backend {
             params.context.diagnostics,
             wants_source_action,
         );
-        let actions = actions::code_actions(&document, uri, range, &diagnostics);
+
+        // Cache the cursor-independent action set per URI per publish-epoch.
+        // The epoch bumps on every publish_analysis, so manifest-driven republishes
+        // (e.g. Cargo.toml save) invalidate stale entries even though the document
+        // version is unchanged.
+        let epoch = self.code_action_epoch(&uri);
+        let cache_key = (uri.clone(), query_cache::QueryKind::CodeActions(uri.clone()));
+        let unfiltered = if let Some(query_cache::CacheValue::CodeActions(cached)) =
+            self.query_cache.get(cache_key.clone(), epoch)
+        {
+            cached
+        } else {
+            let built = actions::code_actions_unfiltered(&document, uri.clone(), &diagnostics);
+            self.query_cache.insert(
+                cache_key,
+                epoch,
+                query_cache::CacheValue::CodeActions(built.clone()),
+            );
+            built
+        };
+
+        let mut actions = unfiltered;
+        actions.extend(actions::cursor_dependent_code_actions(
+            &document,
+            uri,
+            range,
+            &diagnostics,
+        ));
+        let actions = actions::rank_and_filter_for_cursor(actions, range);
         Ok((!actions.is_empty()).then_some(actions.into_iter().map(Into::into).collect()))
     }
 

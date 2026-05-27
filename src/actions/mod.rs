@@ -92,33 +92,69 @@ pub fn cursor_dependent_code_actions(
     actions
 }
 
-/// Sort and (when the cursor is a point inside a diagnostic) filter an action
-/// vector by cursor proximity. The result mirrors what [`code_actions`] returns
-/// for the same cursor.
-pub fn rank_and_filter_for_cursor(
-    mut actions: Vec<CodeAction>,
-    cursor: Range,
-) -> Vec<CodeAction> {
-    common::sort_actions_by_cursor(&mut actions, cursor);
-    actions
-}
-
+/// Canonical composition: cursor-independent build + cursor-dependent build,
+/// then ranked and filtered for the cursor.
+///
+/// The LSP handler unrolls this composition so it can cache the unfiltered
+/// step; this wrapper exists for tests, embedders, and any caller that doesn't
+/// need the cache. Marked `#[allow(dead_code)]` because production code in this
+/// crate uses the unrolled form — non-test consumers (`#[cfg(test)]` modules
+/// and external crates) keep it live.
+#[allow(dead_code)]
 pub fn code_actions(
     document: &ParsedDocument,
     uri: Url,
     range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
-    let ranked_diagnostics = common::ranked_diagnostics_for_range(diagnostics, range);
-    let relevant_diagnostics = ranked_diagnostics.as_slice();
-    let mut actions = code_actions_unfiltered(document, uri.clone(), relevant_diagnostics);
+    let mut actions = code_actions_unfiltered(document, uri.clone(), diagnostics);
     actions.extend(cursor_dependent_code_actions(
         document,
         uri,
         range,
-        relevant_diagnostics,
+        diagnostics,
     ));
     rank_and_filter_for_cursor(actions, range)
+}
+
+/// Sort and (when the cursor is a point inside a diagnostic) filter an action
+/// vector by cursor proximity.
+///
+/// When the cursor is a point that touches at least one action's attached
+/// diagnostic, actions whose diagnostic does not touch the cursor are dropped.
+/// Otherwise all actions are retained and only ranked. This preserves the
+/// tight-lightbulb UX of the prior wrapper without filtering input diagnostics
+/// before action construction.
+pub fn rank_and_filter_for_cursor(
+    mut actions: Vec<CodeAction>,
+    cursor: Range,
+) -> Vec<CodeAction> {
+    common::sort_actions_by_cursor(&mut actions, cursor);
+    if !common::is_point_range(cursor) {
+        return actions;
+    }
+    let touches_cursor = |action: &CodeAction| -> bool {
+        action
+            .diagnostics
+            .as_ref()
+            .and_then(|attached| attached.first())
+            .is_some_and(|diagnostic| common::diagnostic_touches_range(diagnostic, cursor))
+    };
+    if !actions.iter().any(touches_cursor) {
+        return actions;
+    }
+    actions.retain(|action| {
+        // Keep actions without an attached diagnostic (e.g. document-wide fix-all)
+        // and actions whose diagnostic touches the cursor.
+        action
+            .diagnostics
+            .as_ref()
+            .and_then(|attached| attached.first())
+            .map_or(true, |diagnostic| {
+                common::diagnostic_touches_range(diagnostic, cursor)
+            })
+    });
+    actions
 }
 
 pub fn resolve(

@@ -85,23 +85,6 @@ pub fn diagnostic_quickfix(diagnostic: &Diagnostic) -> Option<&str> {
         .and_then(|value| value.as_str())
 }
 
-pub fn ranked_diagnostics_for_range(
-    diagnostics: &[Diagnostic],
-    cursor_range: Range,
-) -> Vec<Diagnostic> {
-    let should_filter = is_point_range(cursor_range)
-        && diagnostics
-            .iter()
-            .any(|diagnostic| ranges_touch(diagnostic.range, cursor_range));
-    let mut ranked = diagnostics
-        .iter()
-        .filter(|diagnostic| !should_filter || ranges_touch(diagnostic.range, cursor_range))
-        .cloned()
-        .collect::<Vec<_>>();
-    ranked.sort_by_key(|diagnostic| range_distance(diagnostic.range, cursor_range));
-    ranked
-}
-
 pub fn diagnostic_touches_range(diagnostic: &Diagnostic, cursor_range: Range) -> bool {
     ranges_touch(diagnostic.range, cursor_range)
 }
@@ -122,7 +105,7 @@ fn ranges_touch(left: Range, right: Range) -> bool {
         && position_key(right.start) <= position_key(left.end)
 }
 
-fn is_point_range(range: Range) -> bool {
+pub fn is_point_range(range: Range) -> bool {
     range.start == range.end
 }
 
