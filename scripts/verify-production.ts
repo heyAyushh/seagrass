@@ -31,6 +31,12 @@ const steps = [
     args: ["scripts/check-source-size.ts"],
   },
   {
+    name: "Anchor source resolver tests",
+    cwd: repoRoot,
+    command: "bun",
+    args: ["test", "scripts/anchor-source.test.ts"],
+  },
+  {
     name: "Seagrass rule hygiene",
     cwd: repoRoot,
     command: "bun",

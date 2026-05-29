@@ -51,7 +51,9 @@ bun scripts/regen-support.ts --anchor-path . --family v1 --check
 
 Standalone Seagrass checkouts can run the production gate with an adjacent
 Anchor checkout by setting `SEAGRASS_ANCHOR_PATH`. If the variable is unset, the
-gate tries this checkout, then `../upstream-anchor`, then `../anchor-next`.
+gate uses this checkout when it contains Anchor sources, then the pinned Anchor
+git checkout from Cargo's dependency cache. It never silently falls back to
+sibling mirror directories.
 
 Preview a v2 checkout:
 

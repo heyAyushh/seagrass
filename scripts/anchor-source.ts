@@ -1,7 +1,9 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 
-const ANCHOR_SOURCE_FALLBACKS = ["../upstream-anchor", "../anchor-next"] as const;
+const ANCHOR_GIT_SOURCE_PREFIX = "git+https://github.com/otter-sec/anchor.git";
+const CARGO_GIT_CHECKOUTS_DIR = ["git", "checkouts"] as const;
 const ANCHOR_SOURCE_REQUIRED_INPUTS = [
   ["Cargo.toml"],
   ["lang/syn/src/parser/accounts/constraints.rs"],
@@ -24,10 +26,21 @@ export function resolveAnchorSourcePath(repoRoot: string): string {
     return resolved;
   }
 
-  const fallback = [repoRoot, ...ANCHOR_SOURCE_FALLBACKS.map((path) => resolve(repoRoot, path))].find(
-    isAnchorSourcePath,
+  if (isAnchorSourcePath(repoRoot)) {
+    return repoRoot;
+  }
+
+  const cargoGitCheckout = resolveCargoGitAnchorSourcePath(repoRoot);
+  if (cargoGitCheckout) {
+    return cargoGitCheckout;
+  }
+
+  fail(
+    [
+      "Could not find a supported Anchor source checkout.",
+      "Set SEAGRASS_ANCHOR_PATH to an explicit Anchor checkout, or run cargo once so the pinned Anchor git dependency exists in Cargo's git checkout cache.",
+    ].join("\n"),
   );
-  return fallback ?? repoRoot;
 }
 
 export function isAnchorSourcePath(path: string): boolean {
@@ -39,4 +52,53 @@ export function isAnchorSourcePath(path: string): boolean {
 function fail(message: string): never {
   console.error(message);
   process.exit(1);
+}
+
+function resolveCargoGitAnchorSourcePath(repoRoot: string): string | undefined {
+  const commit = anchorCommitFromCargoLock(repoRoot);
+  if (!commit) {
+    return undefined;
+  }
+
+  const checkoutRoot = resolve(cargoHome(), ...CARGO_GIT_CHECKOUTS_DIR);
+  if (!existsSync(checkoutRoot)) {
+    return undefined;
+  }
+
+  const shortCommit = commit.slice(0, 7);
+  for (const checkout of safeReadDir(checkoutRoot)) {
+    if (!checkout.isDirectory() || !checkout.name.startsWith("anchor-")) {
+      continue;
+    }
+    const candidate = resolve(checkoutRoot, checkout.name, shortCommit);
+    if (isAnchorSourcePath(candidate)) {
+      return candidate;
+    }
+  }
+
+  return undefined;
+}
+
+function anchorCommitFromCargoLock(repoRoot: string): string | undefined {
+  const lockPath = resolve(repoRoot, "Cargo.lock");
+  if (!existsSync(lockPath)) {
+    return undefined;
+  }
+
+  const lock = readFileSync(lockPath, "utf8");
+  const escapedSource = ANCHOR_GIT_SOURCE_PREFIX.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const match = lock.match(new RegExp(`source = "${escapedSource}[^"]*#([a-f0-9]{7,40})"`));
+  return match?.[1];
+}
+
+function cargoHome(): string {
+  return process.env.CARGO_HOME ? resolve(process.env.CARGO_HOME) : resolve(homedir(), ".cargo");
+}
+
+function safeReadDir(path: string) {
+  try {
+    return readdirSync(path, { withFileTypes: true });
+  } catch {
+    return [];
+  }
 }
