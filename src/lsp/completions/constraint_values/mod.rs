@@ -3,6 +3,7 @@ use {
     tower_lsp::lsp_types::{CompletionItem, Position},
 };
 
+mod associated_values;
 mod candidates;
 mod members;
 mod recovery;

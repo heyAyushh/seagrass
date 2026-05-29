@@ -12,9 +12,12 @@ use {
     tower_lsp::lsp_types::{Location, SymbolInformation, SymbolKind, Url},
 };
 
+mod associated_values;
 mod files;
 mod indexing;
 mod instruction_arguments;
+
+pub use associated_values::WorkspaceAssociatedValue;
 
 use {
     files::anchor_rust_files,

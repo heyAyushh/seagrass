@@ -302,6 +302,110 @@ pub struct State {
 }
 
 #[test]
+fn completes_generated_init_space_associated_const() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = payer, space = State::)]
+    pub state: Account<'info, State>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct State {
+    pub value: u64,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let completions = completions(&document, position_after(source, "space = State::"))
+        .expect("associated init space completions");
+
+    assert_eq!(completions[0].label, "INIT_SPACE");
+}
+
+#[test]
+fn completes_declared_associated_space_values_after_typed_prefix() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = payer, space = State::SP)]
+    pub state: Account<'info, State>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+
+#[account]
+pub struct State {
+    pub value: u64,
+}
+
+impl State {
+    const SPACE: usize = 8 + 8;
+
+    fn dynamic_space() -> usize {
+        Self::SPACE
+    }
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let completions = completions(&document, position_after(source, "space = State::SP"))
+        .expect("associated space completions");
+
+    assert_eq!(completions[0].label, "SPACE");
+    assert!(!completions
+        .iter()
+        .any(|item| item.label == "dynamic_space()"));
+}
+
+#[test]
+fn completes_workspace_associated_space_values() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = payer, space = SharedState::)]
+    pub state: Account<'info, SharedState>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [(
+            Url::parse("file:///tmp/shared_state.rs").unwrap(),
+            r#"
+#[account]
+pub struct SharedState {
+    pub value: u64,
+}
+
+impl SharedState {
+    const SPACE: usize = 8 + 8;
+
+    fn dynamic_space() -> usize {
+        Self::SPACE
+    }
+}
+"#
+            .to_string(),
+        )],
+    );
+    let completions = completions_with_workspace(
+        &document,
+        position_after(source, "space = SharedState::"),
+        Some(&workspace_index),
+    )
+    .expect("workspace associated space completions");
+
+    assert!(completions.iter().any(|item| item.label == "SPACE"));
+    assert!(completions
+        .iter()
+        .any(|item| item.label == "dynamic_space()"));
+}
+
+#[test]
 fn completes_workspace_nested_account_data_members() {
     let source = r#"
 #[derive(Accounts)]
