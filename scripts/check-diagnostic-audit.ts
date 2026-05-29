@@ -7,10 +7,12 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const sourceRoot = resolve(repoRoot, "src");
-const diagnosticsRoot = resolve(sourceRoot, "diagnostics");
+const diagnosticsRoot = resolve(sourceRoot, "lsp/diagnostics");
+const registryPath = resolve(diagnosticsRoot, "registry.rs");
 const auditPath = resolve(repoRoot, "docs/diagnostic-audit.md");
 const topicsPath = resolve(repoRoot, "docs/topics.json");
 const tableColumnCount = 8;
+const quickfixTableColumnCount = 5;
 const sourceTopicEvidenceRegexes = [
   /\bconst\s+[A-Z0-9_]*TOPIC[A-Z0-9_]*\s*:\s*&\s*(?:'static\s+)?str\s*=\s*"(?<topic>seagrass\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)"/g,
   /\bSelf::[A-Za-z0-9_]+\s*=>\s*"(?<topic>seagrass\/[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?)"/g,
@@ -25,19 +27,38 @@ const genericFixtureValues = new Set(["n/a", "none", "tests"]);
 const falsePositiveFixtureNameRegex =
   /\b(?:ignores_[a-z0-9_]+|does_not_[a-z0-9_]+|[a-z0-9_]+_does_not_[a-z0-9_]+|accepts_[a-z0-9_]+|allows_[a-z0-9_]+|skips_[a-z0-9_]+)\b/gi;
 const rustTestFunctionRegex = /#\s*\[\s*test\s*\][\s\S]*?\bfn\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/g;
-const requiredProviderPrefixes = ["diagnostics/", "completions/", "hover/", "actions/"];
+const diagnosticCodeConstRegex =
+  /\bpub\s+const\s+[A-Z0-9_]+_CODE\s*:\s*&\s*(?:'static\s+)?str\s*=\s*"(?<code>[^"]+)"/g;
+const rustStringConstRegex =
+  /\b(?:pub\s+)?const\s+(?<name>[A-Z0-9_]+)\s*:\s*&\s*(?:'static\s+)?str\s*=\s*"(?<value>[^"]+)"/g;
+const diagnosticQuickfixRegex =
+  /"quickfix"\s*:\s*(?:"(?<literal>[^"]+)"|(?<identifier>[A-Z0-9_]+))/g;
+const quickfixTagRegex = /`(?<tag>[^`]+)`/g;
+const requiredProviderPrefixes = [
+  "lsp/diagnostics/",
+  "lsp/completions/",
+  "lsp/hover/",
+  "lsp/actions/",
+];
+const quickfixCoverageValues = new Set(["covered", "partial", "guidance", "gap"]);
+const specialQuickfixTags = new Set([
+  "code-routed",
+  "none",
+  "parser-rule:duplicate",
+  "parser-rule:ordering",
+]);
 const providerSourceIgnorePatterns = [
   /(^|\/)tests?(\/|\.rs$)/,
   /(^|\/)[a-z0-9_]+_tests(\/|\.rs$)/,
   /(^|\/)common\.rs$/,
   /(^|\/)mod\.rs$/,
   /(^|\/)support\.rs$/,
-  /^diagnostics\/arbitration\.rs$/,
-  /^diagnostics\/engine\.rs$/,
-  /^diagnostics\/lint\.rs$/,
-  /^diagnostics\/registry\.rs$/,
-  /^diagnostics\/rules\.rs$/,
-  /^diagnostics\/suppression\.rs$/,
+  /^lsp\/diagnostics\/arbitration\.rs$/,
+  /^lsp\/diagnostics\/engine\.rs$/,
+  /^lsp\/diagnostics\/lint\.rs$/,
+  /^lsp\/diagnostics\/registry\.rs$/,
+  /^lsp\/diagnostics\/rules\.rs$/,
+  /^lsp\/diagnostics\/suppression\.rs$/,
 ];
 
 export type AuditRow = {
@@ -54,6 +75,15 @@ export type AuditRow = {
 
 export type AuditCoverage = {
   rustTestNames: Set<string>;
+};
+
+export type QuickfixAuditRow = {
+  line: number;
+  diagnosticCode: string;
+  coverage: string;
+  actionEmitter: string;
+  quickfixTags: string;
+  gaps: string;
 };
 
 type TopicEntry = {
@@ -78,8 +108,11 @@ if (import.meta.main) {
 export function checkDiagnosticAudit(): { failures: string[]; rowCount: number } {
   const auditText = readFileSync(auditPath, "utf8");
   const rows = auditRowsFromMarkdown(auditText);
+  const quickfixRows = quickfixRowsFromMarkdown(auditText);
   const manifestTopics = parseManifestTopics(readFileSync(topicsPath, "utf8"));
   const emittedTopics = sourceDiagnosticTopics(diagnosticsRoot);
+  const diagnosticCodes = registryDiagnosticCodes(registryPath);
+  const emittedQuickfixTags = sourceDiagnosticQuickfixTags(sourceRoot, diagnosticsRoot);
   const coverage = auditCoverageFromSource(sourceRoot);
   const existingPaths = new Set(rustFiles(sourceRoot));
   const sourcePaths = [...existingPaths]
@@ -91,6 +124,12 @@ export function checkDiagnosticAudit(): { failures: string[]; rowCount: number }
     ...auditCellFailures(rows, coverage),
     ...auditCoverageFailures(rows),
     ...auditableSourceFailures(rows, sourcePaths),
+    ...quickfixCoverageFailures(
+      quickfixRows,
+      diagnosticCodes,
+      emittedQuickfixTags,
+      new Set(sourcePaths),
+    ),
   ];
 
   if (rows.length === 0) {
@@ -129,6 +168,87 @@ export function auditRowsFromMarkdown(text: string): AuditRow[] {
     }));
 }
 
+export function quickfixRowsFromMarkdown(text: string): QuickfixAuditRow[] {
+  const rows: QuickfixAuditRow[] = [];
+  let insideQuickfixTable = false;
+
+  for (const [index, line] of text.split(/\r?\n/).entries()) {
+    const cells = splitMarkdownRow(line);
+    if (cells.length === 0) {
+      if (insideQuickfixTable) {
+        break;
+      }
+      continue;
+    }
+
+    if (isQuickfixHeaderRow(cells)) {
+      insideQuickfixTable = true;
+      continue;
+    }
+    if (!insideQuickfixTable) {
+      continue;
+    }
+    if (stripMarkdown(cells[0]) === "---") {
+      continue;
+    }
+    if (cells.length !== quickfixTableColumnCount) {
+      break;
+    }
+
+    rows.push({
+      line: index + 1,
+      diagnosticCode: stripMarkdown(cells[0]),
+      coverage: stripMarkdown(cells[1]),
+      actionEmitter: cells[2].trim(),
+      quickfixTags: cells[3].trim(),
+      gaps: stripMarkdown(cells[4]),
+    });
+  }
+
+  return rows;
+}
+
+export function quickfixCoverageFailures(
+  rows: QuickfixAuditRow[],
+  diagnosticCodes: Set<string>,
+  emittedQuickfixTags: Set<string>,
+  sourcePaths: Set<string>,
+): string[] {
+  const failures: string[] = [];
+  if (rows.length === 0) {
+    failures.push("docs/diagnostic-audit.md must include a quickfix coverage matrix");
+    return failures;
+  }
+
+  const seen = new Map<string, QuickfixAuditRow[]>();
+  for (const row of rows) {
+    seen.set(row.diagnosticCode, [...(seen.get(row.diagnosticCode) ?? []), row]);
+    failures.push(
+      ...quickfixRowFailures(row, diagnosticCodes, emittedQuickfixTags, sourcePaths),
+    );
+  }
+
+  for (const code of [...diagnosticCodes].sort(compareStrings)) {
+    if (!seen.has(code)) {
+      failures.push(`${code} missing from quickfix coverage matrix`);
+    }
+  }
+  for (const [code, matches] of seen) {
+    if (matches.length > 1) {
+      failures.push(`${code} appears multiple times in quickfix coverage matrix`);
+    }
+  }
+
+  const auditedTags = new Set(rows.flatMap((row) => quickfixTags(row.quickfixTags)));
+  for (const tag of [...emittedQuickfixTags].sort(compareStrings)) {
+    if (!auditedTags.has(tag)) {
+      failures.push(`${tag} quickfix tag missing from quickfix coverage matrix`);
+    }
+  }
+
+  return failures;
+}
+
 export function sourcePathFailures(
   rows: AuditRow[],
   root: string,
@@ -142,8 +262,57 @@ export function sourcePathFailures(
     if (!isInsideRoot(root, resolvedPath)) {
       return [`${row.file} escapes ${root}`];
     }
-    return existingSourcePaths.has(resolvedPath) ? [] : [`${row.file} does not exist under ${root}`];
+    return existingSourcePaths.has(resolvedPath)
+      ? []
+      : [`${row.file} does not exist under ${root}`];
   });
+}
+
+export function registryDiagnosticCodes(path: string): Set<string> {
+  return new Set(
+    [...readFileSync(path, "utf8").matchAll(diagnosticCodeConstRegex)]
+      .flatMap((match) => match.groups?.code ?? [])
+      .sort(compareStrings),
+  );
+}
+
+export function sourceDiagnosticQuickfixTags(
+  sourceRootPath: string,
+  diagnosticsRootPath: string,
+): Set<string> {
+  const constants = rustStringConstants(sourceRootPath);
+  const tags = new Set<string>();
+
+  for (const file of rustFiles(diagnosticsRootPath).filter((path) =>
+    isProductionDiagnosticSourcePath(diagnosticsRootPath, path),
+  )) {
+    const text = readFileSync(file, "utf8");
+    for (const match of text.matchAll(diagnosticQuickfixRegex)) {
+      const literal = match.groups?.literal;
+      const identifier = match.groups?.identifier;
+      const tag = literal ?? (identifier ? constants.get(identifier) : undefined);
+      if (tag) {
+        tags.add(tag);
+      }
+    }
+  }
+
+  return tags;
+}
+
+function rustStringConstants(root: string): Map<string, string> {
+  const constants = new Map<string, string>();
+  for (const file of rustFiles(root)) {
+    const text = readFileSync(file, "utf8");
+    for (const match of text.matchAll(rustStringConstRegex)) {
+      const name = match.groups?.name;
+      const value = match.groups?.value;
+      if (name && value) {
+        constants.set(name, value);
+      }
+    }
+  }
+  return constants;
 }
 
 export function auditTopicFailures(
@@ -188,6 +357,88 @@ function auditRowsCoverSourcePath(rows: AuditRow[], sourcePath: string): boolean
   return rows.some((row) => row.file === sourcePath || wildcardRowCovers(row.file, sourcePath));
 }
 
+function isQuickfixHeaderRow(cells: string[]): boolean {
+  return (
+    cells.length === quickfixTableColumnCount &&
+    stripMarkdown(cells[0]) === "diagnostic code" &&
+    stripMarkdown(cells[1]) === "quickfix coverage"
+  );
+}
+
+function quickfixRowFailures(
+  row: QuickfixAuditRow,
+  diagnosticCodes: Set<string>,
+  emittedQuickfixTags: Set<string>,
+  sourcePaths: Set<string>,
+): string[] {
+  const failures: string[] = [];
+  const coverage = row.coverage.trim().toLowerCase();
+  const tags = quickfixTags(row.quickfixTags);
+
+  if (!diagnosticCodes.has(row.diagnosticCode)) {
+    failures.push(`${quickfixRowLabel(row)}: unknown diagnostic code`);
+  }
+  if (!quickfixCoverageValues.has(coverage)) {
+    failures.push(
+      `${quickfixRowLabel(row)}: quickfix coverage must be covered, partial, guidance, or gap`,
+    );
+  }
+  if (coverage === "gap") {
+    if (normalizedCell(row.gaps) === "none") {
+      failures.push(`${quickfixRowLabel(row)}: gap rows must name the missing quickfix`);
+    }
+    if (normalizedCell(row.quickfixTags) !== "none") {
+      failures.push(`${quickfixRowLabel(row)}: gap rows must use none for quickfix tags`);
+    }
+    return failures;
+  }
+
+  if (tags.length === 0 || normalizedCell(row.quickfixTags) === "none") {
+    failures.push(`${quickfixRowLabel(row)}: non-gap rows must name quickfix tags`);
+  }
+  for (const tag of tags) {
+    if (!specialQuickfixTags.has(tag) && !emittedQuickfixTags.has(tag)) {
+      failures.push(`${quickfixRowLabel(row)}: unknown quickfix tag ${tag}`);
+    }
+  }
+  if (normalizedCell(row.actionEmitter) === "n/a") {
+    failures.push(`${quickfixRowLabel(row)}: non-gap rows must name an action emitter`);
+  }
+  for (const path of actionEmitterPaths(row.actionEmitter)) {
+    if (!sourcePaths.has(path)) {
+      failures.push(`${quickfixRowLabel(row)}: action emitter ${path} does not exist`);
+    }
+    if (!path.startsWith("lsp/actions/")) {
+      failures.push(`${quickfixRowLabel(row)}: action emitter ${path} must live under lsp/actions/`);
+    }
+  }
+  if (coverage === "covered" && normalizedCell(row.gaps) !== "none") {
+    failures.push(`${quickfixRowLabel(row)}: covered rows must use none for gaps`);
+  }
+
+  return failures;
+}
+
+function quickfixTags(value: string): string[] {
+  return [
+    ...new Set([...value.matchAll(quickfixTagRegex)].flatMap((match) => match.groups?.tag ?? [])),
+  ].sort(compareStrings);
+}
+
+function actionEmitterPaths(value: string): string[] {
+  return [...new Set(quickfixTags(value).filter((tag) => tag.endsWith(".rs")))].sort(
+    compareStrings,
+  );
+}
+
+function normalizedCell(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function quickfixRowLabel(row: QuickfixAuditRow): string {
+  return `${row.diagnosticCode}:${row.line}`;
+}
+
 function wildcardRowCovers(rowPath: string, sourcePath: string): boolean {
   if (!rowPath.endsWith("/*")) {
     return false;
@@ -205,7 +456,9 @@ function rowTopicFailures(row: AuditRow, manifestTopics: Set<string>): string[] 
     failures.push(`${row.file} ${row.provider}: wildcard topic cells are not allowed`);
   }
   if (topics.length === 0 && topicCell !== "n/a") {
-    failures.push(`${row.file} ${row.provider}: topic cell must use concrete seagrass topics or n/a`);
+    failures.push(
+      `${row.file} ${row.provider}: topic cell must use concrete seagrass topics or n/a`,
+    );
   }
   failures.push(
     ...topics

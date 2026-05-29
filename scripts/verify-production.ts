@@ -115,6 +115,12 @@ const steps = [
     args: ["test", "scripts/release-workflow.test.ts"],
   },
   {
+    name: "Release package command tests",
+    cwd: repoRoot,
+    command: "bun",
+    args: ["test", "scripts/package-release.test.ts"],
+  },
+  {
     name: "Generated Anchor support freshness",
     cwd: repoRoot,
     command: "bun",

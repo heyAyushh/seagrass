@@ -1,3 +1,3 @@
 fn main() {
-    println!("cargo:rerun-if-changed=src/generated");
+    println!("cargo:rerun-if-changed=src/anchor/generated");
 }

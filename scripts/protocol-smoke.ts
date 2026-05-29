@@ -78,7 +78,11 @@ type PrepareRename = {
 
 type CodeAction = {
   title?: string;
+  kind?: string;
+  diagnostics?: Diagnostic[];
   edit?: WorkspaceEdit;
+  isPreferred?: boolean;
+  data?: JsonObject;
 };
 
 type Hover = {
@@ -197,6 +201,21 @@ type InitializeResult = {
   };
 };
 
+type ProposedAssist = {
+  id?: string;
+  title?: string;
+  kind?: string;
+  applicability?: string;
+  hasEdit?: boolean;
+  edit?: WorkspaceEdit;
+  evidence?: JsonObject;
+};
+
+type ProposedAssistsResponse = {
+  uri?: string;
+  assists?: ProposedAssist[];
+};
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const smokeFixtureRoot = resolve(repoRoot, "target/seagrass-smoke-fixtures");
@@ -249,6 +268,8 @@ const completionGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-
 const hoverGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-hover-guardrails.rs")).href;
 const relatedInfoGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-related-info-guardrails.rs")).href;
 const cpiUri = pathToFileURL(resolve(repoRoot, "target/seagrass-cpi.rs")).href;
+const proactiveAssistUri = pathToFileURL(resolve(repoRoot, "target/seagrass-proactive-assist.rs")).href;
+const proactiveRefreshUri = pathToFileURL(resolve(repoRoot, "target/seagrass-proactive-refresh.rs")).href;
 const smokeFixtureWorkspaceUri = pathToFileURL(smokeFixtureRoot).href;
 
 const artifactSmokeSource = `
@@ -513,6 +534,105 @@ pub struct Create<'info> {
 
 #[account]
 pub struct State {}
+`;
+
+const proactiveAssistSource = `
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod smoke {
+    use super::*;
+
+    pub fn update(ctx: Context<UpdateVault>, name: String) -> Result<()> {
+        ctx.accounts.vault.count = ctx.accounts.vault.count.checked_add(1).unwrap();
+        Ok(())
+    }
+
+    pub fn settle_position(ctx: Context<SettlePosition>, position_name: String) -> Result<()> {
+        let _token_cpi = CpiContext::new(ctx.accounts.token_program.to_account_info(), ());
+        let _metadata_cpi = CpiContext::new(ctx.accounts.metadata_program.to_account_info(), ());
+        let _ = position_name;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = payer, space = 8 + Vault::INIT_SPACE)]
+    pub vault: Account<'info, Vault>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CreateAssociatedToken<'info> {
+    #[account(init, payer = payer, associated_token::mint = mint, associated_token::authority = payer)]
+    pub token: Account<'info, TokenAccount>,
+    pub mint: Account<'info, Mint>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[derive(Accounts)]
+pub struct UpdateVault<'info> {
+    #[account(seeds = [name.as_bytes()])]
+    pub vault: Account<'info, Vault>,
+}
+
+#[derive(Accounts)]
+#[instruction(position_name: String)]
+pub struct SettlePosition<'info> {
+    #[account(seeds = [b"position", market.key().as_ref(), authority.key().as_ref(), position_name.as_bytes()])]
+    pub position: Account<'info, Vault>,
+    pub market: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+    pub token_program: AccountInfo<'info>,
+    pub metadata_program: AccountInfo<'info>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct Vault {
+    pub count: u64,
+}
+`;
+
+const proactiveRefreshSource = `
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct RefreshCreate<'info> {
+    #[account(init, payer = payer, space = 8 + State::INIT_SPACE)]
+    pub state: Account<'info, State>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct State {
+    pub value: u64,
+}
+`;
+
+const proactiveRefreshUpdatedSource = `
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct RefreshCreate<'info> {
+    #[account(init, payer = payer, space = 8 + State::INIT_SPACE)]
+    pub state: Account<'info, State>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct State {
+    pub value: u64,
+}
 `;
 
 const emptySlotCompletionSource = `
@@ -1400,6 +1520,7 @@ try {
     "seagrass/artifacts",
     "seagrass/instructionSummary",
     "seagrass/programReport",
+    "seagrass/proposeAssists",
     "seagrass/errorCoverage",
     "seagrass/supportMatrix",
     "seagrass/generatorProfile",
@@ -2515,6 +2636,365 @@ try {
     !("idlHash" in programReport)
   ) {
     throw new Error(`seagrass program report returned wrong shape: ${JSON.stringify(programReport)}`);
+  }
+  openDocument(proactiveAssistUri, proactiveAssistSource);
+  const assistRange = {
+    start: { line: 0, character: 0 },
+    end: { line: proactiveAssistSource.split("\n").length, character: 0 },
+  };
+  const proactiveActions = await request<CodeAction[]>("textDocument/codeAction", {
+    textDocument: { uri: proactiveAssistUri },
+    range: assistRange,
+    context: { diagnostics: [], only: ["refactor"] },
+  });
+  const systemProgramAction = proactiveActions.find(
+    (action) =>
+      action.title === "Add Anchor system program account" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "add-system-program-field",
+  );
+  const expectedSystemProgramEdit = "    pub system_program: Program<'info, System>,\n";
+  const systemProgramActionEdit = systemProgramAction?.edit?.changes?.[proactiveAssistUri]?.find(
+    (edit) => edit.newText === expectedSystemProgramEdit,
+  );
+  if (
+    systemProgramAction?.data?.evidence?.accountsStruct !== "Create" ||
+    systemProgramAction?.data?.evidence?.field !== "system_program" ||
+    systemProgramAction?.data?.evidence?.reason !==
+      "init-like account constraints require the System program account" ||
+    !systemProgramActionEdit
+  ) {
+    throw new Error(`proactive system program code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  const proposedAssists = await request<ProposedAssistsResponse>("workspace/executeCommand", {
+    command: "seagrass/proposeAssists",
+    arguments: [{ uri: proactiveAssistUri }],
+  });
+  const systemProgramAssist = proposedAssists.assists?.find(
+    (assist) =>
+      assist.id === "add-system-program-field" &&
+      assist.kind === "refactor" &&
+      assist.applicability === "machineApplicable" &&
+      assist.hasEdit === true &&
+      assist.evidence?.field === "system_program",
+  );
+  if (
+    proposedAssists.uri !== proactiveAssistUri ||
+    systemProgramAssist?.title !== "Add Anchor system program account" ||
+    systemProgramAssist?.evidence?.accountsStruct !== "Create" ||
+    systemProgramAssist?.evidence?.reason !== "init-like account constraints require the System program account" ||
+    !systemProgramAssist?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText === expectedSystemProgramEdit,
+    )
+  ) {
+    throw new Error(`seagrass propose assists returned wrong shape: ${JSON.stringify(proposedAssists)}`);
+  }
+  const expectedTokenProgramEdit = "    pub token_program: Program<'info, Token>,\n";
+  const tokenProgramAction = proactiveActions.find(
+    (action) =>
+      action.title === "Add Anchor token program account" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "add-token-program-field",
+  );
+  if (
+    tokenProgramAction?.data?.evidence?.accountsStruct !== "CreateAssociatedToken" ||
+    tokenProgramAction?.data?.evidence?.field !== "token_program" ||
+    tokenProgramAction?.data?.evidence?.reason !==
+      "token or mint init constraints require the Token program account" ||
+    !tokenProgramAction?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText === expectedTokenProgramEdit,
+    )
+  ) {
+    throw new Error(`proactive token program code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  const tokenProgramAssist = proposedAssists.assists?.find(
+    (assist) =>
+      assist.id === "add-token-program-field" &&
+      assist.title === "Add Anchor token program account" &&
+      assist.kind === "refactor" &&
+      assist.applicability === "machineApplicable" &&
+      assist.hasEdit === true &&
+      assist.evidence?.accountsStruct === "CreateAssociatedToken" &&
+      assist.evidence?.field === "token_program" &&
+      assist.evidence?.reason === "token or mint init constraints require the Token program account",
+  );
+  if (
+    !tokenProgramAssist?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText === expectedTokenProgramEdit,
+    )
+  ) {
+    throw new Error(`seagrass propose assists missed token program: ${JSON.stringify(proposedAssists)}`);
+  }
+  const expectedAssociatedTokenProgramEdit =
+    "    pub associated_token_program: Program<'info, AssociatedToken>,\n";
+  const associatedTokenProgramAction = proactiveActions.find(
+    (action) =>
+      action.title === "Add Anchor associated token program account" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "add-associated-token-program-field",
+  );
+  if (
+    associatedTokenProgramAction?.data?.evidence?.accountsStruct !== "CreateAssociatedToken" ||
+    associatedTokenProgramAction?.data?.evidence?.field !== "associated_token_program" ||
+    associatedTokenProgramAction?.data?.evidence?.reason !==
+      "associated token constraints require the Associated Token program account" ||
+    !associatedTokenProgramAction?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText === expectedAssociatedTokenProgramEdit,
+    )
+  ) {
+    throw new Error(`proactive associated token program code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  const associatedTokenProgramAssist = proposedAssists.assists?.find(
+    (assist) =>
+      assist.id === "add-associated-token-program-field" &&
+      assist.title === "Add Anchor associated token program account" &&
+      assist.kind === "refactor" &&
+      assist.applicability === "machineApplicable" &&
+      assist.hasEdit === true &&
+      assist.evidence?.accountsStruct === "CreateAssociatedToken" &&
+      assist.evidence?.field === "associated_token_program" &&
+      assist.evidence?.reason === "associated token constraints require the Associated Token program account",
+  );
+  if (
+    !associatedTokenProgramAssist?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText === expectedAssociatedTokenProgramEdit,
+    )
+  ) {
+    throw new Error(`seagrass propose assists missed associated token program: ${JSON.stringify(proposedAssists)}`);
+  }
+  const pdaBumpAction = proactiveActions.find(
+    (action) =>
+      action.title === "Add Anchor PDA bump constraint" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "add-pda-bump-constraint" &&
+      action.data?.evidence?.accountsStruct === "UpdateVault" &&
+      action.data?.evidence?.field === "vault",
+  );
+  if (
+    pdaBumpAction?.data?.evidence?.accountsStruct !== "UpdateVault" ||
+    pdaBumpAction?.data?.evidence?.field !== "vault" ||
+    pdaBumpAction?.data?.evidence?.constraint !== "bump" ||
+    pdaBumpAction?.data?.evidence?.reason !== "PDA seeds should validate the canonical bump" ||
+    !pdaBumpAction?.edit?.changes?.[proactiveAssistUri]?.some((edit) => edit.newText === ", bump")
+  ) {
+    throw new Error(`proactive PDA bump code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  const pdaBumpAssist = proposedAssists.assists?.find(
+    (assist) =>
+      assist.id === "add-pda-bump-constraint" &&
+      assist.title === "Add Anchor PDA bump constraint" &&
+      assist.kind === "refactor" &&
+      assist.applicability === "machineApplicable" &&
+      assist.hasEdit === true &&
+      assist.evidence?.accountsStruct === "UpdateVault" &&
+      assist.evidence?.field === "vault" &&
+      assist.evidence?.constraint === "bump",
+  );
+  if (!pdaBumpAssist?.edit?.changes?.[proactiveAssistUri]?.some((edit) => edit.newText === ", bump")) {
+    throw new Error(`seagrass propose assists missed PDA bump: ${JSON.stringify(proposedAssists)}`);
+  }
+  const mutConstraintAction = proactiveActions.find(
+    (action) =>
+      action.title === "Add Anchor mut constraint" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "add-mut-constraint",
+  );
+  if (
+    mutConstraintAction?.data?.evidence?.accountsStruct !== "UpdateVault" ||
+    mutConstraintAction?.data?.evidence?.field !== "vault" ||
+    mutConstraintAction?.data?.evidence?.constraint !== "mut" ||
+    mutConstraintAction?.data?.evidence?.instruction !== "update" ||
+    !mutConstraintAction?.edit?.changes?.[proactiveAssistUri]?.some((edit) => edit.newText === ", mut")
+  ) {
+    throw new Error(`proactive mut constraint code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  const mutConstraintAssist = proposedAssists.assists?.find(
+    (assist) =>
+      assist.id === "add-mut-constraint" &&
+      assist.title === "Add Anchor mut constraint" &&
+      assist.kind === "refactor" &&
+      assist.applicability === "machineApplicable" &&
+      assist.hasEdit === true &&
+      assist.evidence?.accountsStruct === "UpdateVault" &&
+      assist.evidence?.field === "vault" &&
+      assist.evidence?.constraint === "mut" &&
+      assist.evidence?.instruction === "update",
+  );
+  if (!mutConstraintAssist?.edit?.changes?.[proactiveAssistUri]?.some((edit) => edit.newText === ", mut")) {
+    throw new Error(`seagrass propose assists missed mut constraint: ${JSON.stringify(proposedAssists)}`);
+  }
+  const instructionArgsAction = proactiveActions.find(
+    (action) =>
+      action.title === "Add Anchor instruction arguments attribute" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "add-instruction-args-attribute",
+  );
+  const instructionArgs = instructionArgsAction?.data?.evidence?.arguments;
+  if (
+    instructionArgsAction?.data?.evidence?.accountsStruct !== "UpdateVault" ||
+    !Array.isArray(instructionArgs) ||
+    !(instructionArgs as JsonObject[]).some((argument) => argument.name === "name" && argument.type === "String") ||
+    !instructionArgsAction?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText === "#[instruction(name: String)]\n",
+    )
+  ) {
+    throw new Error(`proactive instruction args code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  const instructionArgsAssist = proposedAssists.assists?.find(
+    (assist) =>
+      assist.id === "add-instruction-args-attribute" &&
+      assist.title === "Add Anchor instruction arguments attribute" &&
+      assist.kind === "refactor" &&
+      assist.applicability === "machineApplicable" &&
+      assist.hasEdit === true &&
+      assist.evidence?.accountsStruct === "UpdateVault",
+  );
+  const proposedInstructionArgs = instructionArgsAssist?.evidence?.arguments;
+  if (
+    !Array.isArray(proposedInstructionArgs) ||
+    !(proposedInstructionArgs as JsonObject[]).some((argument) => argument.name === "name" && argument.type === "String") ||
+    !instructionArgsAssist?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText === "#[instruction(name: String)]\n",
+    )
+  ) {
+    throw new Error(`seagrass propose assists missed instruction args: ${JSON.stringify(proposedAssists)}`);
+  }
+  const canonicalSeedsAction = proactiveActions.find(
+    (action) =>
+      action.title === "Add canonical PDA seeds helper" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "add-canonical-seeds-struct" &&
+      action.data?.evidence?.accountsStruct === "SettlePosition" &&
+      action.data?.evidence?.field === "position",
+  );
+  if (
+    canonicalSeedsAction?.data?.evidence?.accountsStruct !== "SettlePosition" ||
+    canonicalSeedsAction?.data?.evidence?.field !== "position" ||
+    canonicalSeedsAction?.data?.evidence?.helper !== "PositionSeeds" ||
+    !canonicalSeedsAction?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) =>
+        edit.newText.includes("pub struct PositionSeeds<'a>") &&
+        edit.newText.includes("pub market: &'a Pubkey,") &&
+        edit.newText.includes("pub authority: &'a Pubkey,") &&
+        edit.newText.includes("pub position_name: &'a str,"),
+    )
+  ) {
+    throw new Error(`proactive canonical seeds code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  const canonicalSeedsAssist = proposedAssists.assists?.find(
+    (assist) =>
+      assist.id === "add-canonical-seeds-struct" &&
+      assist.title === "Add canonical PDA seeds helper" &&
+      assist.kind === "refactor" &&
+      assist.applicability === "machineApplicable" &&
+      assist.hasEdit === true &&
+      assist.evidence?.accountsStruct === "SettlePosition" &&
+      assist.evidence?.field === "position" &&
+      assist.evidence?.helper === "PositionSeeds",
+  );
+  if (
+    !canonicalSeedsAssist?.edit?.changes?.[proactiveAssistUri]?.some((edit) =>
+      edit.newText.includes("pub struct PositionSeeds<'a>"),
+    )
+  ) {
+    throw new Error(`seagrass propose assists missed canonical seeds: ${JSON.stringify(proposedAssists)}`);
+  }
+  const typedCpiAction = proactiveActions.find(
+    (action) =>
+      action.title === "Use typed CPI program account" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "use-typed-cpi-program-account",
+  );
+  if (
+    typedCpiAction?.data?.evidence?.accountsStruct !== "SettlePosition" ||
+    typedCpiAction?.data?.evidence?.field !== "token_program" ||
+    typedCpiAction?.data?.evidence?.expectedType !== "Program<'info, Token>" ||
+    !typedCpiAction?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText === "Program<'info, Token>",
+    )
+  ) {
+    throw new Error(`proactive typed CPI code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  const executableCpiAction = proactiveActions.find(
+    (action) =>
+      action.title === "Add executable CPI program constraint" &&
+      action.kind === "refactor" &&
+      action.isPreferred === true &&
+      action.diagnostics == null &&
+      action.data?.seagrassAssist === "add-cpi-program-executable-constraint",
+  );
+  if (
+    executableCpiAction?.data?.evidence?.accountsStruct !== "SettlePosition" ||
+    executableCpiAction?.data?.evidence?.field !== "metadata_program" ||
+    executableCpiAction?.data?.evidence?.constraint !== "executable" ||
+    !executableCpiAction?.edit?.changes?.[proactiveAssistUri]?.some(
+      (edit) => edit.newText.trim() === "#[account(executable)]",
+    )
+  ) {
+    throw new Error(`proactive executable CPI code action was missing: ${JSON.stringify(proactiveActions)}`);
+  }
+  for (const assistId of ["use-typed-cpi-program-account", "add-cpi-program-executable-constraint"]) {
+    if (!proposedAssists.assists?.some((assist) => assist.id === assistId && assist.hasEdit === true)) {
+      throw new Error(`seagrass propose assists missed ${assistId}: ${JSON.stringify(proposedAssists)}`);
+    }
+  }
+  const positionCursor = positionAfter(proactiveAssistSource, "pub position");
+  const focusedProactiveActions = await request<CodeAction[]>("textDocument/codeAction", {
+    textDocument: { uri: proactiveAssistUri },
+    range: { start: positionCursor, end: positionCursor },
+    context: { diagnostics: [], only: ["refactor"] },
+  });
+  if (
+    !focusedProactiveActions.some((action) => action.data?.seagrassAssist === "add-canonical-seeds-struct") ||
+    focusedProactiveActions.some((action) => action.data?.seagrassAssist === "add-system-program-field")
+  ) {
+    throw new Error(`focused proactive code actions ignored cursor range: ${JSON.stringify(focusedProactiveActions)}`);
+  }
+  openDocument(proactiveRefreshUri, proactiveRefreshSource);
+  const refreshRange = {
+    start: { line: 0, character: 0 },
+    end: { line: proactiveRefreshSource.split("\n").length, character: 0 },
+  };
+  const refreshBeforeActions = await request<CodeAction[]>("textDocument/codeAction", {
+    textDocument: { uri: proactiveRefreshUri },
+    range: refreshRange,
+    context: { diagnostics: [], only: ["refactor"] },
+  });
+  if (!refreshBeforeActions.some((action) => action.data?.seagrassAssist === "add-system-program-field")) {
+    throw new Error(`proactive refresh fixture did not start with system assist: ${JSON.stringify(refreshBeforeActions)}`);
+  }
+  notify("textDocument/didChange", {
+    textDocument: { uri: proactiveRefreshUri, version: 2 },
+    contentChanges: [{ text: proactiveRefreshUpdatedSource }],
+  });
+  await pullDiagnostics(proactiveRefreshUri);
+  const refreshAfterRange = {
+    start: { line: 0, character: 0 },
+    end: { line: proactiveRefreshUpdatedSource.split("\n").length, character: 0 },
+  };
+  const refreshAfterActions = await request<CodeAction[]>("textDocument/codeAction", {
+    textDocument: { uri: proactiveRefreshUri },
+    range: refreshAfterRange,
+    context: { diagnostics: [], only: ["refactor"] },
+  });
+  if (refreshAfterActions.some((action) => action.data?.seagrassAssist === "add-system-program-field")) {
+    throw new Error(`proactive code actions did not refresh after document edit: ${JSON.stringify(refreshAfterActions)}`);
   }
   const focusedContextAnalysis = await request<AnalysisReport>("workspace/executeCommand", {
     command: "seagrass/analyze",

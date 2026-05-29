@@ -35,7 +35,7 @@ type Options = {
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const defaultOutDir = resolve(repoRoot, "src/generated");
+const defaultOutDir = resolve(repoRoot, "src/anchor/generated");
 const generatorSource = resolve(repoRoot, "tools/regen-support/legacy_generator.rs");
 const enginePath = resolve(repoRoot, "target/regen-support/regen-support");
 
@@ -246,7 +246,7 @@ Usage:
 Options:
   --anchor-path <path>   Anchor checkout to scrape. Required.
   --family <family>      Support family: v1 or v2-preview. Required.
-  --out-dir <path>       Output directory. Default: src/generated.
+  --out-dir <path>       Output directory. Default: src/anchor/generated.
   --corpus-path <path>   Optional program corpus root. Defaults to Anchor examples and tests.
   --check                Generate to a temp directory and fail if checked-in files differ.
   --dry-run              Generate to a temp directory and report which files would change.

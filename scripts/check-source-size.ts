@@ -9,7 +9,7 @@ const MAX_SOURCE_LINES = 800;
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const sourceRoot = resolve(repoRoot, "src");
-const generatedRoot = resolve(sourceRoot, "generated");
+const generatedRoots = new Set([resolve(sourceRoot, "anchor/generated")]);
 
 const oversized = rustFiles(sourceRoot)
   .map((path) => ({ path, lines: lineCount(path) }))
@@ -27,7 +27,7 @@ if (oversized.length > 0) {
 console.log(`seagrass source size check passed: max ${MAX_SOURCE_LINES} LOC`);
 
 function rustFiles(root) {
-  if (root === generatedRoot) {
+  if (generatedRoots.has(root)) {
     return [];
   }
   return readdirSync(root)

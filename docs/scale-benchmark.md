@@ -45,7 +45,9 @@ Latest local p99 run, 2026-05-26:
 
 The benchmark drives `initialize` and `initialized` over LSP stdio, polls
 `seagrass/status` until the workspace index reaches the requested program
-count, records process RSS with `ps`, writes the JSON report, and fails when the
-plan budgets are exceeded. With `--samples`, `coldStartMillis` and
+count, records process RSS with `ps` when the host allows process listing,
+writes the JSON report, and fails when the measured budgets are exceeded. If
+the host blocks `ps`, RSS fields are written as `null` and the cold-start/index
+budget remains enforced. With `--samples`, `coldStartMillis` and
 `rssMegabytes` in the report are the p99 values, and the raw observations remain
 available under `samples`.

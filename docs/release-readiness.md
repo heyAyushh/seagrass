@@ -76,6 +76,9 @@ archives, unsafe tar members, placeholder workflow run ids, non-24h readiness
 evidence, and mismatched commits. It also writes `fuzzCleanRun.corpusSha256`,
 which the strict readiness gate compares against the checked-in
 `fuzz/corpus` tree before release packaging can proceed.
+The release-readiness regression suite rejects placeholder workflow run ids,
+rejects generic review proof URLs, rejects mutable changelog proof URLs, and
+rejects stale corpus hashes.
 The release workflow packages the checked `release-readiness.json` with the
 promoted fuzz corpus so release users can replay the corpus against the exact
 proof that unlocked the tag.
@@ -113,3 +116,7 @@ bun scripts/apply-release-readiness.ts \
   --version "$(tr -d '[:space:]' < VERSION)" \
   --commit <release-sha>
 ```
+
+The release workflow tests additionally reject mutable VSIX release metadata URLs
+and unpinned workflow actions so packaged editor metadata and GitHub Actions
+dependencies stay tied to immutable release inputs.

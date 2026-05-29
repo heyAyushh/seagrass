@@ -2,13 +2,14 @@ import { describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { expectedReleaseAssets } from "./package-release.ts";
 import { repoRoot } from "./release-evidence.ts";
 
 const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/release.yaml");
 const prWorkflowPath = resolve(repoRoot, ".github/workflows/pr.yaml");
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
+const packageReleasePath = resolve(repoRoot, "scripts/package-release.ts");
 const releaseReadinessDocPath = resolve(repoRoot, "docs/release-readiness.md");
-const completionAuditPath = resolve(repoRoot, "docs/10-10-completion-audit.md");
 const seagrassWorkflowPaths = [
   ".github/workflows/fuzz.yaml",
   ".github/workflows/perf.yaml",
@@ -21,19 +22,17 @@ const pinnedActionReferencePattern = /^[a-z0-9._-]+\/[a-z0-9._-]+@[a-f0-9]{40}$/
 
 describe("release workflow packaging", () => {
   test("publishes release readiness evidence with the fuzz corpus package", () => {
-    const workflow = readFileSync(releaseWorkflowPath, "utf8");
-    const packageFuzzCorpus = workflowSection(workflow, "package-fuzz-corpus:", "release:");
+    const script = readFileSync(packageReleasePath, "utf8");
 
-    expect(packageFuzzCorpus).toContain("cp docs/release-readiness.json");
-    expect(packageFuzzCorpus).toContain("release-readiness.json");
+    expect(script).toContain("docs/release-readiness.json");
+    expect(script).toContain("release-readiness.json");
   });
 
   test("packages fuzz replay inputs with the fuzz corpus", () => {
-    const workflow = readFileSync(releaseWorkflowPath, "utf8");
-    const packageFuzzCorpus = workflowSection(workflow, "package-fuzz-corpus:", "release:");
+    const script = readFileSync(packageReleasePath, "utf8");
 
-    expect(packageFuzzCorpus).toContain("cp -R fuzz/fuzz_targets");
-    expect(packageFuzzCorpus).toContain("cp .github/workflows/fuzz.yaml");
+    expect(script).toContain("fuzz/fuzz_targets");
+    expect(script).toContain(".github/workflows/fuzz.yaml");
   });
 
   test("verifies the exact release asset inventory before publishing", () => {
@@ -46,32 +45,51 @@ describe("release workflow packaging", () => {
 
     expect(release).toContain("expected_assets=(");
     expect(occurrences(release, "expected_assets=(")).toBe(1);
-    expect(release).toContain("seagrass-${VERSION}-aarch64-apple-darwin.tar.gz");
-    expect(release).toContain("seagrass-${VERSION}-x86_64-apple-darwin.tar.gz");
-    expect(release).toContain("seagrass-${VERSION}-x86_64-unknown-linux-gnu.tar.gz");
-    expect(release).toContain("seagrass-${VERSION}-x86_64-pc-windows-msvc.tar.gz");
-    expect(release).toContain("seagrass-zed-${VERSION}.tar.gz");
-    expect(release).toContain("seagrass-vscode-${VERSION}.vsix");
-    expect(release).toContain("seagrass-${VERSION}-fuzz-corpus.tar.gz");
+    for (const asset of expectedReleaseAssets("${VERSION}")) {
+      expect(release).toContain(asset);
+    }
     expect(release).toContain("sha256sum -c");
   });
 
   test("packages VSIX metadata against the immutable release tag", () => {
+    const script = readFileSync(packageReleasePath, "utf8");
+
+    expect(script).toContain("blob/${context.options.tag}/editors/vscode");
+    expect(script).toContain("raw/${context.options.tag}/editors/vscode");
+    expect(script).not.toContain("blob/main/editors/vscode");
+    expect(script).not.toContain("raw/main/editors/vscode");
+  });
+
+  test("uses the root package command for release artifacts", () => {
     const workflow = readFileSync(releaseWorkflowPath, "utf8");
+    const buildServer = workflowSection(
+      workflow,
+      "  build-server:\n    name: Build server",
+      "  build-zed:",
+    );
+    const buildZed = workflowSection(
+      workflow,
+      "  build-zed:\n    name: Build Zed extension package",
+      "  build-vscode:",
+    );
     const buildVsCode = workflowSection(
       workflow,
       "  build-vscode:\n    name: Build VS Code VSIX",
       "  package-fuzz-corpus:",
     );
+    const packageFuzzCorpus = workflowSection(workflow, "package-fuzz-corpus:", "release:");
 
-    expect(buildVsCode).toContain(
-      "blob/${{ needs.verify-tag.outputs.tag }}/editors/vscode",
-    );
-    expect(buildVsCode).toContain(
-      "raw/${{ needs.verify-tag.outputs.tag }}/editors/vscode",
-    );
-    expect(buildVsCode).not.toContain("blob/main/editors/vscode");
-    expect(buildVsCode).not.toContain("raw/main/editors/vscode");
+    expect(buildServer).toContain("bun scripts/package-release.ts");
+    expect(buildServer).toContain("--server");
+    expect(buildServer).toContain("--skip-build");
+    expect(buildZed).toContain("bun scripts/package-release.ts");
+    expect(buildZed).toContain("--zed");
+    expect(buildZed).toContain("--zed-wasm");
+    expect(buildZed).toContain("--skip-build");
+    expect(buildVsCode).toContain("bun scripts/package-release.ts");
+    expect(buildVsCode).toContain("--vscode");
+    expect(packageFuzzCorpus).toContain("bun scripts/package-release.ts");
+    expect(packageFuzzCorpus).toContain("--fuzz-corpus");
   });
 
   test("keeps release evidence regressions in PR guardrails", () => {
@@ -90,6 +108,7 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain("bun test scripts/review-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/apply-release-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/release-workflow.test.ts");
+    expect(workflow).toContain("bun test scripts/package-release.test.ts");
     expect(workflow).toContain(
       'bun scripts/check-release-readiness.ts --allow-pending --version "$(tr -d',
     );
@@ -106,6 +125,7 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain('"release-plz.toml"');
     expect(workflow).toContain('"VERSION"');
     expect(workflow).toContain('"bump-version.sh"');
+    expect(workflow).toContain('"scripts/package-release.ts"');
   });
 
   test("keeps the local production gate aligned with release evidence gates", () => {
@@ -121,11 +141,11 @@ describe("release workflow packaging", () => {
     expect(script).toContain('"scripts/check-research-citations.test.ts"');
     expect(script).toContain('"scripts/check-lint-catalog.test.ts"');
     expect(script).toContain('"scripts/verify-proptest.ts"');
+    expect(script).toContain('"scripts/package-release.test.ts"');
   });
 
   test("documents the same concrete proof constraints as the validator", () => {
     const releaseReadiness = readFileSync(releaseReadinessDocPath, "utf8");
-    const completionAudit = readFileSync(completionAuditPath, "utf8");
 
     expect(releaseReadiness).toContain("concrete GitHub Actions run URL");
     expect(releaseReadiness).toContain("positive run id");
@@ -133,12 +153,12 @@ describe("release workflow packaging", () => {
     expect(releaseReadiness).toContain("immutable CHANGELOG.md proof URL");
     expect(releaseReadiness).toContain("not `main` or `master`");
     expect(releaseReadiness).toContain("fuzzCleanRun.corpusSha256");
-    expect(completionAudit).toContain("rejects placeholder workflow run ids");
-    expect(completionAudit).toContain("rejects generic review proof URLs");
-    expect(completionAudit).toContain("mutable changelog proof URLs");
-    expect(completionAudit).toContain("mutable VSIX release metadata URLs");
-    expect(completionAudit).toContain("unpinned workflow actions");
-    expect(completionAudit).toContain("stale corpus hashes");
+    expect(releaseReadiness).toContain("rejects placeholder workflow run ids");
+    expect(releaseReadiness).toContain("rejects generic review proof URLs");
+    expect(releaseReadiness).toContain("mutable changelog proof URLs");
+    expect(releaseReadiness).toContain("mutable VSIX release metadata URLs");
+    expect(releaseReadiness).toContain("unpinned workflow actions");
+    expect(releaseReadiness).toContain("stale corpus hashes");
   });
 
   test("pins every Seagrass workflow action to an immutable SHA", () => {

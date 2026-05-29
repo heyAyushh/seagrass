@@ -79,9 +79,9 @@ describe("diagnostic topic checker", () => {
   test("ignores diagnostic test files when collecting emitted source topics", () => {
     const diagnosticsRoot = resolve(repoRoot, "src/diagnostics");
 
-    expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "security.rs"))).toBe(true);
-    expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "security/tests.rs"))).toBe(false);
-    expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "code_quality_tests.rs"))).toBe(false);
+    expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "security/mod.rs"))).toBe(true);
+    expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "security/tests/mod.rs"))).toBe(false);
+    expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "code_quality/tests/mod.rs"))).toBe(false);
     expect(isProductionDiagnosticSourcePath(resolve(diagnosticsRoot, "security/tests/raw_account_tests.rs"))).toBe(false);
   });
 

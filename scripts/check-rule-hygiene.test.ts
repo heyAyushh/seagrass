@@ -5,7 +5,7 @@ import { scanDiagnosticSource } from "./check-rule-hygiene.ts";
 describe("diagnostic rule hygiene checker", () => {
   test("flags raw source scanning patterns in production rules", () => {
     const findings = scanDiagnosticSource(
-      "src/diagnostics/example.rs",
+      "src/lsp/diagnostics/example.rs",
       `
 fn rule(source: &str, expr: syn::Expr) {
     let source_text = source;
@@ -29,14 +29,14 @@ fn rule(source: &str, expr: syn::Expr) {
   test("ignores test files and cfg test modules", () => {
     expect(
       scanDiagnosticSource(
-        "src/diagnostics/example_tests.rs",
+        "src/lsp/diagnostics/example_tests.rs",
         'fn test_fixture(source: &str) { let _ = source.lines().count(); }',
       ),
     ).toEqual([]);
 
     expect(
       scanDiagnosticSource(
-        "src/diagnostics/example.rs",
+        "src/lsp/diagnostics/example.rs",
         `
 #[cfg(test)]
 mod tests {

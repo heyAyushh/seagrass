@@ -312,7 +312,11 @@ pub(super) fn server_capabilities(
             ..SignatureHelpOptions::default()
         }),
         code_action_provider: Some(CodeActionProviderCapability::Options(CodeActionOptions {
-            code_action_kinds: Some(vec![CodeActionKind::QUICKFIX, CodeActionKind::SOURCE]),
+            code_action_kinds: Some(vec![
+                CodeActionKind::QUICKFIX,
+                CodeActionKind::REFACTOR,
+                CodeActionKind::SOURCE,
+            ]),
             resolve_provider: Some(true),
             ..CodeActionOptions::default()
         })),
@@ -333,6 +337,7 @@ pub(super) fn server_capabilities(
                 STATUS_COMMAND.to_string(),
                 ANALYZE_COMMAND.to_string(),
                 ARTIFACTS_COMMAND.to_string(),
+                PROPOSE_ASSISTS_COMMAND.to_string(),
                 SEAGRASS_INSTRUCTION_SUMMARY_COMMAND.to_string(),
                 SEAGRASS_PROGRAM_REPORT_COMMAND.to_string(),
                 ERROR_COVERAGE_COMMAND.to_string(),

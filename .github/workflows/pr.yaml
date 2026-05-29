@@ -24,6 +24,7 @@ on:
       - "scripts/check-diagnostic-topics.ts"
       - "scripts/check-lint-catalog.ts"
       - "scripts/check-release-readiness.ts"
+      - "scripts/package-release.ts"
   push:
     branches:
       - master
@@ -46,6 +47,7 @@ on:
       - "scripts/check-diagnostic-topics.ts"
       - "scripts/check-lint-catalog.ts"
       - "scripts/check-release-readiness.ts"
+      - "scripts/package-release.ts"
   workflow_dispatch:
 
 env:
@@ -107,6 +109,8 @@ jobs:
         run: bun test scripts/apply-release-readiness.test.ts
       - name: Test release workflow packaging
         run: bun test scripts/release-workflow.test.ts
+      - name: Test release package command
+        run: bun test scripts/package-release.test.ts
       - name: Test perf workflow guardrails
         run: bun test scripts/perf-workflow.test.ts
       - name: Run editor UX parity tests

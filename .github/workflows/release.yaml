@@ -252,6 +252,16 @@ jobs:
           toolchain: stable
           target: ${{ matrix.target }}
 
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+
       - name: Build server binary (macOS)
         if: runner.os == 'macOS'
         env:
@@ -264,21 +274,13 @@ jobs:
         run: cargo build --package seagrass --release --locked --target ${{ matrix.target }}
 
       - name: Package server binary
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="${{ needs.verify-tag.outputs.version }}"
-          target="${{ matrix.target }}"
-          package="seagrass-${version}-${target}"
-
-          mkdir -p "dist/${package}" artifacts
-          cp "target/${target}/release/seagrass${{ matrix.ext }}" "dist/${package}/"
-          cp README.md LICENSE "dist/${package}/"
-
-          tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
-          cd artifacts
-          sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
+        run: >
+          bun scripts/package-release.ts
+          --server
+          --version "${{ needs.verify-tag.outputs.version }}"
+          --target "${{ matrix.target }}"
+          --binary "target/${{ matrix.target }}/release/seagrass${{ matrix.ext }}"
+          --skip-build
 
       - name: Attest server package
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
@@ -310,27 +312,27 @@ jobs:
           toolchain: stable
           target: wasm32-wasip2
 
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install Bun
+        run: |
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
+
       - name: Build Zed wasm
         working-directory: editors/zed
         run: cargo build --target wasm32-wasip2 --release --locked
 
       - name: Package Zed extension
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          version="${{ needs.verify-tag.outputs.version }}"
-          package="seagrass-zed-${version}"
-
-          mkdir -p "dist/${package}" artifacts
-          cp editors/zed/extension.toml "dist/${package}/"
-          cp editors/zed/target/wasm32-wasip2/release/seagrass_zed.wasm "dist/${package}/extension.wasm"
-          cp editors/zed/README.md "dist/${package}/"
-          cp LICENSE "dist/${package}/"
-
-          tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
-          cd artifacts
-          sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
+        run: >
+          bun scripts/package-release.ts
+          --zed
+          --version "${{ needs.verify-tag.outputs.version }}"
+          --zed-wasm "target/wasm32-wasip2/release/seagrass_zed.wasm"
+          --skip-build
 
       - name: Attest Zed package
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
@@ -367,24 +369,14 @@ jobs:
           npm install --global "bun@${BUN_VERSION}"
           bun --version
 
-      - name: Build extension
-        working-directory: editors/vscode
-        run: |
-          bun install --frozen-lockfile
-          bun run check
-
-      - name: Package VSIX
-        working-directory: editors/vscode
-        run: |
-          mkdir -p ../../../artifacts
-          npm exec --yes "@vscode/vsce@${VSCE_VERSION}" -- package \
-            --out "../../../artifacts/seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix" \
-            --allow-missing-repository \
-            --baseContentUrl "https://github.com/${{ github.repository }}/blob/${{ needs.verify-tag.outputs.tag }}/editors/vscode" \
-            --baseImagesUrl "https://github.com/${{ github.repository }}/raw/${{ needs.verify-tag.outputs.tag }}/editors/vscode"
-          cd ../../../artifacts
-          sha256sum "seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix" \
-            > "seagrass-vscode-${{ needs.verify-tag.outputs.version }}.vsix.sha256"
+      - name: Package VS Code VSIX
+        run: >
+          bun scripts/package-release.ts
+          --vscode
+          --version "${{ needs.verify-tag.outputs.version }}"
+          --tag "${{ needs.verify-tag.outputs.tag }}"
+          --repository "${{ github.repository }}"
+          --vsce-version "${VSCE_VERSION}"
 
       - name: Attest VSIX
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
@@ -409,25 +401,21 @@ jobs:
         with:
           ref: ${{ needs.verify-tag.outputs.tag }}
 
-      - name: Package fuzz corpus
-        shell: bash
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+
+      - name: Install Bun
         run: |
-          set -euo pipefail
+          npm install --global "bun@${BUN_VERSION}"
+          bun --version
 
-          version="${{ needs.verify-tag.outputs.version }}"
-          package="seagrass-${version}-fuzz-corpus"
-
-          mkdir -p "dist/${package}" artifacts
-          mkdir -p "dist/${package}/.github/workflows"
-          cp -R fuzz/corpus "dist/${package}/"
-          cp -R fuzz/fuzz_targets "dist/${package}/"
-          cp fuzz/Cargo.toml "dist/${package}/"
-          cp docs/release-readiness.json "dist/${package}/"
-          cp .github/workflows/fuzz.yaml "dist/${package}/.github/workflows/"
-
-          tar -czf "artifacts/${package}.tar.gz" -C dist "$package"
-          cd artifacts
-          sha256sum "${package}.tar.gz" > "${package}.tar.gz.sha256"
+      - name: Package fuzz corpus
+        run: >
+          bun scripts/package-release.ts
+          --fuzz-corpus
+          --version "${{ needs.verify-tag.outputs.version }}"
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:

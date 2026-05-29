@@ -100,6 +100,84 @@ Returns:
 `programs` is populated from local build artifacts when they exist.
 `instructions`, `pdas`, and `errors` are populated from open documents.
 
+## Propose Assists
+
+Command:
+
+```json
+{
+  "command": "seagrass/proposeAssists",
+  "arguments": [
+    {
+      "uri": "file:///workspace/programs/demo/src/lib.rs"
+    }
+  ]
+}
+```
+
+Returns proactive, semantic suggestions that do not require diagnostics:
+
+Current v1 assists:
+
+- `add-system-program-field` adds `system_program` when init-like constraints
+  need the System program account.
+- `add-token-program-field` adds `token_program` or the explicitly referenced
+  token program field for token or mint initialization.
+- `add-associated-token-program-field` adds `associated_token_program` for
+  associated-token initialization.
+- `add-pda-bump-constraint` adds `bump` when PDA seeds lack canonical bump
+  validation.
+- `add-canonical-seeds-struct` appends a reusable `*Seeds<'a>` helper for PDA
+  accounts with supported literal, account-key, and string instruction seeds.
+- `add-mut-constraint` adds `mut` when instruction code mutates an account field.
+- `add-instruction-args-attribute` adds `#[instruction(...)]` when account
+  constraints reference instruction arguments.
+- `use-typed-cpi-program-account` replaces an unchecked known CPI program
+  account type with the typed Anchor program account.
+- `add-cpi-program-executable-constraint` adds `executable` to unknown
+  unchecked CPI program accounts.
+
+```json
+{
+  "uri": "file:///workspace/programs/demo/src/lib.rs",
+  "assists": [
+    {
+      "id": "add-system-program-field",
+      "title": "Add Anchor system program account",
+      "kind": "refactor",
+      "applicability": "machineApplicable",
+      "range": {
+        "start": { "line": 4, "character": 0 },
+        "end": { "line": 8, "character": 1 }
+      },
+      "hasEdit": true,
+      "edit": {},
+      "evidence": {
+        "accountsStruct": "Create",
+        "field": "system_program",
+        "reason": "init-like account constraints require the System program account"
+      }
+    }
+  ]
+}
+```
+
+Use `edit` directly when `applicability` is `machineApplicable`. Treat
+`evidence` as the source of truth for why the assist was offered; do not infer
+Anchor requirements from account names when the payload has explicit evidence.
+
+Scope and limits:
+
+- Assists are normal LSP `refactor` code actions and also appear through
+  `seagrass/proposeAssists`.
+- `add-canonical-seeds-struct` only offers helpers for supported seed shapes:
+  byte literals, direct account keys, and string instruction arguments.
+- CPI safety assists do not generate client artifacts. Known program fields are
+  upgraded to typed Anchor program accounts; unknown unchecked CPI programs get
+  executable validation.
+- Client-side helper generation is intentionally out of v1 until there is a
+  dedicated artifact ownership model.
+
 ## Example Agent Prompts
 
 Claude Code:
@@ -119,6 +197,12 @@ arrays to plan account changes. Do not infer Anchor account mutability from
 names when the report has explicit constraints.
 ```
 
+```text
+Ask the LSP for seagrass/proposeAssists on the target Rust file before editing.
+If it returns a machineApplicable assist, apply the provided edit instead of
+hand-writing the structural change.
+```
+
 Aider:
 
 ```text
@@ -136,5 +220,7 @@ Run:
 bun scripts/protocol-smoke.ts
 ```
 
-The smoke test verifies both commands are advertised and return agent-usable
-JSON.
+The smoke test verifies command advertisement, `textDocument/codeAction`
+refactor assists, `seagrass/proposeAssists` payloads, focused cursor behavior,
+and edit refresh. `bun scripts/verify-production.ts` also covers the VS Code and
+Zed adapter checks plus the release wasm freshness check.

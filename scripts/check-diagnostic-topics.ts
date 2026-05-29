@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const diagnosticsRoot = resolve(repoRoot, "src/diagnostics");
+const diagnosticsRoot = resolve(repoRoot, "src/lsp/diagnostics");
 const topicsPath = resolve(repoRoot, "docs/topics.json");
 export const topicPattern = /^seagrass\/[a-z0-9][a-z0-9.-]*$/;
 const sourceTopicEvidenceRegexes = [

@@ -81,5 +81,5 @@ the apply command merges the generated fuzz and review artifacts only after the
 strict checker passes. PR guardrails run the release-evidence test suite so
 those checks cannot drift before the tag workflow runs.
 
-See `docs/10-10-completion-audit.md` for the current requirement-by-
-requirement evidence map.
+See `docs/release-readiness.md` for the current release-proof requirements and
+the guardrails that keep the workflow evidence concrete.

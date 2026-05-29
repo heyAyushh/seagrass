@@ -51,9 +51,9 @@ type ScaleReport = {
   programs: number;
   indexedFiles: number;
   coldStartMillis: number;
-  rssMegabytes: number;
+  rssMegabytes: number | null;
   p99ColdStartMillis: number;
-  p99RssMegabytes: number;
+  p99RssMegabytes: number | null;
   samples: ScaleSample[];
   workspace: string;
 };
@@ -61,7 +61,11 @@ type ScaleReport = {
 type ScaleSample = {
   indexedFiles: number;
   coldStartMillis: number;
-  rssMegabytes: number;
+  rssMegabytes: number | null;
+};
+
+type ErrorWithCode = Error & {
+  code?: string;
 };
 
 const args = parseArgs(process.argv.slice(2));
@@ -84,14 +88,14 @@ if (report.coldStartMillis > args.maxColdStartMillis) {
     `cold start exceeded budget: ${report.coldStartMillis.toFixed(1)} ms > ${args.maxColdStartMillis} ms`,
   );
 }
-if (report.rssMegabytes > args.maxRssMegabytes) {
+if (report.rssMegabytes !== null && report.rssMegabytes > args.maxRssMegabytes) {
   fail(
     `RSS exceeded budget: ${report.rssMegabytes.toFixed(1)} MB > ${args.maxRssMegabytes} MB`,
   );
 }
 
 console.log(
-  `seagrass scale benchmark passed: ${report.indexedFiles} indexed files, p99 ${report.coldStartMillis.toFixed(1)} ms cold start, p99 ${report.rssMegabytes.toFixed(1)} MB RSS`,
+  `seagrass scale benchmark passed: ${report.indexedFiles} indexed files, p99 ${report.coldStartMillis.toFixed(1)} ms cold start, p99 ${formatRssMegabytes(report.rssMegabytes)} RSS`,
 );
 console.log(`report: ${args.report}`);
 
@@ -102,10 +106,7 @@ async function runScaleBenchmarkSamples(options: Args): Promise<ScaleReport> {
     samples.map((sample) => sample.coldStartMillis),
     p99Percentile,
   );
-  const p99RssMegabytes = percentile(
-    samples.map((sample) => sample.rssMegabytes),
-    p99Percentile,
-  );
+  const p99RssMegabytes = optionalPercentile(measuredRssSamples(samples), p99Percentile);
   return {
     programs: options.programs,
     indexedFiles,
@@ -267,7 +268,7 @@ function contentLength(header: string): number {
   return Number(match[1]);
 }
 
-function residentSetMegabytes(pid: number | undefined): number {
+function residentSetMegabytes(pid: number | undefined): number | null {
   if (pid === undefined) {
     throw new Error("server pid is unavailable");
   }
@@ -275,7 +276,12 @@ function residentSetMegabytes(pid: number | undefined): number {
     encoding: "utf8",
   });
   if (result.error) {
-    throw result.error;
+    const error = result.error as ErrorWithCode;
+    if (isProcessListingUnavailable(error)) {
+      console.warn(`RSS measurement unavailable: ${error.message}`);
+      return null;
+    }
+    throw error;
   }
   if (result.status !== 0) {
     throw new Error(`ps failed with exit code ${result.status}: ${result.stderr}`);
@@ -287,6 +293,20 @@ function residentSetMegabytes(pid: number | undefined): number {
   return (rssKilobytes * bytesPerKilobyte) / bytesPerMegabyte;
 }
 
+function measuredRssSamples(samples: ScaleSample[]): number[] {
+  return samples
+    .map((sample) => sample.rssMegabytes)
+    .filter((rssMegabytes): rssMegabytes is number => rssMegabytes !== null);
+}
+
+function formatRssMegabytes(rssMegabytes: number | null): string {
+  return rssMegabytes === null ? "unavailable" : `${rssMegabytes.toFixed(1)} MB`;
+}
+
+function isProcessListingUnavailable(error: ErrorWithCode): boolean {
+  return error.code === "EPERM" || error.code === "ENOENT";
+}
+
 function percentile(values: number[], percentileValue: number): number {
   if (values.length === 0) {
     throw new Error("percentile requires at least one sample");
@@ -295,6 +315,10 @@ function percentile(values: number[], percentileValue: number): number {
   const rank = Math.ceil((percentileValue / 100) * sorted.length) - 1;
   const boundedRank = Math.min(Math.max(rank, 0), sorted.length - 1);
   return sorted[boundedRank];
+}
+
+function optionalPercentile(values: number[], percentileValue: number): number | null {
+  return values.length === 0 ? null : percentile(values, percentileValue);
 }
 
 function parseArgs(rawArgs: string[]): Args {

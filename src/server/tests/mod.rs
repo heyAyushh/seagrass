@@ -41,6 +41,22 @@ fn capabilities_advertise_anchor_implementation_provider() {
 }
 
 #[test]
+fn capabilities_advertise_refactor_code_actions_for_assists() {
+    let capabilities = server_capabilities(DiagnosticsTransport::Push);
+    let code_action_provider = capabilities
+        .code_action_provider
+        .expect("code action provider");
+    let CodeActionProviderCapability::Options(options) = code_action_provider else {
+        panic!("expected code action options");
+    };
+    let kinds = options.code_action_kinds.expect("code action kinds");
+
+    assert!(kinds.contains(&CodeActionKind::QUICKFIX));
+    assert!(kinds.contains(&CodeActionKind::REFACTOR));
+    assert!(kinds.contains(&CodeActionKind::SOURCE));
+}
+
+#[test]
 fn capabilities_advertise_support_commands() {
     let capabilities = server_capabilities(DiagnosticsTransport::Push);
     let commands = capabilities
@@ -52,6 +68,7 @@ fn capabilities_advertise_support_commands() {
         STATUS_COMMAND,
         ANALYZE_COMMAND,
         ARTIFACTS_COMMAND,
+        PROPOSE_ASSISTS_COMMAND,
         SEAGRASS_INSTRUCTION_SUMMARY_COMMAND,
         SEAGRASS_PROGRAM_REPORT_COMMAND,
         ERROR_COVERAGE_COMMAND,
@@ -537,5 +554,4 @@ fn feedback_response_uses_server_owned_shape() {
     );
 }
 
-#[path = "reports.rs"]
 mod reports;
