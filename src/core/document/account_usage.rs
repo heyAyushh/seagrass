@@ -4,12 +4,19 @@ use {
         AccountUsage, FunctionCall, NamedRange,
     },
     crate::range::range_from_span,
+    aliases::{
+        account_field_alias_for_expr, account_field_alias_segment_for_expr,
+        direct_account_usage_from_expr, AccountFieldAlias,
+    },
     syn::{
         parse::Parser,
         visit::{self, Visit},
         FnArg, ItemFn, Path,
     },
 };
+
+#[path = "account_usage/aliases.rs"]
+mod aliases;
 
 pub(super) fn account_evidence(item_fn: &ItemFn) -> AccountUsageVisitor {
     let mut visitor = AccountUsageVisitor {
@@ -24,6 +31,7 @@ pub(super) fn account_evidence(item_fn: &ItemFn) -> AccountUsageVisitor {
 pub(super) struct AccountUsageVisitor {
     pub(super) context_names: Vec<String>,
     pub(super) accounts_aliases: Vec<String>,
+    account_field_aliases: Vec<AccountFieldAlias>,
     pub(super) usages: Vec<AccountUsage>,
     pub(super) function_calls: Vec<FunctionCall>,
     pub(super) data_field_usages: Vec<AccountDataFieldUsage>,
@@ -67,6 +75,18 @@ impl AccountUsageVisitor {
         let syn::Member::Named(field_ident) = &expr_field.member else {
             return;
         };
+        if let Some(account) =
+            account_field_alias_for_expr(expr_field.base.as_ref(), &self.account_field_aliases)
+        {
+            self.push_data_field_usage(AccountDataFieldUsage {
+                account,
+                field: field_ident.to_string(),
+                range: range_from_span(field_ident.span()),
+                mutable: self.mutable_depth > 0,
+            });
+            return;
+        }
+
         let syn::Expr::Field(account_field) = expr_field.base.as_ref() else {
             return;
         };
@@ -81,12 +101,15 @@ impl AccountUsageVisitor {
             return;
         };
 
-        let usage = AccountDataFieldUsage {
+        self.push_data_field_usage(AccountDataFieldUsage {
             account: account_ident.to_string(),
             field: field_ident.to_string(),
             range: range_from_span(field_ident.span()),
             mutable: self.mutable_depth > 0,
-        };
+        });
+    }
+
+    fn push_data_field_usage(&mut self, usage: AccountDataFieldUsage) {
         if !self.data_field_usages.iter().any(|existing| {
             existing.account == usage.account
                 && existing.field == usage.field
@@ -98,9 +121,12 @@ impl AccountUsageVisitor {
     }
 
     fn record_account_path_usage(&mut self, expr: &syn::Expr) {
-        let Some(segments) =
-            account_path_from_expr(expr, &self.context_names, &self.accounts_aliases)
-        else {
+        let Some(segments) = account_path_from_expr(
+            expr,
+            &self.context_names,
+            &self.accounts_aliases,
+            &self.account_field_aliases,
+        ) else {
             return;
         };
         if segments.len() < 2 {
@@ -215,6 +241,31 @@ impl AccountUsageVisitor {
         }
     }
 
+    fn record_account_field_alias(&mut self, local: &syn::Local) {
+        let syn::Pat::Ident(pat_ident) = &local.pat else {
+            return;
+        };
+        let Some(init) = &local.init else {
+            return;
+        };
+        let Some(account) =
+            direct_account_usage_from_expr(&init.expr, &self.context_names, &self.accounts_aliases)
+        else {
+            return;
+        };
+        let alias = AccountFieldAlias {
+            alias: pat_ident.ident.to_string(),
+            account,
+        };
+        if !self
+            .account_field_aliases
+            .iter()
+            .any(|existing| existing == &alias)
+        {
+            self.account_field_aliases.push(alias);
+        }
+    }
+
     fn with_mutable_context(&mut self, visit: impl FnOnce(&mut Self)) {
         self.mutable_depth += 1;
         visit(self);
@@ -225,6 +276,7 @@ impl AccountUsageVisitor {
 impl<'ast> Visit<'ast> for AccountUsageVisitor {
     fn visit_local(&mut self, node: &'ast syn::Local) {
         self.record_accounts_alias(node);
+        self.record_account_field_alias(node);
         visit::visit_local(self, node);
     }
 
@@ -478,6 +530,7 @@ fn account_path_from_expr(
     expr: &syn::Expr,
     context_names: &[String],
     accounts_aliases: &[String],
+    account_field_aliases: &[AccountFieldAlias],
 ) -> Option<Vec<NamedRange>> {
     match expr {
         syn::Expr::Field(expr_field) => {
@@ -492,8 +545,18 @@ fn account_path_from_expr(
             {
                 return Some(vec![segment]);
             }
-            let mut path =
-                account_path_from_expr(expr_field.base.as_ref(), context_names, accounts_aliases)?;
+            if let Some(alias_segment) = account_field_alias_segment_for_expr(
+                expr_field.base.as_ref(),
+                account_field_aliases,
+            ) {
+                return Some(vec![alias_segment, segment]);
+            }
+            let mut path = account_path_from_expr(
+                expr_field.base.as_ref(),
+                context_names,
+                accounts_aliases,
+                account_field_aliases,
+            )?;
             path.push(segment);
             Some(path)
         }
@@ -501,19 +564,32 @@ fn account_path_from_expr(
             method_call.receiver.as_ref(),
             context_names,
             accounts_aliases,
+            account_field_aliases,
         ),
-        syn::Expr::Reference(reference) => {
-            account_path_from_expr(reference.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Paren(paren) => {
-            account_path_from_expr(paren.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Group(group) => {
-            account_path_from_expr(group.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Unary(unary) => {
-            account_path_from_expr(unary.expr.as_ref(), context_names, accounts_aliases)
-        }
+        syn::Expr::Reference(reference) => account_path_from_expr(
+            reference.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Paren(paren) => account_path_from_expr(
+            paren.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Group(group) => account_path_from_expr(
+            group.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Unary(unary) => account_path_from_expr(
+            unary.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
         _ => None,
     }
 }

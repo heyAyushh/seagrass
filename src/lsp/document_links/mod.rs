@@ -5,9 +5,6 @@ use {
     tower_lsp::lsp_types::{DocumentLink, Url},
 };
 
-const ACCOUNT_CONSTRAINT_DOCS: &str =
-    "https://www.anchor-lang.com/docs/references/account-constraints";
-
 pub fn document_links(document: &ParsedDocument) -> Vec<DocumentLink> {
     let mut links = Vec::new();
 
@@ -18,17 +15,16 @@ pub fn document_links(document: &ParsedDocument) -> Vec<DocumentLink> {
                     let Some(spec) = constraint_catalog::by_key(key_range.key) else {
                         continue;
                     };
+                    let key = constraint_catalog::key(spec.label);
                     links.push(DocumentLink {
                         range: key_range.range,
-                        target: Url::parse(ACCOUNT_CONSTRAINT_DOCS).ok(),
-                        tooltip: Some(format!(
-                            "Open Anchor docs for `{}`",
-                            constraint_catalog::key(spec.label)
-                        )),
+                        target: constraint_catalog::documentation_url_for_key(key)
+                            .and_then(|url| Url::parse(url).ok()),
+                        tooltip: Some(format!("Open Anchor docs for `{key}`")),
                         data: Some(serde_json::json!({
                             "anchor": {
                                 "kind": "accountConstraint",
-                                "key": constraint_catalog::key(spec.label),
+                                "key": key,
                                 "family": format!("{:?}", spec.family),
                             }
                         })),
@@ -75,10 +71,12 @@ pub struct Create<'info> {
         assert!(linked_text.contains(&"payer".to_string()));
         assert!(linked_text.contains(&"seeds::program".to_string()));
         assert!(linked_text.contains(&"bump".to_string()));
-        assert!(links.iter().all(|link| link
-            .target
-            .as_ref()
-            .is_some_and(|target| target.as_str() == ACCOUNT_CONSTRAINT_DOCS)));
+        assert!(links.iter().all(|link| {
+            let key = link_key(link).expect("document link should carry a constraint key");
+            link.target.as_ref().is_some_and(|target| {
+                Some(target.as_str()) == constraint_catalog::documentation_url_for_key(&key)
+            })
+        }));
     }
 
     #[test]
@@ -121,10 +119,10 @@ pub struct Create<'info> {{
             assert!(
                 links.iter().any(|link| {
                     link_key(link).as_deref() == Some(key)
-                        && link
-                            .target
-                            .as_ref()
-                            .is_some_and(|target| target.as_str() == ACCOUNT_CONSTRAINT_DOCS)
+                        && link.target.as_ref().is_some_and(|target| {
+                            Some(target.as_str())
+                                == constraint_catalog::documentation_url_for_key(key)
+                        })
                         && link
                             .data
                             .as_ref()

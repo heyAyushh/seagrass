@@ -1,11 +1,12 @@
 use {
     crate::{
+        account_members::{self, AccountMemberAccess},
         diagnostics::{diagnostic_from_range, registry::AnchorDiagnosticKind},
         document::{AccountPathUsage, InstructionSymbol, ParsedDocument, SymbolRange},
         evidence::EvidenceGraph,
-        workspace::{WorkspaceAccountField, WorkspaceIndex},
+        workspace::{WorkspaceAccountField, WorkspaceAccountsStruct, WorkspaceIndex},
     },
-    tower_lsp::lsp_types::Diagnostic,
+    tower_lsp::lsp_types::{Diagnostic, Range},
 };
 
 #[cfg(test)]
@@ -77,6 +78,11 @@ pub fn collect_with_workspace(
         })
         .collect::<Vec<_>>();
     diagnostics.extend(nested_account_path_diagnostics(document, workspace_index));
+    diagnostics.extend(nested_account_data_path_diagnostics(
+        document,
+        workspace_index,
+    ));
+    diagnostics.extend(account_data_field_diagnostics(document, workspace_index));
     diagnostics
 }
 
@@ -121,6 +127,223 @@ fn nested_account_path_diagnostics(
                 })
         })
         .collect()
+}
+
+fn account_data_field_diagnostics(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<Diagnostic> {
+    document
+        .symbols()
+        .callable_functions()
+        .flat_map(|instruction| {
+            instruction
+                .account_data_field_usages
+                .iter()
+                .filter_map(move |usage| {
+                    let context = instruction.context.as_ref()?;
+                    let (accounts, field) = account_data_field_context(
+                        document,
+                        workspace_index,
+                        &context.name,
+                        &usage.account,
+                    )?;
+                    let missing = account_members::missing_member_in_chain(
+                        document,
+                        workspace_index,
+                        &accounts,
+                        &field,
+                        AccountMemberAccess::Direct,
+                        &usage.account,
+                        std::slice::from_ref(&usage.field),
+                    )?;
+                    Some(diagnostic_from_range(
+                        usage.range,
+                        AnchorDiagnosticKind::AnchorMissingAccountReference,
+                        format!(
+                            "`{}.{}` does not resolve; `{}` has no field `{}`.",
+                            missing.receiver_path,
+                            missing.member,
+                            missing.owner_type,
+                            missing.member
+                        ),
+                        Some(serde_json::json!({
+                            "account": usage.account,
+                            "field": usage.field,
+                            "accountsStruct": accounts.name,
+                            "instruction": instruction.name,
+                            "reason": "unknown-account-data-field",
+                            "ownerType": missing.owner_type,
+                            "candidates": missing.candidates,
+                        })),
+                    ))
+                })
+        })
+        .collect()
+}
+
+fn nested_account_data_path_diagnostics(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<Diagnostic> {
+    document
+        .symbols()
+        .callable_functions()
+        .flat_map(|instruction| {
+            instruction
+                .account_path_usages
+                .iter()
+                .filter(|usage| usage.segments.len() > 2)
+                .filter_map(move |usage| {
+                    nested_account_data_path_diagnostic(
+                        document,
+                        workspace_index,
+                        instruction,
+                        usage,
+                    )
+                })
+        })
+        .collect()
+}
+
+fn nested_account_data_path_diagnostic(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    instruction: &InstructionSymbol,
+    usage: &AccountPathUsage,
+) -> Option<Diagnostic> {
+    let context = instruction.context.as_ref()?;
+    let mut accounts = accounts_symbol(document, workspace_index, &context.name)?;
+    let mut receiver_segments = Vec::new();
+
+    for (index, segment) in usage.segments.iter().enumerate() {
+        let field = account_field_symbol(&accounts, &segment.name)?;
+        receiver_segments.push(segment.name.clone());
+
+        if index + 1 == usage.segments.len() {
+            return None;
+        }
+
+        if let Some(next_container) = field
+            .type_name
+            .as_ref()
+            .filter(|type_name| has_accounts_struct(document, workspace_index, type_name))
+        {
+            accounts = accounts_symbol(document, workspace_index, next_container)?;
+            continue;
+        }
+
+        let remaining = usage.segments[index + 1..]
+            .iter()
+            .map(|segment| segment.name.clone())
+            .collect::<Vec<_>>();
+        let missing = account_members::missing_member_in_chain(
+            document,
+            workspace_index,
+            &accounts,
+            &field,
+            AccountMemberAccess::Direct,
+            &receiver_segments.join("."),
+            &remaining,
+        )?;
+        let missing_range = usage.segments[index + 1..]
+            .iter()
+            .find(|segment| segment.name == missing.member)
+            .map(|segment| segment.range)
+            .unwrap_or(segment.range);
+
+        return Some(diagnostic_from_range(
+            missing_range,
+            AnchorDiagnosticKind::AnchorMissingAccountReference,
+            format!(
+                "`{}.{}` does not resolve; `{}` has no field `{}`.",
+                missing.receiver_path, missing.member, missing.owner_type, missing.member
+            ),
+            Some(serde_json::json!({
+                "account": receiver_segments.join("."),
+                "field": missing.member,
+                "accountsStruct": accounts.name,
+                "instruction": instruction.name,
+                "reason": "unknown-account-data-field",
+                "ownerType": missing.owner_type,
+                "candidates": missing.candidates,
+            })),
+        ));
+    }
+
+    None
+}
+
+fn account_data_field_context(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts_name: &str,
+    account_name: &str,
+) -> Option<(SymbolRange, SymbolRange)> {
+    let accounts = accounts_symbol(document, workspace_index, accounts_name)?;
+    let field = account_field_symbol(&accounts, account_name)?;
+    Some((accounts, field))
+}
+
+fn accounts_symbol(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts_name: &str,
+) -> Option<SymbolRange> {
+    if let Some(accounts) = document.symbols().accounts_structs.get(accounts_name) {
+        return Some(accounts.clone());
+    }
+    workspace_index
+        .and_then(|index| index.accounts_struct(accounts_name))
+        .map(workspace_accounts_symbol)
+}
+
+fn account_field_symbol(accounts: &SymbolRange, account_name: &str) -> Option<SymbolRange> {
+    accounts
+        .fields
+        .iter()
+        .find(|field| field.name == account_name)
+        .cloned()
+}
+
+fn workspace_accounts_symbol(accounts: &WorkspaceAccountsStruct) -> SymbolRange {
+    SymbolRange {
+        name: accounts.name.clone(),
+        range: Range::default(),
+        selection_range: Range::default(),
+        fields: accounts
+            .fields
+            .iter()
+            .map(workspace_account_field_symbol)
+            .collect(),
+        type_name: None,
+        type_range: None,
+        generic_type_names: Vec::new(),
+        generic_type_ranges: Vec::new(),
+        is_optional: false,
+        account_constraints: Vec::new(),
+        pda_constraint: None,
+        instruction_arguments: accounts.instruction_arguments.clone(),
+        derive_accounts_range: None,
+    }
+}
+
+fn workspace_account_field_symbol(field: &WorkspaceAccountField) -> SymbolRange {
+    SymbolRange {
+        name: field.name.clone(),
+        range: Range::default(),
+        selection_range: Range::default(),
+        fields: Vec::new(),
+        type_name: field.type_name.clone(),
+        type_range: None,
+        generic_type_names: field.generic_type_names.clone(),
+        generic_type_ranges: Vec::new(),
+        is_optional: false,
+        account_constraints: field.account_constraints.clone(),
+        pda_constraint: None,
+        instruction_arguments: Vec::new(),
+        derive_accounts_range: None,
+    }
 }
 
 fn nested_account_path_diagnostic(

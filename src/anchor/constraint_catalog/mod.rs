@@ -65,6 +65,10 @@ pub struct ConstraintSpec {
 pub const CONSTRAINTS: &[ConstraintSpec] = include!("../generated/constraint_catalog_generated.rs");
 include!("../generated/constraint_keys_generated.rs");
 
+pub const ACCOUNT_CONSTRAINT_DOCS: &str =
+    "https://www.anchor-lang.com/docs/references/account-constraints";
+pub const ACCOUNT_SPACE_DOCS: &str = "https://www.anchor-lang.com/docs/references/space";
+
 pub fn by_key(key: &str) -> Option<&'static ConstraintSpec> {
     CONSTRAINTS.iter().find(|spec| {
         spec.label == key
@@ -106,6 +110,134 @@ pub fn parser_rule_for_message(
 
 pub fn key(label: &str) -> &str {
     label.strip_suffix(" =").unwrap_or(label)
+}
+
+pub fn documentation_url_for_key(key: &str) -> Option<&'static str> {
+    let key = normalized_documentation_key(key);
+    let fragment = match key {
+        "address" => "#accountaddress--expr",
+        "bump" | "seeds" | "seeds::program" => "#accountseeds-bump",
+        "close" => "#accountclose--target",
+        "constraint" => "#accountconstraint--expr",
+        "dup" => return Some(ACCOUNT_CONSTRAINT_DOCS),
+        "executable" => "#accountexecutable",
+        "extensions::close_authority::authority" => "#accountextensionsclose_authority",
+        "extensions::group_member_pointer::authority"
+        | "extensions::group_member_pointer::member_address" => {
+            "#accountextensionsgroup_member_pointer"
+        }
+        "extensions::group_pointer::authority" | "extensions::group_pointer::group_address" => {
+            "#accountextensionsgroup_pointer"
+        }
+        "extensions::metadata_pointer::authority"
+        | "extensions::metadata_pointer::metadata_address" => "#accountextensionsmetadata_pointer",
+        "extensions::permanent_delegate::delegate" => "#accountextensionspermanent_delegate",
+        "extensions::transfer_hook::authority" | "extensions::transfer_hook::program_id" => {
+            "#accountextensionstransfer_hook"
+        }
+        "has_one" => "#accounthas_one--target",
+        "init" | "payer" => "#accountinit",
+        "init_if_needed" => "#accountinit_if_needed",
+        "mut" => "#accountmut",
+        "owner" => "#accountowner--expr",
+        "realloc" | "realloc::payer" | "realloc::zero" => "#accountrealloc",
+        "signer" => "#accountsigner",
+        "space" => return Some(ACCOUNT_SPACE_DOCS),
+        "zero" => "#accountzero",
+        key if key.ends_with("::token_program") => "#accounttoken_program--expr",
+        key if key.starts_with("associated_token::") => "#accountassociated_token",
+        key if key.starts_with("extensions::") => "#token-extensions-constraints",
+        key if key.starts_with("mint::") => "#accountmint",
+        key if key.starts_with("token::") => "#accounttoken",
+        "rent_exempt" => return Some("https://docs.rs/anchor-derive-accounts/1.0.2/anchor_derive_accounts/derive.Accounts.html#normal-constraints"),
+        _ => return None,
+    };
+    Some(account_constraint_docs_with_fragment(fragment))
+}
+
+fn normalized_documentation_key(key: &str) -> &str {
+    key.trim()
+        .trim_end_matches(',')
+        .strip_suffix(" =")
+        .unwrap_or_else(|| key.trim().trim_end_matches(','))
+}
+
+fn account_constraint_docs_with_fragment(fragment: &'static str) -> &'static str {
+    match fragment {
+        "#accountaddress--expr" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountaddress--expr"
+        }
+        "#accountassociated_token" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountassociated_token"
+        }
+        "#accountclose--target" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountclose--target"
+        }
+        "#accountconstraint--expr" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountconstraint--expr"
+        }
+        "#accountexecutable" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountexecutable"
+        }
+        "#accountextensionsclose_authority" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountextensionsclose_authority"
+        }
+        "#accountextensionsgroup_member_pointer" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountextensionsgroup_member_pointer"
+        }
+        "#accountextensionsgroup_pointer" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountextensionsgroup_pointer"
+        }
+        "#accountextensionsmetadata_pointer" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountextensionsmetadata_pointer"
+        }
+        "#accountextensionspermanent_delegate" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountextensionspermanent_delegate"
+        }
+        "#accountextensionstransfer_hook" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountextensionstransfer_hook"
+        }
+        "#accounthas_one--target" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accounthas_one--target"
+        }
+        "#accountinit" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountinit"
+        }
+        "#accountinit_if_needed" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountinit_if_needed"
+        }
+        "#accountmint" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountmint"
+        }
+        "#accountmut" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountmut"
+        }
+        "#accountowner--expr" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountowner--expr"
+        }
+        "#accountrealloc" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountrealloc"
+        }
+        "#accountseeds-bump" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountseeds-bump"
+        }
+        "#accountsigner" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountsigner"
+        }
+        "#accounttoken" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accounttoken"
+        }
+        "#accounttoken_program--expr" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accounttoken_program--expr"
+        }
+        "#accountzero" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#accountzero"
+        }
+        "#token-extensions-constraints" => {
+            "https://www.anchor-lang.com/docs/references/account-constraints#token-extensions-constraints"
+        }
+        _ => ACCOUNT_CONSTRAINT_DOCS,
+    }
 }
 
 pub fn family_keys(family: ConstraintFamily) -> impl Iterator<Item = &'static str> {

@@ -11,11 +11,34 @@ struct CompletionLog<'a> {
     context: Option<&'a CompletionContext>,
 }
 
+#[cfg(test)]
 pub(super) fn feedback_response(url: &str) -> serde_json::Value {
+    let manifest = bundled_feedback_link();
+    feedback_response_with_label(url, &manifest.label)
+}
+
+fn feedback_response_with_label(url: &str, label: &str) -> serde_json::Value {
     serde_json::json!({
         "url": url,
-        "label": "Join the Seagrass Telegram",
+        "label": label,
     })
+}
+
+pub(super) fn bundled_feedback_link() -> FeedbackLink {
+    let manifest = toml::from_str::<FeedbackManifest>(crate::SEAGRASS_FEEDBACK_MANIFEST)
+        .expect("bundled Seagrass feedback manifest must be valid TOML");
+    manifest.feedback
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+pub(super) struct FeedbackLink {
+    pub(super) label: String,
+    pub(super) url: String,
+}
+
+#[derive(Debug, Clone, serde::Deserialize)]
+struct FeedbackManifest {
+    feedback: FeedbackLink,
 }
 
 impl Backend {
@@ -258,14 +281,15 @@ impl Backend {
     }
 
     pub(super) fn feedback_command(&self) -> serde_json::Value {
+        let bundled = bundled_feedback_link();
         let url = self
             .settings
             .lock()
             .unwrap_or_else(|err| err.into_inner())
             .feedback_url
             .clone()
-            .unwrap_or_else(|| crate::SEAGRASS_FEEDBACK_URL.to_string());
-        feedback_response(&url)
+            .unwrap_or(bundled.url);
+        feedback_response_with_label(&url, &bundled.label)
     }
 
     pub(super) fn project_coverage_command(&self) -> serde_json::Value {

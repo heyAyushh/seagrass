@@ -1,4 +1,8 @@
-use tower_lsp::lsp_types::{DiagnosticSeverity, Url};
+use {
+    crate::constraint_catalog,
+    serde_json::Value,
+    tower_lsp::lsp_types::{DiagnosticSeverity, Url},
+};
 
 pub const ANCHOR_CONTEXT_ACCOUNTS_CODE: &str = "anchor-context-accounts";
 pub const ANCHOR_INIT_CONSTRAINTS_CODE: &str = "anchor-init-constraints";
@@ -144,6 +148,13 @@ impl AnchorDiagnosticKind {
         }
     }
 
+    pub fn docs_url_for_data(self, data: Option<&Value>) -> Option<Url> {
+        data.and_then(diagnostic_constraint_key)
+            .and_then(constraint_catalog::documentation_url_for_key)
+            .and_then(parse_url)
+            .or_else(|| self.docs_url())
+    }
+
     pub fn docs_url(self) -> Option<Url> {
         let url = match self {
             Self::AnchorSyn => "https://www.anchor-lang.com/docs",
@@ -188,7 +199,7 @@ impl AnchorDiagnosticKind {
             Self::SolanaTestHarness => "https://solana.com/docs/programs/testing",
             Self::SolanaSurfpoolWorkspace => "https://docs.surfpool.run/toolchain/cli",
             Self::AnchorSplTokenInterface => {
-                "https://www.anchor-lang.com/docs/references/account-constraints#token"
+                "https://www.anchor-lang.com/docs/references/account-constraints#accounttoken"
             }
             Self::SecuritySigner => {
                 "https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/0-signer-authorization"
@@ -219,10 +230,10 @@ impl AnchorDiagnosticKind {
             }
             Self::SolanaCodeQuality => "https://solana.com/developers/courses/program-security",
             Self::PdaSeedResolution => {
-                "https://www.anchor-lang.com/docs/references/account-constraints#accountseeds"
+                "https://www.anchor-lang.com/docs/references/account-constraints#accountseeds-bump"
             }
         };
-        Url::parse(url).ok()
+        parse_url(url)
     }
 
     pub fn rule(self) -> Option<&'static str> {
@@ -397,6 +408,56 @@ impl AnchorDiagnosticKind {
             ],
             Self::SecurityStaticPda => &["ConstraintSeeds"],
             Self::PdaSeedResolution => &["ConstraintSeeds"],
+        }
+    }
+}
+
+fn diagnostic_constraint_key(data: &Value) -> Option<&str> {
+    [
+        "constraint",
+        "requiredBy",
+        "conflictsWith",
+        "missing",
+        "requiredCompanion",
+    ]
+    .iter()
+    .find_map(|key| data.get(key).and_then(Value::as_str))
+}
+
+fn parse_url(url: &str) -> Option<Url> {
+    Url::parse(url).ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn docs_url_uses_exact_constraint_anchor_from_data() {
+        for (constraint, expected_url) in [
+            (
+                "seeds",
+                "https://www.anchor-lang.com/docs/references/account-constraints#accountseeds-bump",
+            ),
+            (
+                "close",
+                "https://www.anchor-lang.com/docs/references/account-constraints#accountclose--target",
+            ),
+            (
+                "extensions::transfer_hook::program_id",
+                "https://www.anchor-lang.com/docs/references/account-constraints#accountextensionstransfer_hook",
+            ),
+            (
+                "token::mint",
+                "https://www.anchor-lang.com/docs/references/account-constraints#accounttoken",
+            ),
+        ] {
+            let data = serde_json::json!({ "constraint": constraint });
+            let actual_url = AnchorDiagnosticKind::AnchorConstraintShape
+                .docs_url_for_data(Some(&data))
+                .map(|url| url.to_string());
+
+            assert_eq!(actual_url.as_deref(), Some(expected_url));
         }
     }
 }

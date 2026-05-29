@@ -125,6 +125,7 @@ non-diagnostic.
 Active user syntax:
 
 - line: `// seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic`
+- line, all Seagrass diagnostics: `// seagrass-ignore`
 - file: `// seagrass-allow-file: seagrass/solana.code-quality.unchecked-arithmetic`
 - item or block: `#[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]`
   on top-level items, nested items, impl/trait/foreign items, local bindings, or

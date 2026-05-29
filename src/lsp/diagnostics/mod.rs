@@ -248,11 +248,14 @@ pub(crate) fn diagnostic_from_range_with_related(
     data: Option<serde_json::Value>,
     related_information: Option<Vec<DiagnosticRelatedInformation>>,
 ) -> Diagnostic {
+    let code_description = kind
+        .docs_url_for_data(data.as_ref())
+        .map(|href| CodeDescription { href });
     Diagnostic {
         range,
         severity: Some(kind.default_severity()),
         code: Some(NumberOrString::String(kind.code().to_string())),
-        code_description: kind.docs_url().map(|href| CodeDescription { href }),
+        code_description,
         source: Some(SOURCE.to_string()),
         message,
         related_information,

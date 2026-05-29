@@ -71,7 +71,7 @@ pub fn code_actions_unfiltered(
         neutral,
         diagnostics,
     ));
-    actions.extend(pda::code_actions(uri, neutral, diagnostics));
+    actions.extend(pda::code_actions(document, uri, neutral, diagnostics));
     actions
 }
 

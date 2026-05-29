@@ -5,6 +5,15 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- editors: move the bundled feedback link into `editors/feedback.toml` and
+  point editor feedback commands at the Seagrass Telegram.
+- lsp: validate account-data member access through local account bindings such
+  as `let position_bundle = &mut ctx.accounts.position_bundle`.
+- lsp: link diagnostics and constraint document links to exact Anchor reference
+  fragments, including PDA seed/bump and Token-2022 extension anchors.
+- lsp: suppress repeated PDA documentation quick fixes once an IDL limitation
+  comment is present, and accept `// seagrass-ignore` for line-scoped all-topic
+  suppression.
 - lsp: navigate from associated constants/functions in Anchor constraint
   expressions to real impl items or generated `InitSpace` owners.
 - lsp: include associated constraint constants/functions in references,

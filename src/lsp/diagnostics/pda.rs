@@ -357,6 +357,15 @@ pub struct Create<'info> {
         assert_eq!(data["constraint"], "seeds");
         assert_eq!(data["seedKind"], "expression");
         assert_eq!(data["idlVisible"], false);
+        assert_eq!(
+            diagnostic
+                .code_description
+                .as_ref()
+                .map(|description| description.href.as_str()),
+            Some(
+                "https://www.anchor-lang.com/docs/references/account-constraints#accountseeds-bump"
+            )
+        );
     }
 
     #[test]

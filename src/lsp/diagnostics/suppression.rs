@@ -10,6 +10,8 @@ use {
 
 const LINE_ALLOW_MARKER: &str = "seagrass-allow:";
 const FILE_ALLOW_MARKER: &str = "seagrass-allow-file:";
+const LINE_IGNORE_MARKER: &str = "seagrass-ignore";
+const ANY_SUPPRESSION_PATTERN: &str = "*";
 const NEXT_LINE_OFFSET: u32 = 1;
 const CODE_RULE_SEPARATOR: &str = ".";
 
@@ -104,6 +106,16 @@ impl SuppressionIndex {
                     .or_default()
                     .extend(patterns);
             }
+            if comment_has_marker(line, LINE_IGNORE_MARKER) {
+                self.line_patterns
+                    .entry(line_number)
+                    .or_default()
+                    .push(ANY_SUPPRESSION_PATTERN.to_string());
+                self.line_patterns
+                    .entry(line_number + NEXT_LINE_OFFSET)
+                    .or_default()
+                    .push(ANY_SUPPRESSION_PATTERN.to_string());
+            }
         }
     }
 
@@ -194,6 +206,11 @@ fn comment_patterns(line: &str, marker: &str) -> Option<Vec<String>> {
     Some(suppression_patterns(patterns))
 }
 
+fn comment_has_marker(line: &str, marker: &str) -> bool {
+    line.split_once("//")
+        .is_some_and(|(_, comment)| comment.contains(marker))
+}
+
 fn suppression_patterns(text: &str) -> Vec<String> {
     let mut patterns = Vec::new();
     let mut current = String::new();
@@ -265,6 +282,9 @@ fn suppression_matches(
     rule: Option<&str>,
     code: Option<&str>,
 ) -> bool {
+    if pattern == ANY_SUPPRESSION_PATTERN {
+        return true;
+    }
     topic.is_some_and(|topic| topic == pattern || topic.ends_with(&format!(".{pattern}")))
         || rule.is_some_and(|rule| rule == pattern || rule.ends_with(&format!("/{pattern}")))
         || code.is_some_and(|code| code == pattern)
@@ -334,5 +354,42 @@ allow = [
             Some("unchecked-arithmetic"),
             Some("solana-code-quality"),
         ));
+    }
+
+    #[test]
+    fn seagrass_ignore_suppresses_current_and_next_line() {
+        let source = r#"
+fn handler() {
+    // seagrass-ignore
+    let amount = 1 - 2;
+}
+"#;
+        let document = ParsedDocument::parse(source).unwrap();
+        let index = SuppressionIndex::from_document(&document, None);
+        let diagnostic = Diagnostic {
+            range: Range {
+                start: tower_lsp::lsp_types::Position {
+                    line: 3,
+                    character: 8,
+                },
+                end: tower_lsp::lsp_types::Position {
+                    line: 3,
+                    character: 14,
+                },
+            },
+            severity: None,
+            code: Some(NumberOrString::String("solana-code-quality".to_string())),
+            code_description: None,
+            source: None,
+            message: "unchecked arithmetic".to_string(),
+            related_information: None,
+            tags: None,
+            data: Some(serde_json::json!({
+                "topic": "seagrass/solana.code-quality.unchecked-arithmetic",
+                "rule": "unchecked-arithmetic",
+            })),
+        };
+
+        assert!(index.suppresses(&diagnostic));
     }
 }

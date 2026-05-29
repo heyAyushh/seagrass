@@ -28,4 +28,4 @@ pub(crate) use runtime::{
 pub use solana::project as solana_project;
 pub(crate) use solana::{ecosystem, program_artifacts};
 
-pub const SEAGRASS_FEEDBACK_URL: &str = "https://github.com/heyAyushh/seagrass/issues";
+pub(crate) const SEAGRASS_FEEDBACK_MANIFEST: &str = include_str!("../editors/feedback.toml");

@@ -1,14 +1,21 @@
 use {
     super::common::snippet_text_edit,
-    crate::diagnostics::ANCHOR_PDA_SEED_RESOLUTION_CODE,
+    crate::{diagnostics::ANCHOR_PDA_SEED_RESOLUTION_CODE, document::ParsedDocument},
     std::collections::HashMap,
     tower_lsp::lsp_types::{
         CodeAction, CodeActionKind, Diagnostic, NumberOrString, Position, Range, Url, WorkspaceEdit,
     },
 };
 
+const IDL_NOTE_LOOKBACK_LINES: usize = 6;
+
 /// Generate code actions for PDA diagnostics.
-pub fn code_actions(uri: Url, _range: Range, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
+pub fn code_actions(
+    document: &ParsedDocument,
+    uri: Url,
+    _range: Range,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeAction> {
     let mut actions = Vec::with_capacity(diagnostics.len() * 2);
 
     for diagnostic in diagnostics {
@@ -16,7 +23,7 @@ pub fn code_actions(uri: Url, _range: Range, diagnostics: &[Diagnostic]) -> Vec<
             continue;
         }
 
-        if let Some(action) = document_idl_limitation_action(uri.clone(), diagnostic) {
+        if let Some(action) = document_idl_limitation_action(document, uri.clone(), diagnostic) {
             actions.push(action);
         }
 
@@ -28,10 +35,21 @@ pub fn code_actions(uri: Url, _range: Range, diagnostics: &[Diagnostic]) -> Vec<
     actions
 }
 
-fn document_idl_limitation_action(uri: Url, diagnostic: &Diagnostic) -> Option<CodeAction> {
+fn document_idl_limitation_action(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostic: &Diagnostic,
+) -> Option<CodeAction> {
     let data = diagnostic.data.as_ref()?;
     let account = data.get("account").and_then(|v| v.as_str())?;
     let seed = data.get("seed").and_then(|v| v.as_str())?;
+    if has_existing_idl_limitation_note(
+        document.source(),
+        diagnostic.range.start.line as usize,
+        account,
+    ) {
+        return None;
+    }
 
     let mut changes = HashMap::new();
     changes.insert(
@@ -69,6 +87,54 @@ fn document_idl_limitation_action(uri: Url, diagnostic: &Diagnostic) -> Option<C
             "seed": seed,
         })),
     })
+}
+
+fn has_existing_idl_limitation_note(source: &str, line: usize, account: &str) -> bool {
+    let comment_block = preceding_comment_block(source, line);
+    if comment_block.is_empty() {
+        return false;
+    }
+    let note = comment_block.join("\n").to_ascii_lowercase();
+    if note.contains("!no-warn") {
+        return true;
+    }
+
+    let mentions_scope = note.contains(&account.to_ascii_lowercase()) || note.contains("seed");
+    let mentions_idl = note.contains("idl");
+    let documents_limitation = note.contains("not serializable")
+        || note.contains("not representable")
+        || note.contains("manually replicate")
+        || note.contains("manual derivation");
+    mentions_scope && mentions_idl && documents_limitation
+}
+
+fn preceding_comment_block(source: &str, line: usize) -> Vec<&str> {
+    let lines = source.lines().collect::<Vec<_>>();
+    let mut comments = Vec::new();
+    let mut cursor = line.min(lines.len());
+    let lower_bound = cursor.saturating_sub(IDL_NOTE_LOOKBACK_LINES);
+
+    while cursor > lower_bound {
+        cursor -= 1;
+        let trimmed = lines[cursor].trim_start();
+        if trimmed.is_empty() {
+            continue;
+        }
+        if is_rust_comment_line(trimmed) {
+            comments.push(trimmed);
+            continue;
+        }
+        break;
+    }
+    comments.reverse();
+    comments
+}
+
+fn is_rust_comment_line(line: &str) -> bool {
+    line.starts_with("///")
+        || line.starts_with("//!")
+        || line.starts_with("//")
+        || line.starts_with("#[doc")
 }
 
 fn build_ts_comment(account: &str, idl_visible: &[String], idl_invisible: &[String]) -> String {
@@ -156,5 +222,68 @@ fn diagnostic_code(diagnostic: &Diagnostic) -> Option<&str> {
     match diagnostic.code.as_ref()? {
         NumberOrString::String(code) => Some(code.as_str()),
         NumberOrString::Number(_) => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        crate::{diagnostics, document::ParsedDocument},
+    };
+
+    #[test]
+    fn skips_document_idl_limitation_action_when_note_exists() {
+        let source = r#"
+#[derive(Accounts)]
+pub struct Close<'info> {
+    /// NOTE: PDA seed `bundle_index.to_string().as_bytes()` is not serializable to the Anchor IDL.
+    /// Clients must manually replicate this seed derivation.
+    /// !no-warn
+    #[account(seeds = [b"bundled_position", bundle_index.to_string().as_bytes()], bump)]
+    pub bundled_position: Account<'info, Position>,
+}
+"#;
+        let document = ParsedDocument::parse(source).unwrap();
+        let diagnostics = diagnostics::collect(&document);
+        let actions = code_actions(
+            &document,
+            Url::parse("file:///tmp/close.rs").unwrap(),
+            Range::default(),
+            &diagnostics,
+        );
+
+        assert!(
+            actions
+                .iter()
+                .all(|action| !action.title.starts_with("Document IDL limitation")),
+            "documented PDA limitation should not offer another documentation action: {actions:#?}"
+        );
+    }
+
+    #[test]
+    fn offers_document_idl_limitation_action_without_note() {
+        let source = r#"
+#[derive(Accounts)]
+pub struct Close<'info> {
+    #[account(seeds = [b"bundled_position", bundle_index.to_string().as_bytes()], bump)]
+    pub bundled_position: Account<'info, Position>,
+}
+"#;
+        let document = ParsedDocument::parse(source).unwrap();
+        let diagnostics = diagnostics::collect(&document);
+        let actions = code_actions(
+            &document,
+            Url::parse("file:///tmp/close.rs").unwrap(),
+            Range::default(),
+            &diagnostics,
+        );
+
+        assert!(
+            actions
+                .iter()
+                .any(|action| action.title.starts_with("Document IDL limitation")),
+            "undocumented PDA limitation should offer a documentation action: {actions:#?}"
+        );
     }
 }

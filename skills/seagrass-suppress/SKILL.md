@@ -22,7 +22,7 @@ The user wants Seagrass to stop emitting a specific topic at a specific location
 - **Real finding, accepted** → suppress, and recommend leaving a comment line explaining why.
 - **False positive** → suppress AND route to `seagrass-debug-fp` so the upstream rule gets a regression fixture.
 
-## The four suppression forms
+## The five suppression forms
 
 Seagrass supports exactly these. No others.
 
@@ -41,7 +41,16 @@ let x = a - b;
 
 **Use when:** one specific expression triggers the FP. Narrowest scope.
 
-### 2. Item / block attribute
+### 2. Line / next-line, all topics
+
+```rust
+// seagrass-ignore
+let x = a - b;
+```
+
+**Use when:** a local, documented exception intentionally accepts every Seagrass diagnostic on one line. Prefer `seagrass-allow:` when the topic is known.
+
+### 3. Item / block attribute
 
 ```rust
 #[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]
@@ -59,7 +68,7 @@ pub struct Initialize<'info> {
 
 **Use when:** the FP is structural to one function, struct, or field. Multiple lines, single semantic unit.
 
-### 3. File
+### 4. File
 
 ```rust
 // seagrass-allow-file: seagrass/security.account.unchecked
@@ -69,7 +78,7 @@ Place at the top of the file (before the first item).
 
 **Use when:** the file is intentionally exempt — e.g., a fixture, an unsafe-but-audited helper, a generated module.
 
-### 4. Workspace
+### 5. Workspace
 
 `Seagrass.toml` at the workspace root:
 
@@ -88,10 +97,11 @@ Topic names in `Seagrass.toml` use the suffix after `seagrass/`. Trailing `.<iss
 ## Choosing scope (always pick the smallest)
 
 ```
-Line/next-line   →  one expression / one statement
-Item/block       →  one function / one field / one struct
-File             →  fixture file / generated module / explicit exemption
-Workspace        →  whole crate or workspace
+Line/next-line       →  one expression / one statement
+Line all-topic       →  one documented exception where every topic is accepted
+Item/block           →  one function / one field / one struct
+File                 →  fixture file / generated module / explicit exemption
+Workspace            →  whole crate or workspace
 ```
 
 If the user asks for a broader scope than the FP actually requires, push back: "This will silence Seagrass everywhere — are you sure? A line-scoped allow would also resolve this finding."

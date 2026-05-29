@@ -61,6 +61,30 @@ fn catalog_exposes_semantic_metadata_for_anchor_families() {
 }
 
 #[test]
+fn catalog_links_every_constraint_to_reference_docs() {
+    let mut missing = Vec::new();
+    for spec in CONSTRAINTS {
+        let key = key(spec.label);
+        let Some(url) = documentation_url_for_key(key) else {
+            missing.push(key.to_string());
+            continue;
+        };
+        assert!(
+            url.starts_with(ACCOUNT_CONSTRAINT_DOCS)
+                || url.starts_with(ACCOUNT_SPACE_DOCS)
+                || url.starts_with("https://docs.rs/anchor-derive-accounts/"),
+            "constraint `{key}` resolved to unexpected docs URL: {url}"
+        );
+    }
+
+    assert!(
+        missing.is_empty(),
+        "constraints missing docs URLs: {}",
+        missing.join(", ")
+    );
+}
+
+#[test]
 fn catalog_finds_generated_parser_rule_by_message() {
     let (spec, rule) = parser_rule_for_message("init already provided").unwrap();
     assert_eq!(key(spec.label), "init");

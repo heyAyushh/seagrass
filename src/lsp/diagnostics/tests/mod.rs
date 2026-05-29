@@ -183,6 +183,7 @@ fn every_diagnostic_kind_carries_metadata_axes() {
         AnchorDiagnosticKind::AnchorContextAccounts,
         AnchorDiagnosticKind::AnchorMissingAccountReference,
         AnchorDiagnosticKind::AnchorMissingInstructionArgument,
+        AnchorDiagnosticKind::AnchorConstraintExpression,
         AnchorDiagnosticKind::AnchorConstraintShape,
         AnchorDiagnosticKind::AnchorAccountUsage,
         AnchorDiagnosticKind::AnchorCheckCfg,
@@ -237,6 +238,10 @@ fn every_diagnostic_kind_carries_metadata_axes() {
                 .and_then(|value| value.as_str())
                 .is_some_and(|topic| topic.starts_with("seagrass/")),
             "{kind:?} topic must be namespaced: {data:?}"
+        );
+        assert!(
+            diagnostic.code_description.is_some(),
+            "{kind:?} must include a codeDescription docs link"
         );
     }
 }

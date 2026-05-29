@@ -554,4 +554,12 @@ fn feedback_response_uses_server_owned_shape() {
     );
 }
 
+#[test]
+fn bundled_feedback_link_comes_from_manifest() {
+    let link = super::backend_features::bundled_feedback_link();
+
+    assert_eq!(link.label, "Join the Seagrass Telegram");
+    assert_eq!(link.url, "https://t.me/+8HdUVX0F1t9lMTk1");
+}
+
 mod reports;

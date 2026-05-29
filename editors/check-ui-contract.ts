@@ -20,6 +20,7 @@ const expectedCommands = new Map([
 const packageJson = JSON.parse(read("vscode/package.json"));
 const vscodeSource = read("vscode/src/extension.ts");
 const zedToml = read("zed/extension.toml");
+const feedbackManifest = read("feedback.toml");
 const contract = read("UI_CONTRACT.md");
 const vscodeSettings = packageJson.contributes.configuration.properties;
 const securityFamilies = [
@@ -60,6 +61,10 @@ assert(
 );
 assert(vscodeSettings["seagrass.agent.mode"], "VS Code package is missing seagrass.agent.mode");
 assert(vscodeSettings["seagrass.feedback.url"], "VS Code package is missing seagrass.feedback.url");
+assert(
+  feedbackManifest.includes("https://t.me/+8HdUVX0F1t9lMTk1"),
+  "Editor feedback manifest is missing the bundled Telegram URL",
+);
 assert(contract.includes("`agent.mode`"), "UI contract is missing agent.mode");
 
 for (const family of securityFamilies) {

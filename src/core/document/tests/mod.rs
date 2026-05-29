@@ -299,6 +299,64 @@ pub mod demo {
 }
 
 #[test]
+fn parsed_document_captures_account_field_alias_data_usages() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn increment(ctx: Context<Update>) -> Result<()> {
+        let counter = &mut ctx.accounts.counter;
+        counter.count += 1;
+        Ok(())
+    }
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let increment = document
+        .symbols()
+        .instructions
+        .iter()
+        .find(|instruction| instruction.name == "increment")
+        .unwrap();
+
+    assert!(increment
+        .account_data_field_usages
+        .iter()
+        .any(|usage| usage.account == "counter" && usage.field == "count" && usage.mutable));
+}
+
+#[test]
+fn parsed_document_captures_composite_account_alias_paths() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn read(ctx: Context<Read>) -> Result<()> {
+        let wrapper = &ctx.accounts.wrapper;
+        wrapper.inner.fake;
+        Ok(())
+    }
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let read = document
+        .symbols()
+        .instructions
+        .iter()
+        .find(|instruction| instruction.name == "read")
+        .unwrap();
+
+    assert!(read.account_path_usages.iter().any(|usage| {
+        usage
+            .segments
+            .iter()
+            .map(|segment| segment.name.as_str())
+            .collect::<Vec<_>>()
+            == ["wrapper", "inner", "fake"]
+    }));
+}
+
+#[test]
 fn parsed_document_captures_nested_ctx_account_usage() {
     let source = r#"
 #[program]
