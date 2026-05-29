@@ -3,6 +3,7 @@
 /.commandcode/
 /.antigravitycli/
 /node_modules/
+.DS_Store
 *.tsbuildinfo
 
 # Editor build artifacts (not published)
