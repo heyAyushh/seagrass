@@ -67,6 +67,7 @@ queue across `src/lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/
 | `lsp/signature_help/mod.rs` | constraint signature help | generated constraint catalog + cursor position | account attributes | n/a | n/a | low | signature help tests |
 | `lsp/semantic_tokens/mod.rs` | Anchor semantic tokens | tree-sitter query overlay + generated catalog | syntax tokens | n/a | n/a | low | semantic token tests |
 | `lsp/navigation/mod.rs` | definition/type/references/implementation | parsed symbols + workspace index | declarations/usages | n/a | n/a | low | navigation tests |
+| `lsp/navigation/associated_values.rs` | associated const/function definition routing | parsed impl items and generated InitSpace ownership | account attribute expression values | n/a | n/a | low | navigation tests |
 | `lsp/renaming/mod.rs` | semantic rename edits | parsed declarations/usages + workspace index | declarations/usages | n/a | n/a | low | rename tests |
 | `lsp/selection_ranges/mod.rs` | hierarchical selections | parsed accounts/fields/constraint ranges | cursor position | n/a | n/a | low | selection range tests |
 | `core/workspace/mod.rs` | workspace symbols and cross-file index | parsed document symbols + transactional index | workspace files | n/a | n/a | low | workspace tests |

@@ -272,6 +272,118 @@ pub struct Create<'info> {
 }
 
 #[test]
+fn jumps_from_constraint_associated_const_to_impl_item() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = user, space = 8 + State::SPACE)]
+    pub state: Account<'info, State>,
+    pub user: Signer<'info>,
+}
+
+#[account]
+pub struct State {
+    pub value: u64,
+}
+
+impl State {
+    const SPACE: usize = 8 + 8;
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let range = definition_range(&document, position_of(source, "State::SPACE", "SPACE")).unwrap();
+
+    assert_eq!(range.start, position_of(source, "const SPACE", "SPACE"));
+    assert_eq!(
+        definition_target_kinds(&document, position_of(source, "State::SPACE", "SPACE")).unwrap(),
+        vec![SymbolKind::CONSTANT]
+    );
+}
+
+#[test]
+fn jumps_from_constraint_associated_function_to_impl_item() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = user, space = State::dynamic_space())]
+    pub state: Account<'info, State>,
+    pub user: Signer<'info>,
+}
+
+#[account]
+pub struct State {
+    pub value: u64,
+}
+
+impl State {
+    fn dynamic_space() -> usize {
+        8 + 8
+    }
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let range = definition_range(
+        &document,
+        position_of(source, "State::dynamic_space()", "dynamic_space"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        range.start,
+        position_of(source, "fn dynamic_space", "dynamic_space")
+    );
+    assert_eq!(
+        definition_target_kinds(
+            &document,
+            position_of(source, "State::dynamic_space()", "dynamic_space"),
+        )
+        .unwrap(),
+        vec![SymbolKind::FUNCTION]
+    );
+}
+
+#[test]
+fn jumps_from_generated_init_space_to_account_data_struct() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = user, space = 8 + State::INIT_SPACE)]
+    pub state: Account<'info, State>,
+    pub user: Signer<'info>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct State {
+    #[max_len(32)]
+    pub name: String,
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let range = definition_range(
+        &document,
+        position_of(source, "State::INIT_SPACE", "INIT_SPACE"),
+    )
+    .unwrap();
+
+    assert_eq!(
+        range.start,
+        position_of(source, "pub struct State", "State")
+    );
+    assert_eq!(
+        definition_target_kinds(
+            &document,
+            position_of(source, "State::INIT_SPACE", "INIT_SPACE")
+        )
+        .unwrap(),
+        vec![SymbolKind::CONSTANT]
+    );
+}
+
+#[test]
 fn jumps_from_instruction_body_account_use_to_context_field() {
     let source = r#"
 #[program]

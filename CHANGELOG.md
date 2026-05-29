@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: navigate from associated constants/functions in Anchor constraint
+  expressions to real impl items or generated `InitSpace` owners.
 - lsp: complete real associated constants/functions in Anchor constraint
   expressions, including `State::INIT_SPACE` and workspace impl values.
 - lsp: validate associated constants/functions in constraint expressions so

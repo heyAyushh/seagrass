@@ -19,7 +19,7 @@ mod symbols;
 
 pub use {
     account_attribute::{AccountAttributeCursor, AccountAttributeSlot},
-    associated_values::{AssociatedValueKind, AssociatedValueRange},
+    associated_values::{is_generated_init_space_value, AssociatedValueKind, AssociatedValueRange},
     symbols::document_symbols,
 };
 

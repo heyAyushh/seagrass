@@ -8,6 +8,7 @@ use {
     },
 };
 
+mod associated_values;
 mod instruction_arguments;
 
 pub use instruction_arguments::instruction_argument_target;
@@ -45,6 +46,9 @@ pub fn definition_range(document: &ParsedDocument, position: Position) -> Option
         return Some(range);
     }
     if let Some(range) = instruction_argument_definition_range(document, position) {
+        return Some(range);
+    }
+    if let Some(range) = associated_values::definition_range(document, &word, position) {
         return Some(range);
     }
     if let Some(range) = field_definition_range(document, &word, position) {
@@ -94,11 +98,15 @@ pub fn definition_target_kinds(
         return Some(vec![SymbolKind::VARIABLE]);
     }
 
+    let word = word_at_position(document.source(), position)?;
+    if let Some(kinds) = associated_values::definition_target_kinds(document, &word, position) {
+        return Some(kinds);
+    }
+
     if is_anchor_type_position(document, position) {
         return Some(vec![SymbolKind::STRUCT]);
     }
 
-    let word = word_at_position(document.source(), position)?;
     field_definition_range(document, &word, position).map(|_| vec![SymbolKind::FIELD])
 }
 
