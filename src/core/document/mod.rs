@@ -4,7 +4,7 @@ use {
     crate::{range::range_from_span, syntax::RustSyntax},
     proc_macro2::Span,
     quote::ToTokens,
-    std::collections::HashMap,
+    std::collections::{HashMap, HashSet},
     syn::{
         spanned::Spanned, Attribute, FnArg, GenericArgument, Item, ItemFn, ItemStruct, PatType,
         Path, PathArguments, Token, Type, UseTree, Visibility,
@@ -14,10 +14,12 @@ use {
 
 mod account_attribute;
 mod account_usage;
+mod associated_values;
 mod symbols;
 
 pub use {
     account_attribute::{AccountAttributeCursor, AccountAttributeSlot},
+    associated_values::{AssociatedValueKind, AssociatedValueRange},
     symbols::document_symbols,
 };
 
@@ -101,6 +103,8 @@ pub struct AnchorSymbols {
     pub constants: Vec<NamedRange>,
     pub imported_names: Vec<NamedRange>,
     pub value_items: Vec<NamedRange>,
+    pub associated_value_items: HashMap<String, Vec<AssociatedValueRange>>,
+    pub derived_init_space_types: HashSet<String>,
     pub instructions: Vec<InstructionSymbol>,
     pub functions: Vec<InstructionSymbol>,
     pub context_references: Vec<ContextReference>,
@@ -125,6 +129,11 @@ impl AnchorSymbols {
                     }
                     if has_attr(&item_struct.attrs, "account") {
                         symbols.account_data_structs.insert(name, symbol);
+                    }
+                    if associated_values::derives_init_space(&item_struct.attrs) {
+                        symbols
+                            .derived_init_space_types
+                            .insert(item_struct.ident.to_string());
                     }
                 }
                 Item::Mod(item_mod) if has_attr(&item_mod.attrs, "program") => {
@@ -169,6 +178,12 @@ impl AnchorSymbols {
                 Item::Use(item_use) => {
                     collect_imported_names(&item_use.tree, &mut symbols.imported_names);
                 }
+                Item::Impl(item_impl) => {
+                    associated_values::collect_from_impl(
+                        item_impl,
+                        &mut symbols.associated_value_items,
+                    );
+                }
                 Item::Macro(item_macro)
                     if path_last_is_ident(&item_macro.mac.path, "declare_id") =>
                 {
@@ -193,6 +208,14 @@ impl AnchorSymbols {
 
     pub fn callable_functions(&self) -> impl Iterator<Item = &InstructionSymbol> {
         self.instructions.iter().chain(self.functions.iter())
+    }
+
+    pub fn type_has_associated_value(&self, type_name: &str, value_name: &str) -> bool {
+        self.associated_value_items
+            .get(type_name)
+            .is_some_and(|items| items.iter().any(|item| item.name == value_name))
+            || (associated_values::is_generated_init_space_value(value_name)
+                && self.derived_init_space_types.contains(type_name))
     }
 }
 

@@ -1,6 +1,7 @@
 use {
-    crate::{document::ParsedDocument, evidence::AccountSetEvidence},
+    crate::{document::ParsedDocument, evidence::AccountSetEvidence, workspace::WorkspaceIndex},
     syn::ExprPath,
+    tower_lsp::lsp_types::SymbolKind,
 };
 
 const PATH_SEPARATOR: &str = "::";
@@ -13,6 +14,7 @@ const BUILTIN_ASSOCIATED_PATH_ROOTS: &[&str] = &[
 
 pub(super) fn unresolved_path_identifier(
     document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
     accounts: &AccountSetEvidence<'_>,
     path: &ExprPath,
 ) -> Option<String> {
@@ -24,7 +26,7 @@ pub(super) fn unresolved_path_identifier(
         [] => None,
         [identifier] if identifier_resolves(document, accounts, identifier) => None,
         [identifier] => Some(identifier.to_string()),
-        _ if path_resolves(document, &segments) => None,
+        _ if path_resolves(document, workspace_index, &segments) => None,
         _ => Some(segments.join(PATH_SEPARATOR)),
     }
 }
@@ -49,25 +51,83 @@ fn identifier_resolves(
         || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&identifier)
 }
 
-fn path_resolves(document: &ParsedDocument, segments: &[String]) -> bool {
+fn path_resolves(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    segments: &[String],
+) -> bool {
     let Some(first) = segments.first().map(String::as_str) else {
         return false;
     };
-    let Some(last) = segments.last().map(String::as_str) else {
+    if segments.last().is_none() {
         return false;
-    };
+    }
 
     if LOCAL_PATH_ROOTS.contains(&first) {
-        return local_path_value_resolves(document, last);
+        return local_path_value_resolves(document, segments);
     }
-    document_has_imported_name(document, first)
-        || document.symbols().knows_type(first)
-        || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&first)
+    if document_has_imported_name(document, first) || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&first)
+    {
+        return true;
+    }
+    associated_path_value_resolves(document, workspace_index, segments)
 }
 
-fn local_path_value_resolves(document: &ParsedDocument, name: &str) -> bool {
+fn local_path_value_resolves(document: &ParsedDocument, segments: &[String]) -> bool {
+    let Some(name) = segments.last().map(String::as_str) else {
+        return false;
+    };
     document_has_value_item(document, name)
         || (name == DECLARED_PROGRAM_ID_VALUE && document.symbols().declared_program_id.is_some())
+        || associated_path_value_resolves(document, None, segments)
+}
+
+fn associated_path_value_resolves(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    segments: &[String],
+) -> bool {
+    let Some((owner_type, value_name)) = associated_path_owner_and_value(segments) else {
+        return false;
+    };
+    document
+        .symbols()
+        .type_has_associated_value(owner_type, value_name)
+        || workspace_has_associated_value(workspace_index, owner_type, value_name)
+}
+
+fn associated_path_owner_and_value(segments: &[String]) -> Option<(&str, &str)> {
+    let value_name = segments.last()?.as_str();
+    let owner_type = segments.iter().rev().nth(1)?.as_str();
+    document_type_segment(owner_type).then_some((owner_type, value_name))
+}
+
+fn document_type_segment(segment: &str) -> bool {
+    segment
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_uppercase())
+}
+
+fn workspace_has_associated_value(
+    workspace_index: Option<&WorkspaceIndex>,
+    owner_type: &str,
+    value_name: &str,
+) -> bool {
+    let Some(index) = workspace_index else {
+        return false;
+    };
+    !index
+        .symbol_locations_in_container(
+            value_name,
+            &[
+                SymbolKind::CONSTANT,
+                SymbolKind::METHOD,
+                SymbolKind::FUNCTION,
+            ],
+            owner_type,
+        )
+        .is_empty()
 }
 
 fn document_has_value_item(document: &ParsedDocument, name: &str) -> bool {

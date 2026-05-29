@@ -2,7 +2,9 @@ use {
     super::{WorkspaceAccountField, WorkspaceAccountsStruct},
     crate::{
         definition_bridge::BridgeSymbol,
-        document::{document_symbols, AccountUsage, InstructionSymbol, ParsedDocument},
+        document::{
+            document_symbols, AccountUsage, AssociatedValueKind, InstructionSymbol, ParsedDocument,
+        },
         document_stub::DocumentStub,
         navigation::{account_field_path_definition_target_for_position, AccountPathPosition},
         range::range_from_span,
@@ -372,8 +374,26 @@ fn indexed_symbols(document: &ParsedDocument) -> Vec<IndexedSymbol> {
                 }))
             }),
     );
+    symbols.extend(document.symbols().associated_value_items.iter().flat_map(
+        |(container_name, items)| {
+            items.iter().map(move |item| IndexedSymbol {
+                name: item.name.clone(),
+                kind: associated_value_symbol_kind(item.kind),
+                selection_range: item.range,
+                container_name: Some(container_name.clone()),
+                type_display: None,
+            })
+        },
+    ));
 
     symbols
+}
+
+fn associated_value_symbol_kind(kind: AssociatedValueKind) -> SymbolKind {
+    match kind {
+        AssociatedValueKind::Constant => SymbolKind::CONSTANT,
+        AssociatedValueKind::Function => SymbolKind::METHOD,
+    }
 }
 
 fn indexed_document_symbols(symbols: &[DocumentSymbol]) -> Vec<IndexedSymbol> {

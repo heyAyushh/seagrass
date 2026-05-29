@@ -254,9 +254,12 @@ struct ConstraintExpressionVisitor<'a, 'b> {
 
 impl<'ast> Visit<'ast> for ConstraintExpressionVisitor<'_, '_> {
     fn visit_expr_path(&mut self, path: &'ast ExprPath) {
-        if let Some(identifier) =
-            resolution::unresolved_path_identifier(self.document, self.accounts, path)
-        {
+        if let Some(identifier) = resolution::unresolved_path_identifier(
+            self.document,
+            self.workspace_index,
+            self.accounts,
+            path,
+        ) {
             if !self.has_issue_for_identifier(&identifier) {
                 self.issues
                     .push(ConstraintExpressionIssue::UnresolvedIdentifier {

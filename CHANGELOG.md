@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: validate associated constants/functions in constraint expressions so
+  `Type::FAKE` no longer resolves just because `Type` exists.
 - lsp: add semantic constraint expression diagnostics and member completions for
   account fields, instruction args, constants, and workspace account data.
 - lsp: add proactive assists for missing companion program accounts, PDA bump

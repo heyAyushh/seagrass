@@ -181,6 +181,7 @@ pub struct Run<'info> {
 }
 
 #[account]
+#[derive(InitSpace)]
 pub struct State {
     pub value: u64,
 }
@@ -196,9 +197,37 @@ pub struct State {
 #[test]
 fn accepts_space_type_constant_path() {
     let source = r#"
+use anchor_lang::prelude::*;
+
 #[derive(Accounts)]
 pub struct Run<'info> {
     #[account(init, payer = payer, space = 8 + State::INIT_SPACE)]
+    pub state: Account<'info, State>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct State {
+    pub value: u64,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = collect(&document);
+
+    assert!(
+        diagnostics.is_empty(),
+        "valid space expression should stay quiet: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_unknown_associated_space_constant() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(init, payer = payer, space = 8 + State::FAKE_SPACE)]
     pub state: Account<'info, State>,
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -212,9 +241,77 @@ pub struct State {
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = collect(&document);
 
+    assert!(diagnostics.iter().any(|diagnostic| diagnostic
+        .message
+        .contains("`State::FAKE_SPACE` does not resolve")));
+}
+
+#[test]
+fn accepts_declared_associated_space_constant_and_function() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(init, payer = payer, space = State::SPACE + State::dynamic_space())]
+    pub state: Account<'info, State>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+
+#[account]
+pub struct State {
+    pub value: u64,
+}
+
+impl State {
+    const SPACE: usize = 8 + 8;
+
+    fn dynamic_space() -> usize {
+        Self::SPACE
+    }
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = collect(&document);
+
     assert!(
         diagnostics.is_empty(),
-        "valid space expression should stay quiet: {diagnostics:#?}"
+        "declared associated values should resolve: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn accepts_workspace_associated_space_constant() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(init, payer = payer, space = SharedState::SPACE)]
+    pub state: Account<'info, SharedState>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+"#;
+    let workspace_source = r#"
+#[account]
+pub struct SharedState {
+    pub value: u64,
+}
+
+impl SharedState {
+    const SPACE: usize = 8 + 8;
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let workspace_document = ParsedDocument::parse(workspace_source).unwrap();
+    let mut workspace = WorkspaceIndex::default();
+    workspace.upsert_parsed_open_document(
+        Url::parse("file:///workspace/shared_state.rs").unwrap(),
+        &workspace_document,
+    );
+    let diagnostics = collect_with_workspace(&document, Some(&workspace));
+
+    assert!(
+        diagnostics.is_empty(),
+        "workspace associated constants should resolve: {diagnostics:#?}"
     );
 }
 
