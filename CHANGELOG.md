@@ -11,6 +11,8 @@ keep future entries aligned with release-plz output.
   highlights, and safe rename edits.
 - lsp: complete in-scope account fields, instruction arguments, and constants
   after partial `constraint = value` expression prefixes.
+- lsp: offer quick fixes for misspelled account-data members in Anchor
+  constraint expressions.
 - lsp: complete real associated constants/functions in Anchor constraint
   expressions, including `State::INIT_SPACE` and workspace impl values.
 - lsp: validate associated constants/functions in constraint expressions so

@@ -54,6 +54,7 @@ queue across `src/lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/
 | `lsp/actions/accounts/mod.rs` | account type/field quick fixes | parsed structs, semantic diagnostics, workspace candidates | account field spans | n/a | n/a | low | account action tests |
 | `lsp/actions/accounts/context_structs.rs` | create accounts struct fixes | parsed instruction/context evidence | instruction signature | n/a | n/a | low | context action tests |
 | `lsp/actions/accounts/field_edits.rs` | inferred account field edit builder | diagnostic data + parsed account semantics | accounts structs | n/a | n/a | low | field edit tests |
+| `lsp/actions/constraint_expressions.rs` | constraint expression member replacement actions | structured diagnostic data with resolved member candidates | account attribute expression spans | n/a | n/a | low | constraint expression action tests |
 | `lsp/actions/constraints.rs` | generated constraint quick fixes | generated parser catalog + parsed constraint ranges | account attributes | n/a | n/a | low | generated constraint action tests |
 | `lsp/actions/features.rs` | manifest feature quick fixes | manifest diagnostics | Cargo manifest | n/a | n/a | low | feature action tests |
 | `lsp/actions/init_constraints.rs` | init placeholder/fix-all actions | parsed init diagnostics | account attributes | n/a | n/a | low | init constraint action tests |
@@ -144,7 +145,7 @@ means the diagnostic currently has no code action.
 | --- | --- | --- | --- | --- |
 | `anchor-account-usage` | covered | `lsp/actions/accounts/mod.rs` | `add-mut-constraint` | none |
 | `anchor-check-cfg` | covered | `lsp/actions/features.rs` | `add-anchor-debug-feature`, `add-init-if-needed-feature`, `add-solana-target-os-check-cfg` | none |
-| `anchor-constraint-expression` | gap | n/a | none | Expression diagnostics are semantic validation only; add rename/import/member suggestion actions if enough evidence is available. |
+| `anchor-constraint-expression` | partial | `lsp/actions/constraint_expressions.rs` | `replace-constraint-expression-member` | Unresolved identifiers still need safe import/rename suggestions. |
 | `anchor-constraint-shape` | partial | `lsp/actions/constraints.rs`, `lsp/actions/accounts/mod.rs`, `lsp/actions/features.rs`, `lsp/actions/security.rs` | `parser-rule:duplicate`, `parser-rule:ordering`, `remove-conflicting-constraints`, `replace-keyword-value`, `replace-account-type`, `program-field-type`, `system-program-type`, `replace-has-one-target`, `add-missing-constraint`, `add-mut-constraint` | Generic shape diagnostics without parser-rule or quickfix metadata remain diagnostic-only. |
 | `anchor-context-accounts` | covered | `lsp/actions/accounts/context_structs.rs` | `derive-accounts`, `create-accounts-struct`, `fill-context-type` | none |
 | `anchor-idl-artifact` | gap | n/a | none | Add build/IDL-generation command action from `buildCommand`. |

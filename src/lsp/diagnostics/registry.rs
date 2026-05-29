@@ -32,6 +32,8 @@ pub const ANCHOR_SECURITY_TYPE_COSPLAY_CODE: &str = "anchor-security-type-cospla
 pub const SOLANA_CODE_QUALITY_CODE: &str = "solana-code-quality";
 pub const ANCHOR_PDA_SEED_RESOLUTION_CODE: &str = "anchor-pda-seed-resolution";
 pub const INIT_PLACEHOLDERS_QUICKFIX: &str = "init-placeholders";
+pub const REPLACE_CONSTRAINT_EXPRESSION_MEMBER_QUICKFIX: &str =
+    "replace-constraint-expression-member";
 pub const SOURCE: &str = "seagrass";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

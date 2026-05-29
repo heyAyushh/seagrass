@@ -1,5 +1,6 @@
 mod accounts;
 pub(crate) mod common;
+mod constraint_expressions;
 mod constraints;
 mod features;
 mod init_constraints;
@@ -61,6 +62,11 @@ pub fn code_actions_unfiltered(
     ));
     actions.extend(constraints::code_actions(
         document,
+        uri.clone(),
+        neutral,
+        diagnostics,
+    ));
+    actions.extend(constraint_expressions::code_actions(
         uri.clone(),
         neutral,
         diagnostics,

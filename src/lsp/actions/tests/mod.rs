@@ -16,6 +16,7 @@ use {
 
 mod account_refs;
 mod account_types;
+mod constraint_expressions;
 mod context;
 mod features_project;
 mod generated_constraints;

@@ -36,6 +36,7 @@ pub(crate) struct MissingAccountMember {
     pub(crate) receiver_path: String,
     pub(crate) member: String,
     pub(crate) owner_type: String,
+    pub(crate) candidates: Vec<String>,
 }
 
 impl ResolvedAccountMembers {
@@ -80,6 +81,11 @@ pub(crate) fn missing_member_in_chain(
                 receiver_path: receiver_segments.join("."),
                 member: member_name.clone(),
                 owner_type: members.owner_type,
+                candidates: members
+                    .members
+                    .iter()
+                    .map(|member| member.name.clone())
+                    .collect(),
             });
         };
         receiver_segments.push(member_name.clone());

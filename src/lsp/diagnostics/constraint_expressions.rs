@@ -2,7 +2,10 @@ use {
     crate::{
         account_members::{self, AccountMemberAccess},
         constraint_catalog,
-        diagnostics::{diagnostic_from_range, registry::AnchorDiagnosticKind},
+        diagnostics::{
+            diagnostic_from_range, registry::AnchorDiagnosticKind,
+            REPLACE_CONSTRAINT_EXPRESSION_MEMBER_QUICKFIX,
+        },
         document::ParsedDocument,
         evidence::{
             AccountSetEvidence, ConstraintEvidence, EvidenceGraph, SeedExpressionEvidence,
@@ -110,6 +113,7 @@ enum ConstraintExpressionIssue {
         receiver: String,
         member: String,
         owner_type: String,
+        candidates: Vec<String>,
     },
     UnexpectedType {
         constraint_key: String,
@@ -148,6 +152,7 @@ impl ConstraintExpressionIssue {
                 receiver,
                 member,
                 owner_type,
+                candidates,
             } => diagnostic_from_range(
                 expression_token_range(document, constraint, member)
                     .unwrap_or_else(|| value_range(document, constraint, constraint_key, member)),
@@ -161,6 +166,8 @@ impl ConstraintExpressionIssue {
                     "field": member,
                     "accountsStruct": accounts.accounts.name,
                     "ownerType": owner_type,
+                    "candidates": candidates,
+                    "quickfix": REPLACE_CONSTRAINT_EXPRESSION_MEMBER_QUICKFIX,
                 })),
             ),
             Self::UnexpectedType {
@@ -307,6 +314,7 @@ impl ConstraintExpressionVisitor<'_, '_> {
                 receiver: missing.receiver_path,
                 member: missing.member,
                 owner_type: missing.owner_type,
+                candidates: missing.candidates,
             });
         }
     }
@@ -329,6 +337,7 @@ impl ConstraintExpressionVisitor<'_, '_> {
                 receiver: existing_receiver,
                 member: existing_member,
                 owner_type: _,
+                candidates: _,
             } => existing_receiver == receiver && existing_member == member,
             ConstraintExpressionIssue::UnresolvedIdentifier { .. }
             | ConstraintExpressionIssue::UnexpectedType { .. } => false,
