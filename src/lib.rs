@@ -1,48 +1,31 @@
-mod account_semantics;
-mod actions;
-mod anchor_analysis;
-pub mod anchor_errors;
-pub mod anchor_support;
-mod anchor_types;
-pub mod cli;
-mod code_lens;
-mod completions;
-mod constraint_catalog;
-mod constraint_ranges;
-mod constraint_text;
-mod debounce;
-mod definition_bridge;
-mod diagnostics;
-pub mod document;
-mod document_links;
-mod document_stub;
-mod ecosystem;
-mod evidence;
-mod folding;
-mod hotpath;
-mod hover;
-mod inlay_hints;
-mod navigation;
-mod program_artifacts;
-pub mod project;
-mod query_cache;
-pub mod range;
-mod renaming;
-mod salsa_db;
-mod selection_ranges;
-mod semantic_tokens;
+pub mod anchor;
+mod app;
+mod core;
+mod lsp;
+mod runtime;
 pub mod server;
-mod server_observability;
-mod server_types;
-mod signature_help;
-pub mod solana_project;
-pub mod syntax;
-mod workspace;
+pub mod solana;
+mod testing;
 
-pub mod fuzz_harness;
+pub use app::cli;
+pub use core::{document, project, syntax};
+pub use runtime::range;
+pub use testing::fuzz_harness;
 
-// TODO: replace this placeholder with the public invite before publishing builds.
-pub const SEAGRASS_FEEDBACK_URL: &str = "https://t.me/REPLACE_WITH_INVITE";
+pub(crate) use anchor::{
+    account_members, account_semantics, analysis as anchor_analysis, constraint_catalog,
+    constraint_ranges, constraint_text, types as anchor_types,
+};
+pub use anchor::{errors as anchor_errors, support as anchor_support};
+pub(crate) use core::{definition_bridge, document_stub, evidence, workspace};
+pub(crate) use lsp::{
+    actions, assists, code_lens, completions, diagnostics, document_links, folding, hover,
+    inlay_hints, navigation, renaming, selection_ranges, semantic_tokens, signature_help,
+};
+pub(crate) use runtime::{
+    debounce, hotpath, query_cache, salsa_db, server_observability, server_types,
+};
+pub use solana::project as solana_project;
+pub(crate) use solana::{ecosystem, program_artifacts};
 
-#[cfg(test)]
-mod editor_ux_parity;
+pub const SEAGRASS_FEEDBACK_URL: &str = "https://github.com/heyAyushh/seagrass/issues";

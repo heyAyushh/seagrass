@@ -31,6 +31,10 @@
       "description": "Anchor constraint references to missing accounts or arguments."
     },
     {
+      "name": "seagrass/anchor.constraint.expression",
+      "description": "Anchor account constraint expression name, field, and type resolution diagnostics."
+    },
+    {
       "name": "seagrass/anchor.constraint.shape",
       "description": "Anchor account constraint parser and shape diagnostics."
     },

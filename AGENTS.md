@@ -2,7 +2,14 @@
 
 Status: Active
 
-This repository is the Anchor workspace plus the local `anchor-lsp` server and
+Canonical checkout: `/Users/ay/Documents/codes/solana/seagrass`.
+
+If `pwd` or `git rev-parse --show-toplevel` differs from that path, stop and
+ask before editing, building, or changing editor settings. Do not edit sibling
+mirrors such as `upstream-anchor` unless the user explicitly names them for that
+turn.
+
+This repository is the standalone Seagrass language-server workspace plus local
 editor adapters. You should work in the real checkout, preserve unrelated dirty
 changes, and verify the user-facing path before reporting success.
 
@@ -10,7 +17,7 @@ changes, and verify the user-facing path before reporting success.
 
 - [Scope](#scope)
 - [Working Rules](#working-rules)
-- [Anchor LSP Workflow](#anchor-lsp-workflow)
+- [Seagrass LSP Workflow](#seagrass-lsp-workflow)
 - [Editor UX Standards](#editor-ux-standards)
 - [Versioning And Releases](#versioning-and-releases)
 - [Licensing](#licensing)
@@ -47,15 +54,17 @@ Before editing, check:
 
 ```sh
 pwd
+git rev-parse --show-toplevel
 git status --short
+./scripts/guard-canonical-repo.sh
 ```
 
 Use `rg` or `rg --files` for search. Use `apply_patch` for manual file edits.
 Do not use destructive git commands unless the user explicitly asks for them.
 
-## Anchor LSP Workflow
+## Seagrass LSP Workflow
 
-`anchor-lsp` owns Anchor-specific diagnostics, completions, hovers, symbols,
+Seagrass owns Anchor-specific diagnostics, completions, hovers, symbols,
 navigation, and fixes. Rust-analyzer may run beside it for generic Rust support,
 but do not offload Anchor behavior to another server.
 
@@ -64,14 +73,14 @@ When changing LSP behavior:
 1. Start from the semantic source: parsed Rust, Anchor syntax, generated
    constraint catalogs, workspace indexes, IDLs, or local build artifacts.
 2. Add focused unit tests for the new semantic rule.
-3. Add or update `src/editor_ux_parity.rs` when the change affects what
+3. Add or update `src/testing/editor_ux_parity/mod.rs` when the change affects what
    a user sees in Zed or VS Code.
 4. Run the production gate before claiming the change is done.
 
 Run the server locally with:
 
 ```sh
-cargo run -p anchor-lsp
+cargo run -p seagrass
 ```
 
 Run the production gate with:
@@ -140,15 +149,15 @@ otherwise.
 
 | Change type | Minimum verification |
 | --- | --- |
-| LSP behavior | `cargo test -p anchor-lsp` plus targeted tests. |
-| Editor-visible LSP behavior | `cargo test -p anchor-lsp editor_ux_parity -- --nocapture`. |
+| LSP behavior | `cargo test -p seagrass` plus targeted tests. |
+| Editor-visible LSP behavior | `cargo test -p seagrass editor_ux_parity -- --nocapture`. |
 | LSP production readiness | `bun scripts/verify-production.ts`. |
 | VS Code adapter | `cd editors/vscode && bun run check`. |
 | Zed adapter | `cd editors/zed && cargo test`. |
 | Zed wasm release artifact | `cd editors/zed && cargo build --target wasm32-wasip2 --release`, then copy the release wasm to `extension.wasm`. |
 | Root Anchor Rust change | Relevant `cargo test`, `cargo build`, and formatting checks. |
 | TypeScript package change | Relevant `yarn build`, `yarn test`, or package-local lint/check command. |
-| Agent skills (`skills/seagrass-*`) | Manual review of each SKILL.md against current CLI shapes (`src/cli.rs`), suppression logic (`src/diagnostics/suppression.rs`), lint docs (`docs/lints/`), and the install steps in `skills/README.md`. Update when topics, output, or UX contracts change. |
+| Agent skills (`skills/seagrass-*`) | Manual review of each SKILL.md against current CLI shapes (`src/app/cli/mod.rs`), suppression logic (`src/lsp/diagnostics/suppression.rs`), lint docs (`docs/lints/`), and the install steps in `skills/README.md`. Update when topics, output, or UX contracts change. |
 
 If you cannot run a relevant check, say exactly why and report the residual
 risk.

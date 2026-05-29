@@ -1,0 +1,596 @@
+mod account_references;
+mod account_usage;
+mod anchor_syn;
+mod arbitration;
+mod artifacts;
+pub(crate) mod check_cfg;
+mod code_quality;
+mod constraint_expressions;
+mod constraint_shape;
+mod context_accounts;
+mod ecosystem;
+mod engine;
+mod initialization;
+mod instruction_attributes;
+pub(crate) mod lint;
+mod pda;
+pub(crate) mod project_identity;
+mod registry;
+mod rules;
+mod security;
+mod spl_semantics;
+mod suppression;
+
+use {
+    crate::{
+        constraint_catalog, constraint_ranges, document::ParsedDocument, range::range_from_span,
+        workspace::WorkspaceIndex,
+    },
+    proc_macro2::Span,
+    registry::AnchorDiagnosticKind,
+    tower_lsp::lsp_types::{
+        CodeDescription, Diagnostic, DiagnosticRelatedInformation, NumberOrString, Range, Url,
+    },
+};
+
+pub(crate) use arbitration::{DiagnosticLevel, DiagnosticSettings, TypingSuppressionRegion};
+pub(crate) use engine::DiagnosticInput;
+pub use registry::{
+    ANCHOR_INIT_CONSTRAINTS_CODE, ANCHOR_MISSING_INIT_CONSTRAINT_CODE,
+    ANCHOR_PDA_SEED_RESOLUTION_CODE, INIT_PLACEHOLDERS_QUICKFIX, SOURCE,
+};
+
+#[cfg(test)]
+pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
+    collect_with_workspace(document, None)
+}
+
+pub fn collect_with_workspace(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<Diagnostic> {
+    collect_with_input(DiagnosticInput {
+        document,
+        uri: None,
+        workspace_index,
+        manifest: None,
+        anchor_toml: None,
+        seagrass_toml: None,
+        solana_program: None,
+        settings: DiagnosticSettings::default(),
+    })
+}
+
+pub(crate) fn collect_with_input(input: DiagnosticInput<'_>) -> Vec<Diagnostic> {
+    engine::collect(input)
+}
+
+pub(crate) fn collect_hot_with_input(input: DiagnosticInput<'_>) -> Vec<Diagnostic> {
+    engine::collect_hot(input)
+}
+
+pub fn diagnostic_from_parse_error(err: syn::Error) -> Diagnostic {
+    diagnostic_from_syn_error(err)
+}
+
+pub(crate) fn diagnostic_from_syn_error(err: syn::Error) -> Diagnostic {
+    let parser_message = err.to_string();
+    let is_init_constraint = parser_message_has(&parser_message, INIT_PAYER_REQUIRED_MESSAGE)
+        || parser_message_has(&parser_message, INIT_SPACE_REQUIRED_MESSAGE);
+    let parser_rule = (!is_init_constraint)
+        .then(|| constraint_catalog::parser_rule_for_message(&parser_message))
+        .flatten();
+    let kind = if is_init_constraint {
+        AnchorDiagnosticKind::AnchorInitConstraints
+    } else if parser_rule.is_some() {
+        AnchorDiagnosticKind::AnchorConstraintShape
+    } else {
+        AnchorDiagnosticKind::AnchorSyn
+    };
+    let data = if is_init_constraint {
+        Some(serde_json::json!({
+            "quickfix": INIT_PLACEHOLDERS_QUICKFIX,
+            "parserMessage": parser_message,
+            "topic": init_constraint_topic(&parser_message),
+        }))
+    } else {
+        parser_rule.map(|(spec, rule)| {
+            serde_json::json!({
+                "constraint": constraint_catalog::key(spec.label),
+                "constraintLabel": spec.label,
+                "parserRule": {
+                    "kind": constraint_catalog::parser_rule_kind_name(rule.kind),
+                    "message": rule.message,
+                    "sourceMethod": rule.source_method,
+                },
+                "generatedFrom": "lang/syn/src/parser/accounts/constraints.rs",
+            })
+        })
+    };
+    let message = if is_init_constraint {
+        init_constraint_message(&parser_message)
+    } else if let Some((spec, rule)) = parser_rule {
+        parser_rule_diagnostic_message(spec, rule, &parser_message)
+    } else {
+        parser_message
+    };
+
+    diagnostic_from_span(err.span(), kind, message, data)
+}
+
+fn init_constraint_topic(parser_message: &str) -> &'static str {
+    if parser_message_has(parser_message, INIT_PAYER_REQUIRED_MESSAGE) {
+        return ANCHOR_INIT_PAYER_TOPIC;
+    }
+    if parser_message_has(parser_message, INIT_SPACE_REQUIRED_MESSAGE) {
+        return ANCHOR_INIT_SPACE_TOPIC;
+    }
+    "seagrass/anchor.init.constraints"
+}
+
+fn init_constraint_message(parser_message: &str) -> String {
+    if parser_message_has(parser_message, INIT_PAYER_REQUIRED_MESSAGE) {
+        return "Anchor `init` constraint is missing `payer = ...`; add the account that funds initialization.".to_string();
+    }
+    if parser_message_has(parser_message, INIT_SPACE_REQUIRED_MESSAGE) {
+        return "Anchor `init` constraint is missing `space = ...`; add discriminator plus account data size.".to_string();
+    }
+    parser_message.to_string()
+}
+
+fn parser_rule_diagnostic_message(
+    spec: &constraint_catalog::ConstraintSpec,
+    rule: &constraint_catalog::ConstraintParserRule,
+    parser_message: &str,
+) -> String {
+    let key = constraint_catalog::key(spec.label);
+    match rule.kind {
+        constraint_catalog::ConstraintParserRuleKind::Duplicate => {
+            format!(
+                "Anchor account constraint `{key}` is duplicated; remove the duplicate `{key}`."
+            )
+        }
+        constraint_catalog::ConstraintParserRuleKind::Ordering => {
+            if let Some((required, before)) = rule.message.split_once(" must be provided before ") {
+                return format!(
+                    "Anchor account constraints are out of order; place `{}` before `{}`.",
+                    parser_rule_phrase_label(required),
+                    parser_rule_phrase_label(before)
+                );
+            }
+            format!("Anchor account constraint `{key}` is out of order.")
+        }
+        constraint_catalog::ConstraintParserRuleKind::Conflict => {
+            if let Some((left, right)) = rule.message.split_once(" cannot be used with ") {
+                return format!(
+                    "Anchor account constraints conflict; remove `{}` or `{}`.",
+                    parser_rule_phrase_label(left),
+                    parser_rule_phrase_label(right)
+                );
+            }
+            format!("Anchor account constraint `{key}` conflicts with another constraint.")
+        }
+        constraint_catalog::ConstraintParserRuleKind::TypeRequirement => {
+            if rule.message.contains("close must be on") {
+                return "`close` only works on `Account`, `LazyAccount`, or `AccountLoader` fields."
+                    .to_string();
+            }
+            if rule.message.contains("Discriminator") {
+                return "`zero` requires an account type that implements `Discriminator`; remove `zero` or use a compatible account type.".to_string();
+            }
+            format!("Anchor account constraint `{key}` is on an unsupported account type: {parser_message}.")
+        }
+        constraint_catalog::ConstraintParserRuleKind::FeatureGate => {
+            format!(
+                "Anchor account constraint `{key}` needs an enabled Cargo feature: {parser_message}."
+            )
+        }
+        constraint_catalog::ConstraintParserRuleKind::Parser => {
+            format!("Anchor account constraint `{key}` is invalid: {parser_message}.")
+        }
+    }
+}
+
+fn parser_rule_phrase_label(phrase: &str) -> String {
+    let normalized = normalized_constraint_phrase(phrase);
+    constraint_catalog::CONSTRAINTS
+        .iter()
+        .find_map(|spec| {
+            let key = constraint_catalog::key(spec.label);
+            (normalized_constraint_phrase(key) == normalized).then(|| key.to_string())
+        })
+        .unwrap_or_else(|| phrase.trim().trim_matches('`').to_string())
+}
+
+fn normalized_constraint_phrase(value: &str) -> String {
+    value
+        .trim()
+        .trim_matches('`')
+        .replace("::", " ")
+        .replace('_', " ")
+        .split_whitespace()
+        .filter(|part| *part != "account")
+        .collect::<Vec<_>>()
+        .join(" ")
+        .to_ascii_lowercase()
+}
+
+const INIT_PAYER_REQUIRED_MESSAGE: &str = "payer must be provided";
+const INIT_SPACE_REQUIRED_MESSAGE: &str = "space must be provided";
+
+fn parser_message_has(parser_message: &str, expected: &str) -> bool {
+    parser_message.contains(expected)
+}
+
+pub(crate) fn diagnostic_from_span(
+    span: Span,
+    kind: AnchorDiagnosticKind,
+    message: String,
+    data: Option<serde_json::Value>,
+) -> Diagnostic {
+    diagnostic_from_range(range_from_span(span), kind, message, data)
+}
+
+pub(crate) fn diagnostic_from_range(
+    range: Range,
+    kind: AnchorDiagnosticKind,
+    message: String,
+    data: Option<serde_json::Value>,
+) -> Diagnostic {
+    diagnostic_from_range_with_related(range, kind, message, data, None)
+}
+
+pub(crate) fn diagnostic_from_range_with_related(
+    range: Range,
+    kind: AnchorDiagnosticKind,
+    message: String,
+    data: Option<serde_json::Value>,
+    related_information: Option<Vec<DiagnosticRelatedInformation>>,
+) -> Diagnostic {
+    Diagnostic {
+        range,
+        severity: Some(kind.default_severity()),
+        code: Some(NumberOrString::String(kind.code().to_string())),
+        code_description: kind.docs_url().map(|href| CodeDescription { href }),
+        source: Some(SOURCE.to_string()),
+        message,
+        related_information,
+        tags: None,
+        data: diagnostic_data(kind, data),
+    }
+}
+
+pub(crate) fn dedupe(diagnostics: Vec<Diagnostic>) -> Vec<Diagnostic> {
+    arbitration::dedupe(diagnostics)
+}
+
+const CURRENT_DOCUMENT_PLACEHOLDER_URI: &str = "file:///seagrass/current-document.rs";
+const ANCHOR_INIT_PAYER_TOPIC: &str = "seagrass/anchor.init.missing-payer";
+const ANCHOR_INIT_SPACE_TOPIC: &str = "seagrass/anchor.init.missing-space";
+const PAYER_COMPANION: &str = "payer";
+const SPACE_COMPANION: &str = "space";
+const INIT_FALLBACK_KEY: &str = "init";
+const RELATED_ACCOUNT_DATA_KEYS: &[&str] = &[
+    "account",
+    "field",
+    "missing",
+    "peer",
+    "requiredByAccount",
+    "usedByAccount",
+];
+const RELATED_CONTEXT_DATA_KEYS: &[&str] = &["accountsStruct", "context"];
+const RELATED_CONSTRAINT_DATA_KEYS: &[&str] =
+    &["constraint", "missing", "requiredBy", "conflictsWith"];
+
+pub(crate) fn bind_current_document_related_uri(
+    diagnostics: &mut [Diagnostic],
+    current_document_uri: &Url,
+) {
+    for diagnostic in diagnostics.iter_mut() {
+        let Some(related_information) = diagnostic.related_information.as_mut() else {
+            continue;
+        };
+        for info in related_information.iter_mut() {
+            if info.location.uri.as_str() == CURRENT_DOCUMENT_PLACEHOLDER_URI {
+                info.location.uri = current_document_uri.clone();
+            }
+        }
+    }
+}
+
+pub(crate) fn enrich_current_document_related_information(
+    document: &ParsedDocument,
+    diagnostics: &mut [Diagnostic],
+) {
+    let mut related_index = None;
+    for diagnostic in diagnostics {
+        let mut related_information = Vec::new();
+        if is_init_companion_diagnostic(diagnostic) {
+            if let Some(init_related) = init_companion_related_information(document, diagnostic) {
+                related_information.extend(init_related);
+            }
+        }
+        if has_semantic_related_data(diagnostic) {
+            let index = related_index.get_or_insert_with(|| RelatedInformationIndex::new(document));
+            related_information.extend(semantic_related_information(index, diagnostic));
+        }
+
+        if !related_information.is_empty() {
+            let existing = diagnostic.related_information.get_or_insert_with(Vec::new);
+            append_unique_related_information(existing, related_information);
+        }
+    }
+}
+
+fn has_semantic_related_data(diagnostic: &Diagnostic) -> bool {
+    RELATED_CONSTRAINT_DATA_KEYS
+        .iter()
+        .chain(RELATED_ACCOUNT_DATA_KEYS)
+        .chain(RELATED_CONTEXT_DATA_KEYS)
+        .any(|key| diagnostic_data_str(diagnostic, key).is_some())
+}
+
+fn is_init_companion_diagnostic(diagnostic: &Diagnostic) -> bool {
+    matches!(
+        diagnostic_data_str(diagnostic, "topic"),
+        Some(ANCHOR_INIT_PAYER_TOPIC | ANCHOR_INIT_SPACE_TOPIC)
+    )
+}
+
+fn init_companion_related_information(
+    document: &ParsedDocument,
+    diagnostic: &Diagnostic,
+) -> Option<Vec<DiagnosticRelatedInformation>> {
+    let missing = init_missing_companion(diagnostic)?;
+    let cursor = document.account_attribute_cursor(diagnostic.range.end)?;
+    let init_key = constraint_ranges::constraint_key_ranges(document.source(), cursor.range)
+        .into_iter()
+        .find(|range| constraint_catalog::INIT_LIKE_KEYS.contains(&range.key))
+        .map(|range| (range.key, range.range));
+    let (init_key, init_key_range) = init_key.unwrap_or((INIT_FALLBACK_KEY, diagnostic.range));
+    let field = cursor
+        .field_name
+        .as_deref()
+        .and_then(|name| account_field_by_name(document, name))?;
+
+    Some(vec![
+        current_document_related_information(
+            init_key_range,
+            format!("`{init_key}` requires this companion `{missing} = ...`."),
+        )?,
+        current_document_related_information(
+            field.selection_range,
+            format!("`{}` is the account being initialized.", field.name),
+        )?,
+        current_document_related_information(
+            cursor.range,
+            format!("Add the missing companion `{missing} = ...` inside this account attribute."),
+        )?,
+    ])
+}
+
+fn init_missing_companion(diagnostic: &Diagnostic) -> Option<&'static str> {
+    match diagnostic_data_str(diagnostic, "topic")? {
+        ANCHOR_INIT_PAYER_TOPIC => Some(PAYER_COMPANION),
+        ANCHOR_INIT_SPACE_TOPIC => Some(SPACE_COMPANION),
+        _ => None,
+    }
+}
+
+fn semantic_related_information(
+    index: &RelatedInformationIndex<'_>,
+    diagnostic: &Diagnostic,
+) -> Vec<DiagnosticRelatedInformation> {
+    let mut related_information = Vec::new();
+
+    for key in RELATED_CONSTRAINT_DATA_KEYS {
+        if let Some(constraint) = diagnostic_data_str(diagnostic, key) {
+            if let Some(info) = constraint_related_information(index, diagnostic, constraint) {
+                related_information.push(info);
+            }
+        }
+    }
+
+    for key in RELATED_ACCOUNT_DATA_KEYS {
+        if let Some(account) = diagnostic_data_str(diagnostic, key) {
+            if let Some(field) = account_field_by_name(index.document, account) {
+                if let Some(info) = current_document_related_information(
+                    field.selection_range,
+                    format!("`{}` account field related to this diagnostic.", field.name),
+                ) {
+                    related_information.push(info);
+                }
+            }
+        }
+    }
+
+    for key in RELATED_CONTEXT_DATA_KEYS {
+        if let Some(context) = diagnostic_data_str(diagnostic, key) {
+            if let Some(accounts) = accounts_struct_by_name(index.document, context) {
+                if let Some(info) = current_document_related_information(
+                    accounts.selection_range,
+                    format!(
+                        "`{}` accounts context related to this diagnostic.",
+                        accounts.name
+                    ),
+                ) {
+                    related_information.push(info);
+                }
+            }
+        }
+    }
+
+    dedupe_related_information(related_information)
+}
+
+fn constraint_related_information(
+    index: &RelatedInformationIndex<'_>,
+    diagnostic: &Diagnostic,
+    constraint: &str,
+) -> Option<DiagnosticRelatedInformation> {
+    let range = index.matching_constraint_key_range(diagnostic.range, constraint)?;
+    current_document_related_information(
+        range,
+        format!("`{constraint}` constraint related to this diagnostic."),
+    )
+}
+
+struct RelatedInformationIndex<'a> {
+    document: &'a ParsedDocument,
+    constraint_ranges: Vec<constraint_ranges::ConstraintKeyRange>,
+}
+
+impl<'a> RelatedInformationIndex<'a> {
+    fn new(document: &'a ParsedDocument) -> Self {
+        let constraint_ranges = document
+            .tree_sitter()
+            .map(|syntax| syntax.anchor_query_captures(document.source()))
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|capture| capture.kind == crate::syntax::AnchorQueryKind::AccountAttribute)
+            .flat_map(|capture| {
+                constraint_ranges::constraint_key_ranges(document.source(), capture.range)
+            })
+            .collect();
+        Self {
+            document,
+            constraint_ranges,
+        }
+    }
+
+    fn matching_constraint_key_range(
+        &self,
+        diagnostic_range: Range,
+        constraint: &str,
+    ) -> Option<Range> {
+        self.constraint_ranges
+            .iter()
+            .filter(|range| range.key == constraint)
+            .min_by_key(|range| {
+                (
+                    !ranges_overlap(range.range, diagnostic_range),
+                    range.range.start.line,
+                    range.range.start.character,
+                )
+            })
+            .map(|range| range.range)
+    }
+}
+
+fn ranges_overlap(left: Range, right: Range) -> bool {
+    constraint_ranges::contains_position(left, right.start)
+        || constraint_ranges::contains_position(left, right.end)
+        || constraint_ranges::contains_position(right, left.start)
+        || constraint_ranges::contains_position(right, left.end)
+}
+
+fn append_unique_related_information(
+    existing: &mut Vec<DiagnosticRelatedInformation>,
+    incoming: Vec<DiagnosticRelatedInformation>,
+) {
+    for info in incoming {
+        if !existing
+            .iter()
+            .any(|existing| same_related_information(existing, &info))
+        {
+            existing.push(info);
+        }
+    }
+}
+
+fn dedupe_related_information(
+    incoming: Vec<DiagnosticRelatedInformation>,
+) -> Vec<DiagnosticRelatedInformation> {
+    let mut deduped = Vec::new();
+    append_unique_related_information(&mut deduped, incoming);
+    deduped
+}
+
+fn same_related_information(
+    left: &DiagnosticRelatedInformation,
+    right: &DiagnosticRelatedInformation,
+) -> bool {
+    left.message == right.message
+        && left.location.uri == right.location.uri
+        && left.location.range == right.location.range
+}
+
+fn account_field_by_name<'a>(
+    document: &'a ParsedDocument,
+    field_name: &str,
+) -> Option<&'a crate::document::SymbolRange> {
+    document
+        .symbols()
+        .accounts_structs
+        .values()
+        .flat_map(|accounts| accounts.fields.iter())
+        .find(|field| field.name == field_name)
+}
+
+fn accounts_struct_by_name<'a>(
+    document: &'a ParsedDocument,
+    name: &str,
+) -> Option<&'a crate::document::SymbolRange> {
+    document.symbols().accounts_structs.get(name)
+}
+
+fn current_document_related_information(
+    range: Range,
+    message: String,
+) -> Option<DiagnosticRelatedInformation> {
+    Some(DiagnosticRelatedInformation {
+        location: tower_lsp::lsp_types::Location {
+            uri: Url::parse(CURRENT_DOCUMENT_PLACEHOLDER_URI).ok()?,
+            range,
+        },
+        message,
+    })
+}
+
+fn diagnostic_data(
+    kind: AnchorDiagnosticKind,
+    data: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    let mut object = match data {
+        Some(serde_json::Value::Object(object)) => object,
+        Some(value) => {
+            return Some(value);
+        }
+        None => serde_json::Map::new(),
+    };
+
+    if let Some(rule) = kind.rule() {
+        object
+            .entry("rule".to_string())
+            .or_insert_with(|| serde_json::Value::String(rule.to_string()));
+    }
+    object
+        .entry("confidence".to_string())
+        .or_insert_with(|| serde_json::Value::String(kind.confidence().to_string()));
+    object
+        .entry("applicability".to_string())
+        .or_insert_with(|| serde_json::Value::String("Unspecified".to_string()));
+    object
+        .entry("topic".to_string())
+        .or_insert_with(|| serde_json::Value::String(kind.topic().to_string()));
+    let anchor_errors = crate::anchor_errors::diagnostic_error_data(kind.anchor_error_names());
+    if !anchor_errors.is_empty() {
+        object.insert(
+            "anchorErrors".to_string(),
+            serde_json::Value::Array(anchor_errors),
+        );
+    }
+
+    (!object.is_empty()).then_some(serde_json::Value::Object(object))
+}
+
+fn diagnostic_data_str<'a>(diagnostic: &'a Diagnostic, key: &str) -> Option<&'a str> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get(key))
+        .and_then(|value| value.as_str())
+}
+
+#[cfg(test)]
+mod tests;

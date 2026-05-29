@@ -5,6 +5,13 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: add semantic constraint expression diagnostics and member completions for
+  account fields, instruction args, constants, and workspace account data.
+- lsp: add proactive assists for missing companion program accounts, PDA bump
+  constraints, canonical PDA seed helpers, safer CPI program account patterns,
+  mutated account `mut` constraints, and instruction argument attributes.
+- ci: keep the scale benchmark usable when sandboxed hosts block process RSS
+  measurement.
 - lsp: check in generated Anchor support catalogs and remove build-time parent
   source scraping.
 - lsp: add agent-friendly JSON diagnostics CLI mode.
