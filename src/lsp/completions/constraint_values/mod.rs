@@ -5,6 +5,7 @@ use {
 
 mod associated_values;
 mod candidates;
+mod expression_scope;
 mod members;
 mod recovery;
 mod slots;

@@ -1,5 +1,5 @@
 use {
-    super::{associated_values, members, slots::ConstraintValueSlot},
+    super::{associated_values, expression_scope, members, slots::ConstraintValueSlot},
     crate::{
         account_semantics::{self, ResolvedAccountType},
         constraint_catalog::ConstraintValueKind,
@@ -59,8 +59,10 @@ pub(super) fn value_items_for_slot(
         ConstraintValueKind::AnyExpression => {
             if associated_values::associated_value_prefix(value_prefix).is_some() {
                 associated_values::associated_value_items(document, workspace_index, value_prefix)
-            } else {
+            } else if members::member_access_prefix(value_prefix).is_some() {
                 members::expression_member_items(document, workspace_index, accounts, value_prefix)
+            } else {
+                expression_scope::expression_scope_items(document, workspace_index, accounts)
             }
         }
         ConstraintValueKind::None => Vec::new(),

@@ -5,6 +5,7 @@ use {
 };
 
 mod ranking_tests;
+mod value_expression_tests;
 
 #[test]
 fn completes_inside_account_attribute() {
