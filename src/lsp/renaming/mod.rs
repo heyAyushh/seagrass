@@ -92,6 +92,9 @@ pub fn rename_with_workspace(
             .unwrap_or_else(|| {
                 instruction_argument_locations(document, &uri, &context_name, &target.placeholder)
             }),
+        RenameTargetKind::AssociatedValue => {
+            navigation::references(document, uri.clone(), position).unwrap_or_default()
+        }
         RenameTargetKind::AnchorType => workspace_index
             .map(|index| {
                 index.references_with_kinds(
@@ -130,6 +133,7 @@ enum RenameTargetKind {
     AccountField { accounts_type: String },
     AccountDataField { account_data_type: String },
     InstructionArgument { context_name: String },
+    AssociatedValue,
     AnchorType,
 }
 
@@ -141,7 +145,17 @@ fn rename_target(
     account_field_target(document, position, workspace_index)
         .or_else(|| account_data_field_target(document, position))
         .or_else(|| instruction_argument_target(document, position))
+        .or_else(|| associated_value_target(document, position))
         .or_else(|| anchor_type_target(document, position))
+}
+
+fn associated_value_target(document: &ParsedDocument, position: Position) -> Option<RenameTarget> {
+    let target = navigation::associated_value_rename_target(document, position)?;
+    Some(RenameTarget {
+        kind: RenameTargetKind::AssociatedValue,
+        range: target.range,
+        placeholder: target.value_name,
+    })
 }
 
 fn instruction_argument_target(
@@ -284,6 +298,12 @@ fn account_data_field_target(
 fn anchor_type_target(document: &ParsedDocument, position: Position) -> Option<RenameTarget> {
     let word = word_at_position(document.source(), position)?;
     let range = word_range_at_position(document.source(), position)?;
+    if navigation::definition_target_kinds(document, position).is_some_and(|kinds| {
+        kinds.contains(&tower_lsp::lsp_types::SymbolKind::CONSTANT)
+            || kinds.contains(&tower_lsp::lsp_types::SymbolKind::FUNCTION)
+    }) {
+        return None;
+    }
     if navigation::reference_target_kinds(document, position).is_some()
         || document
             .symbols()

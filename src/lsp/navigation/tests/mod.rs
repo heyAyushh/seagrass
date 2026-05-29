@@ -345,6 +345,54 @@ impl State {
 }
 
 #[test]
+fn references_associated_values_by_owner_type() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = user, space = 8 + State::SPACE)]
+    pub state: Account<'info, State>,
+    #[account(init, payer = user, space = 8 + Other::SPACE)]
+    pub other: Account<'info, Other>,
+    #[account(init, payer = user, space = State::SPACE)]
+    pub second_state: Account<'info, State>,
+    pub user: Signer<'info>,
+}
+
+#[account]
+pub struct State {}
+
+impl State {
+    const SPACE: usize = 16;
+}
+
+#[account]
+pub struct Other {}
+
+impl Other {
+    const SPACE: usize = 32;
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let refs = references(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        position_of(source, "const SPACE: usize = 16", "SPACE"),
+    )
+    .unwrap();
+
+    assert_eq!(refs.len(), 3);
+    assert!(refs.iter().any(|location| location.range.start.line == 3));
+    assert!(refs.iter().any(|location| location.range.start.line == 7));
+    assert!(refs.iter().any(|location| location.range.start.line == 16));
+    assert!(!refs.iter().any(|location| location.range.start.line == 5));
+
+    let highlights =
+        document_highlights(&document, position_of(source, "State::SPACE", "SPACE")).unwrap();
+    assert_eq!(highlights.len(), 3);
+}
+
+#[test]
 fn jumps_from_generated_init_space_to_account_data_struct() {
     let source = r#"
 #[derive(Accounts)]

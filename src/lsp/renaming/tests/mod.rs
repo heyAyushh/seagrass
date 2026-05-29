@@ -357,6 +357,72 @@ pub struct Create<'info> {
 }
 
 #[test]
+fn renames_associated_value_declaration_and_constraint_references() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = user, space = 8 + State::SPACE)]
+    pub state: Account<'info, State>,
+    #[account(init, payer = user, space = State::SPACE)]
+    pub second_state: Account<'info, State>,
+    pub user: Signer<'info>,
+}
+
+#[account]
+pub struct State {}
+
+impl State {
+    const SPACE: usize = 16;
+}
+"#;
+    let uri = Url::parse("file:///tmp/lib.rs").unwrap();
+    let document = ParsedDocument::parse(source).unwrap();
+    let edit = rename_with_workspace(
+        &document,
+        uri.clone(),
+        position_of(source, "State::SPACE", "SPACE"),
+        "ACCOUNT_SPACE",
+        None,
+        |_| None,
+    )
+    .unwrap();
+    let edits = edit.changes.unwrap().remove(&uri).unwrap();
+
+    assert_eq!(edits.len(), 3);
+    assert!(edits.iter().any(|edit| edit.range.start.line == 3));
+    assert!(edits.iter().any(|edit| edit.range.start.line == 5));
+    assert!(edits.iter().any(|edit| edit.range.start.line == 14));
+    assert!(edits.iter().all(|edit| edit.new_text == "ACCOUNT_SPACE"));
+}
+
+#[test]
+fn rejects_generated_init_space_rename() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = user, space = 8 + State::INIT_SPACE)]
+    pub state: Account<'info, State>,
+    pub user: Signer<'info>,
+}
+
+#[account]
+#[derive(InitSpace)]
+pub struct State {
+    #[max_len(32)]
+    pub name: String,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+
+    assert!(prepare_rename(
+        &document,
+        position_of(source, "State::INIT_SPACE", "INIT_SPACE"),
+        None,
+    )
+    .is_none());
+}
+
+#[test]
 fn renames_instruction_argument_across_workspace_index() {
     let program_uri = Url::parse("file:///tmp/program.rs").unwrap();
     let accounts_uri = Url::parse("file:///tmp/accounts.rs").unwrap();

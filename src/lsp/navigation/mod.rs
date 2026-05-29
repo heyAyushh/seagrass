@@ -37,6 +37,8 @@ pub struct InstructionArgumentTarget {
     pub range: Range,
 }
 
+pub(crate) use associated_values::AssociatedValueRenameTarget;
+
 pub fn definition_range(document: &ParsedDocument, position: Position) -> Option<Range> {
     let word = word_at_position(document.source(), position)?;
     if let Some(range) = account_field_path_definition_range(document, &word, position) {
@@ -252,11 +254,15 @@ pub fn reference_target_kinds(
         return Some(vec![SymbolKind::VARIABLE]);
     }
 
+    let word = word_at_position(document.source(), position)?;
+    if let Some(kinds) = associated_values::definition_target_kinds(document, &word, position) {
+        return Some(kinds);
+    }
+
     if is_anchor_type_position(document, position) {
         return Some(vec![SymbolKind::STRUCT]);
     }
 
-    let word = word_at_position(document.source(), position)?;
     document
         .symbols()
         .all_structs
@@ -294,6 +300,17 @@ pub fn references(
         );
     }
     if let Some(ranges) = instruction_argument_reference_ranges(document, position) {
+        return Some(
+            ranges
+                .into_iter()
+                .map(|range| Location {
+                    uri: uri.clone(),
+                    range,
+                })
+                .collect(),
+        );
+    }
+    if let Some(ranges) = associated_values::reference_ranges(document, &word, position) {
         return Some(
             ranges
                 .into_iter()
@@ -348,6 +365,17 @@ pub fn document_highlights(
         );
     }
     if let Some(ranges) = instruction_argument_reference_ranges(document, position) {
+        return Some(
+            ranges
+                .into_iter()
+                .map(|range| DocumentHighlight {
+                    range,
+                    kind: Some(DocumentHighlightKind::TEXT),
+                })
+                .collect(),
+        );
+    }
+    if let Some(ranges) = associated_values::reference_ranges(document, &word, position) {
         return Some(
             ranges
                 .into_iter()
@@ -610,6 +638,14 @@ fn document_knows_field(document: &ParsedDocument, word: &str, position: Positio
     field_definition_range(document, word, position).is_some()
         || account_field_path_definition_range(document, word, position).is_some()
         || account_data_field_definition_range(document, word, position).is_some()
+}
+
+pub(crate) fn associated_value_rename_target(
+    document: &ParsedDocument,
+    position: Position,
+) -> Option<AssociatedValueRenameTarget> {
+    let word = word_at_position(document.source(), position)?;
+    associated_values::rename_target(document, &word, position)
 }
 
 fn is_anchor_type_position(document: &ParsedDocument, position: Position) -> bool {
