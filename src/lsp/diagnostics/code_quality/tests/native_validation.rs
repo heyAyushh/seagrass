@@ -86,6 +86,37 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
 }
 
 #[test]
+fn reports_modular_native_cpi_validation_gaps() {
+    let source = r#"
+use {
+    solana_account_info::AccountInfo,
+    solana_cpi::invoke,
+    solana_instruction::{AccountMeta, Instruction},
+    solana_program_error::ProgramResult,
+    solana_pubkey::Pubkey,
+};
+
+solana_program_entrypoint::entrypoint!(process_instruction);
+
+pub fn process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    _instruction_data: &[u8],
+) -> ProgramResult {
+    let metas = vec![AccountMeta::new(*accounts[0].key, true)];
+    let ix = Instruction { program_id: *program_id, accounts: metas, data: vec![] };
+    invoke(&ix, accounts)?;
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_has_attack(&diagnostics, "signer-authorization");
+    assert_has_attack(&diagnostics, "arbitrary-cpi");
+}
+
+#[test]
 fn accepts_native_account_validation_in_same_function() {
     let source = r#"
 use solana_program::{
@@ -97,6 +128,39 @@ use solana_program::{
 };
 
 pub fn process(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    validate_signer(&accounts[0])?;
+    validate_program_id(program_id)?;
+    let metas = vec![AccountMeta::new(*accounts[0].key, true)];
+    let ix = Instruction { program_id: *program_id, accounts: metas, data: vec![] };
+    invoke(&ix, accounts)?;
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_no_attack(&diagnostics, "signer-authorization");
+    assert_no_attack(&diagnostics, "arbitrary-cpi");
+}
+
+#[test]
+fn accepts_modular_native_account_validation_in_same_function() {
+    let source = r#"
+use {
+    solana_account_info::AccountInfo,
+    solana_cpi::invoke,
+    solana_instruction::{AccountMeta, Instruction},
+    solana_program_error::ProgramResult,
+    solana_pubkey::Pubkey,
+};
+
+solana_program_entrypoint::entrypoint!(process_instruction);
+
+pub fn process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    _instruction_data: &[u8],
+) -> ProgramResult {
     validate_signer(&accounts[0])?;
     validate_program_id(program_id)?;
     let metas = vec![AccountMeta::new(*accounts[0].key, true)];
