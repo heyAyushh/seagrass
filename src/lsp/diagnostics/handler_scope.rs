@@ -9,7 +9,7 @@ use {
         lsp::scope::{has_attr, item_fn_has_anchor_context_arg},
         range::range_from_span,
     },
-    std::collections::HashSet,
+    std::collections::{BTreeSet, HashSet},
     syn::{
         visit::{self, Visit},
         ExprCall, ExprPath, FnArg, ItemFn, ItemMod, Pat, PathArguments,
@@ -81,6 +81,7 @@ impl HandlerScopeVisitor {
                 "topic": TOPIC,
                 "reason": REASON,
                 "identifier": identifier,
+                "candidates": self.visible_candidates(),
                 "evidenceSource": EVIDENCE_SOURCE,
                 "confidence": Confidence::Derived.as_str(),
                 "applicability": Applicability::Unspecified.as_str(),
@@ -92,6 +93,16 @@ impl HandlerScopeVisitor {
         self.scopes.contains(identifier)
             || self.global_values.contains(identifier)
             || KNOWN_SINGLE_SEGMENT_VALUES.contains(&identifier)
+    }
+
+    fn visible_candidates(&self) -> Vec<String> {
+        self.scopes
+            .visible_names()
+            .into_iter()
+            .chain(self.global_values.iter().cloned())
+            .collect::<BTreeSet<_>>()
+            .into_iter()
+            .collect()
     }
 }
 
@@ -207,6 +218,13 @@ impl ScopeStack {
     fn contains(&self, name: &str) -> bool {
         self.scopes.iter().rev().any(|scope| scope.contains(name))
     }
+
+    fn visible_names(&self) -> Vec<String> {
+        self.scopes
+            .iter()
+            .flat_map(|scope| scope.iter().cloned())
+            .collect()
+    }
 }
 
 fn global_values(document: &ParsedDocument) -> HashSet<String> {
@@ -290,6 +308,14 @@ pub mod demo {
                 ANCHOR_ACCOUNT_USAGE_CODE.to_string()
             ))
         );
+        assert!(diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("candidates"))
+            .and_then(|value| value.as_array())
+            .is_some_and(|candidates| candidates
+                .iter()
+                .any(|candidate| candidate.as_str() == Some("position_bundle"))));
     }
 
     #[test]

@@ -54,6 +54,7 @@ pub fn code_actions(
         uri.clone(),
         diagnostics,
     ));
+    actions.extend(replace_handler_identifier_actions(uri.clone(), diagnostics));
     actions.extend(duplicate_account_actions(
         document,
         uri.clone(),
@@ -285,6 +286,41 @@ fn default_program_field_type(field_name: &str) -> &'static str {
         "associated_token_program" => "Program<'info, AssociatedToken>",
         _ => "Program<'info, System>",
     }
+}
+
+fn replace_handler_identifier_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| diagnostic_code(diagnostic) == Some("anchor-account-usage"))
+        .filter(|diagnostic| {
+            diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("reason"))
+                .and_then(|value| value.as_str())
+                == Some("unresolved-handler-identifier")
+        })
+        .filter_map(|diagnostic| {
+            let data = diagnostic.data.as_ref()?;
+            let missing = data.get("identifier").and_then(|value| value.as_str())?;
+            let replacement = closest_candidate(data, missing)?;
+            let edit = single_text_edit(diagnostic.range, replacement.to_string());
+
+            Some(CodeAction {
+                title: format!("Replace `{missing}` with `{replacement}`"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(single_document_edit(uri.clone(), edit)),
+                command: None,
+                is_preferred: Some(false),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "replace-handler-identifier",
+                    "replacement": replacement,
+                })),
+            })
+        })
+        .collect()
 }
 
 fn replace_has_one_target_actions(

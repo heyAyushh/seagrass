@@ -149,7 +149,7 @@ means the diagnostic currently has no code action.
 
 | diagnostic code | quickfix coverage | action emitter | quickfix tags | gaps |
 | --- | --- | --- | --- | --- |
-| `anchor-account-usage` | covered | `lsp/actions/accounts/mod.rs` | `add-mut-constraint` | none |
+| `anchor-account-usage` | covered | `lsp/actions/accounts/mod.rs` | `add-mut-constraint`, `replace-handler-identifier` | none |
 | `anchor-check-cfg` | covered | `lsp/actions/features.rs` | `add-anchor-debug-feature`, `add-init-if-needed-feature`, `add-solana-target-os-check-cfg` | none |
 | `anchor-constraint-expression` | partial | `lsp/actions/constraint_expressions.rs` | `replace-constraint-expression-member`, `replace-constraint-expression-identifier` | Import suggestions remain deferred; unresolved local typos use scoped replacement candidates. |
 | `anchor-constraint-shape` | partial | `lsp/actions/constraints.rs`, `lsp/actions/accounts/mod.rs`, `lsp/actions/features.rs`, `lsp/actions/security.rs` | `parser-rule:duplicate`, `parser-rule:ordering`, `remove-conflicting-constraints`, `replace-keyword-value`, `replace-account-type`, `program-field-type`, `system-program-type`, `replace-has-one-target`, `add-missing-constraint`, `add-mut-constraint` | Generic shape diagnostics without parser-rule or quickfix metadata remain diagnostic-only. |
