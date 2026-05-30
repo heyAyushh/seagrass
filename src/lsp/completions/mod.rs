@@ -5,6 +5,8 @@ mod account_paths;
 mod constraint_values;
 mod cursor_context;
 mod instruction_attributes;
+#[cfg(test)]
+mod proptest_support;
 mod ranking;
 
 use {

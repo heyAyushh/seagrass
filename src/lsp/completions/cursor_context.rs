@@ -520,7 +520,7 @@ fn context_type_typed_prefix<'a>(source: &str, offset: usize, prefix: &'a str) -
 
 fn has_enclosing_function_signature(source: &str, offset: usize) -> bool {
     let before_cursor = &source[..offset.min(source.len())];
-    let Some(function_start) = rfind_function_keyword(before_cursor) else {
+    let Some(function_start) = last_function_keyword_before(before_cursor) else {
         return false;
     };
     let function_prefix = &before_cursor[function_start..];
@@ -532,29 +532,30 @@ fn has_enclosing_anchor_context(source: &str, offset: usize) -> bool {
         return false;
     }
     let before_cursor = &source[..offset.min(source.len())];
-    let Some(function_start) = rfind_function_keyword(before_cursor) else {
+    let Some(function_start) = last_function_keyword_before(before_cursor) else {
         return false;
     };
     before_cursor[function_start..].contains("Context<")
 }
 
-fn rfind_function_keyword(source: &str) -> Option<usize> {
-    let mut search_end = source.len();
-    while let Some(index) = source[..search_end].rfind("fn ") {
-        if source[..index]
-            .chars()
-            .next_back()
-            .is_none_or(|ch| !is_rust_identifier_char(ch))
-        {
-            return Some(index);
-        }
-        search_end = index;
-    }
-    None
+pub(super) fn last_function_keyword_before(source: &str) -> Option<usize> {
+    source
+        .rmatch_indices("fn")
+        .find_map(|(idx, _)| function_keyword_at(source, idx).then_some(idx))
 }
 
-fn is_rust_identifier_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
+fn function_keyword_at(source: &str, idx: usize) -> bool {
+    let end = idx + "fn".len();
+    let has_leading_boundary = source[..idx]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_identifier_char(ch));
+    let has_trailing_whitespace = source[end..]
+        .chars()
+        .next()
+        .is_some_and(char::is_whitespace);
+
+    has_leading_boundary && has_trailing_whitespace
 }
 
 fn has_anchor_framework_hint(source: &str, offset: usize) -> bool {
@@ -566,6 +567,10 @@ fn has_anchor_framework_hint(source: &str, offset: usize) -> bool {
 
 fn is_anchor_context_receiver(receiver: &str) -> bool {
     matches!(receiver, "ctx" | "context")
+}
+
+fn is_identifier_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_'
 }
 
 fn instruction_attribute_typed_prefix(prefix: &str) -> Option<&str> {

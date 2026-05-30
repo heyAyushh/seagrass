@@ -34,6 +34,14 @@ seagrass diagnostics <path> --json | jq .
 ```
 
 Path can be a single file or a directory. Directory walks `.rs` files.
+For piped source, preserve workspace context with `--stdin-path`:
+
+```bash
+cat programs/demo/src/lib.rs | seagrass diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json | jq .
+```
+
+If the command is missing an input, points at a non-Rust file, or finds an empty
+directory, it exits with usage code `2` and prints a retryable example command.
 
 ## Output shape
 
@@ -101,6 +109,7 @@ Common asks the user may make (note: top-level array, so use `jq '.[] | ...'` or
 - "only errors" → `jq '.[] | select(.severity == "ERROR")'`
 - "exclude X topic" → `jq '.[] | select(.topic != "<topic>")'`
 - "just this file" → run `seagrass diagnostics <single-file>.rs`
+- "lint piped source" → run `cat <single-file>.rs | seagrass diagnostics --stdin --stdin-path <single-file>.rs --json`
 
 ## Stop conditions
 

@@ -124,13 +124,9 @@ fn is_identifier_char(ch: char) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, proptest::prelude::*};
-
-    prop_compose! {
-        fn identifier()(head in "[a-z]", tail in "[a-z0-9_]{0,10}") -> String {
-            format!("{head}{tail}")
-        }
-    }
+    use {
+        super::*, crate::lsp::completions::proptest_support::rust_identifier, proptest::prelude::*,
+    };
 
     fn position_after(source: &str, needle: &str) -> Position {
         let offset = source.find(needle).expect("needle") + needle.len();
@@ -147,8 +143,8 @@ mod tests {
     proptest! {
         #[test]
         fn resolves_direct_ctx_account_alias_variants(
-            alias in identifier(),
-            account in identifier(),
+            alias in rust_identifier(),
+            account in rust_identifier(),
             member_prefix in "[a-z_]{0,8}",
             mutable in any::<bool>(),
             reference in any::<bool>(),
@@ -173,9 +169,9 @@ mod tests {
 
         #[test]
         fn resolves_intermediate_accounts_alias_variants(
-            accounts_alias in identifier(),
-            account_alias in identifier(),
-            account in identifier(),
+            accounts_alias in rust_identifier(),
+            account_alias in rust_identifier(),
+            account in rust_identifier(),
             member_prefix in "[a-z_]{0,8}",
         ) {
             prop_assume!(accounts_alias != account_alias);

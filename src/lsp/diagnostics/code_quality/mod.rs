@@ -8,6 +8,7 @@ use {
             diagnostic_from_range, diagnostic_from_span, registry::AnchorDiagnosticKind,
         },
         document::{ParsedDocument, PdaConstraint, PdaSeeds, SymbolRange},
+        solana::frameworks::{FrameworkContext, FrameworkId},
     },
     quote::ToTokens,
     syn::{
@@ -27,8 +28,16 @@ const BALANCE_TERMS: &[&str] = &[
     "value", "withdraw",
 ];
 
+#[cfg(test)]
 pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
-    let program_kind = program_kind(document);
+    collect_with_framework(document, FrameworkContext::from_document(document))
+}
+
+pub fn collect_with_framework(
+    document: &ParsedDocument,
+    framework: FrameworkContext,
+) -> Vec<Diagnostic> {
+    let program_kind = ProgramKind::from_framework(framework);
     if program_kind == ProgramKind::Unknown {
         return Vec::new();
     }
@@ -40,10 +49,10 @@ pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
         program_kind,
     ));
     diagnostics.extend(non_canonical_pda_bump_diagnostics(document, program_kind));
-    diagnostics.extend(native_raw::diagnostics(document));
+    diagnostics.extend(native_raw::diagnostics(document, program_kind));
     diagnostics.extend(manual_close::diagnostics(document));
     diagnostics.extend(stale_cpi::diagnostics(document));
-    diagnostics.extend(native_validation::diagnostics(document));
+    diagnostics.extend(native_validation::diagnostics(document, program_kind));
     diagnostics.extend(instruction_data_bounds_diagnostics(document, program_kind));
     diagnostics.extend(pda_seed_collision_diagnostics(document));
     diagnostics
@@ -58,6 +67,15 @@ pub(super) enum ProgramKind {
 }
 
 impl ProgramKind {
+    fn from_framework(framework: FrameworkContext) -> Self {
+        match framework.id() {
+            FrameworkId::AnchorV1 | FrameworkId::AnchorV2Preview => Self::Anchor,
+            FrameworkId::Pinocchio => Self::Pinocchio,
+            FrameworkId::NativeSolana => Self::NativeSolana,
+            FrameworkId::Unknown => Self::Unknown,
+        }
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             ProgramKind::Anchor => "anchor",
@@ -65,79 +83,6 @@ impl ProgramKind {
             ProgramKind::NativeSolana => "native-solana",
             ProgramKind::Unknown => "unknown",
         }
-    }
-}
-
-pub(super) fn program_kind(document: &ParsedDocument) -> ProgramKind {
-    let mut visitor = ProgramKindVisitor {
-        kind: ProgramKind::Unknown,
-    };
-    visitor.visit_file(document.syntax());
-    visitor.kind
-}
-
-struct ProgramKindVisitor {
-    kind: ProgramKind,
-}
-
-impl ProgramKindVisitor {
-    fn record_crate_ident(&mut self, ident: &syn::Ident) {
-        match ident.to_string().as_str() {
-            "anchor_lang" => self.kind = ProgramKind::Anchor,
-            "pinocchio" if self.kind != ProgramKind::Anchor => self.kind = ProgramKind::Pinocchio,
-            "solana_program" if self.kind == ProgramKind::Unknown => {
-                self.kind = ProgramKind::NativeSolana;
-            }
-            _ => {}
-        }
-    }
-
-    fn record_path(&mut self, path: &syn::Path) {
-        let Some(first) = path.segments.first().map(|segment| &segment.ident) else {
-            return;
-        };
-        self.record_crate_ident(first);
-    }
-
-    fn record_type_path(&mut self, path: &syn::Path) {
-        self.record_path(path);
-        if path
-            .segments
-            .last()
-            .is_some_and(|segment| segment.ident == "ProgramResult")
-            && self.kind == ProgramKind::Unknown
-        {
-            self.kind = ProgramKind::NativeSolana;
-        }
-    }
-}
-
-impl<'ast> Visit<'ast> for ProgramKindVisitor {
-    fn visit_attribute(&mut self, node: &'ast syn::Attribute) {
-        if node.path().is_ident("program") {
-            self.kind = ProgramKind::Anchor;
-        }
-        visit::visit_attribute(self, node);
-    }
-
-    fn visit_path(&mut self, node: &'ast syn::Path) {
-        self.record_path(node);
-        visit::visit_path(self, node);
-    }
-
-    fn visit_use_tree(&mut self, node: &'ast syn::UseTree) {
-        match node {
-            syn::UseTree::Path(path) => self.record_crate_ident(&path.ident),
-            syn::UseTree::Name(name) => self.record_crate_ident(&name.ident),
-            syn::UseTree::Rename(rename) => self.record_crate_ident(&rename.ident),
-            syn::UseTree::Glob(_) | syn::UseTree::Group(_) => {}
-        }
-        visit::visit_use_tree(self, node);
-    }
-
-    fn visit_type_path(&mut self, node: &'ast syn::TypePath) {
-        self.record_type_path(&node.path);
-        visit::visit_type_path(self, node);
     }
 }
 

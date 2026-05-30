@@ -34,12 +34,21 @@ cargo run -p seagrass
 Run agent-friendly JSON diagnostics without an editor:
 
 ```sh
-cargo run -p seagrass -- diagnostics --json programs/demo/src/lib.rs
+cargo run -p seagrass -- diagnostics programs/demo/src/lib.rs --json
+```
+
+Or pipe a single Rust source file through stdin while preserving the source path
+for workspace context:
+
+```sh
+cat programs/demo/src/lib.rs | cargo run -p seagrass -- diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
 ```
 
 The JSON output is an array of diagnostics with `file`, `range`, `code`,
-`severity`, `topic`, `confidence`, and `message`. The command exits nonzero
-when any `ERROR` severity finding is emitted.
+`severity`, `topic`, `confidence`, and `message`. The command exits `1` when
+any `ERROR` severity finding is emitted and exits `2` for usage or input
+errors. Run `cargo run -p seagrass -- diagnostics --help` for copy-pasteable
+examples.
 
 ## Agent Setup
 

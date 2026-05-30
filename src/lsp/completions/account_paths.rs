@@ -454,7 +454,7 @@ fn contains_position(range: tower_lsp::lsp_types::Range, position: Position) -> 
 fn text_enclosing_context_name(source: &str, position: Position) -> Option<String> {
     let offset = crate::range::byte_offset_at(source, position)?;
     let before_cursor = &source[..offset.min(source.len())];
-    let function_start = before_cursor.rfind("fn ")?;
+    let function_start = super::cursor_context::last_function_keyword_before(before_cursor)?;
     let function_prefix = &before_cursor[function_start..];
     let context_open = function_prefix.rfind("Context<")? + "Context<".len();
     let after_context_open = &function_prefix[context_open..];
@@ -470,7 +470,10 @@ fn text_enclosing_context_name(source: &str, position: Position) -> Option<Strin
 mod tests {
     use {
         super::*,
-        crate::{document::ParsedDocument, workspace::WorkspaceIndex},
+        crate::{
+            document::ParsedDocument, lsp::completions::proptest_support::rust_identifier,
+            workspace::WorkspaceIndex,
+        },
         proptest::prelude::*,
         tower_lsp::lsp_types::Url,
     };
@@ -687,8 +690,8 @@ pub struct PositionBundle {
 use anchor_lang::prelude::*;
 
 pub fn handler(ctx: Context<CloseBundledPosition>) -> Result<()> {
-    let accounts = &mut ctx.accounts;
-    let position_bundle = &mut accounts.position_bundle;
+    let afn = &mut ctx.accounts;
+    let position_bundle = &mut afn.position_bundle;
     position_bundle.position_bundle_m;
 
     Ok(())
@@ -732,18 +735,12 @@ pub struct PositionBundle {
         assert_eq!(items[0].label, "position_bundle_mint");
     }
 
-    prop_compose! {
-        fn identifier()(head in "[a-z]", tail in "[a-z0-9_]{0,10}") -> String {
-            format!("{head}{tail}")
-        }
-    }
-
     proptest! {
         #[test]
         fn completes_members_for_generated_account_alias_shapes(
-            alias in identifier(),
-            account_field in identifier(),
-            data_field in identifier(),
+            alias in rust_identifier(),
+            account_field in rust_identifier(),
+            data_field in rust_identifier(),
             mutable in any::<bool>(),
             reference in any::<bool>(),
         ) {

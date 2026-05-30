@@ -29,8 +29,10 @@ const PROGRAM_ID_VALIDATION_HELPERS: &[&str] = &[
     "check_id",
 ];
 
-pub(super) fn diagnostics(document: &crate::document::ParsedDocument) -> Vec<Diagnostic> {
-    let program_kind = super::program_kind(document);
+pub(super) fn diagnostics(
+    document: &crate::document::ParsedDocument,
+    program_kind: ProgramKind,
+) -> Vec<Diagnostic> {
     if !matches!(
         program_kind,
         ProgramKind::NativeSolana | ProgramKind::Pinocchio

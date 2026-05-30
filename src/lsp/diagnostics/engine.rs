@@ -3,7 +3,10 @@ use {
         arbitration::{self, DiagnosticSettings},
         rules::{self, DiagnosticPhase},
     },
-    crate::{document::ParsedDocument, solana_project::SolanaProgram, workspace::WorkspaceIndex},
+    crate::{
+        document::ParsedDocument, solana::frameworks::FrameworkContext,
+        solana_project::SolanaProgram, workspace::WorkspaceIndex,
+    },
     tower_lsp::lsp_types::{Diagnostic, Url},
 };
 
@@ -11,6 +14,7 @@ pub struct DiagnosticInput<'a> {
     pub document: &'a ParsedDocument,
     pub uri: Option<&'a Url>,
     pub workspace_index: Option<&'a WorkspaceIndex>,
+    pub framework: FrameworkContext,
     pub manifest: Option<(&'a Url, &'a str)>,
     pub anchor_toml: Option<(&'a Url, &'a str)>,
     pub seagrass_toml: Option<(&'a Url, &'a str)>,
@@ -25,6 +29,7 @@ impl<'a> DiagnosticInput<'a> {
             document,
             uri: None,
             workspace_index: None,
+            framework: FrameworkContext::from_document(document),
             manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
@@ -49,6 +54,9 @@ fn collect_through_phase(
     let mut diagnostics = Vec::new();
     for rule in rules::registry() {
         if max_phase.is_some_and(|max_phase| rule.phase > max_phase) {
+            continue;
+        }
+        if !rule.frameworks.contains(input.framework.id()) {
             continue;
         }
         let _rule_metadata = rule.id;
@@ -119,6 +127,7 @@ my_program = "Expected111111111111111111111111111111111"
             document: &document,
             uri: Some(&uri),
             workspace_index: None,
+            framework: FrameworkContext::from_document(&document),
             manifest: None,
             anchor_toml: Some((&anchor_toml_uri, anchor_toml)),
             seagrass_toml: None,
@@ -155,6 +164,7 @@ pub struct Create<'info> {
             document: &document,
             uri: Some(&uri),
             workspace_index: None,
+            framework: FrameworkContext::from_document(&document),
             manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
@@ -204,6 +214,7 @@ pub struct Create<'info> {
             document: &document,
             uri: Some(&uri),
             workspace_index: None,
+            framework: FrameworkContext::from_document(&document),
             manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
@@ -261,6 +272,7 @@ demo = "Expected111111111111111111111111111111111"
             document: &document,
             uri: Some(&uri),
             workspace_index: None,
+            framework: FrameworkContext::from_document(&document),
             manifest: None,
             anchor_toml: Some((&anchor_toml_uri, anchor_toml)),
             seagrass_toml: None,
@@ -287,6 +299,39 @@ demo = "Expected111111111111111111111111111111111"
             matches!(
                 diagnostic.code.as_ref(),
                 Some(NumberOrString::String(code)) if code == "anchor-project-id"
+            )
+        }));
+    }
+
+    #[test]
+    fn framework_filter_skips_anchor_rules_for_pinocchio_context() {
+        let document = ParsedDocument::parse(
+            r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init)]
+    pub state: Account<'info, State>,
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect(DiagnosticInput {
+            document: &document,
+            uri: None,
+            workspace_index: None,
+            framework: FrameworkContext::new(crate::solana::frameworks::FrameworkId::Pinocchio),
+            manifest: None,
+            anchor_toml: None,
+            seagrass_toml: None,
+            solana_program: None,
+            settings: DiagnosticSettings::default(),
+        });
+
+        assert!(diagnostics.iter().all(|diagnostic| {
+            !matches!(
+                diagnostic.code.as_ref(),
+                Some(NumberOrString::String(code)) if code.starts_with("anchor-")
             )
         }));
     }

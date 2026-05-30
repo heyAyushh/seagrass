@@ -115,6 +115,35 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
 }
 
 #[test]
+fn resolved_framework_context_drives_code_quality_without_rescanning_imports() {
+    let source = r#"
+fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
+    Ok(amount - fee)
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect_with_framework(
+        &document,
+        crate::solana::frameworks::FrameworkContext::new(
+            crate::solana::frameworks::FrameworkId::Pinocchio,
+        ),
+    );
+
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("Use checked arithmetic"))
+        .expect("expected unchecked arithmetic diagnostic from resolved framework context");
+
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("programKind")),
+        Some(&serde_json::json!("pinocchio"))
+    );
+}
+
+#[test]
 fn unchecked_arithmetic_declares_lint_contract() {
     assert_eq!(
         unchecked_arithmetic_scope(),

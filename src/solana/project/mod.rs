@@ -1,5 +1,5 @@
 use {
-    crate::{document::ParsedDocument, project},
+    crate::{document::ParsedDocument, project, solana::frameworks::FrameworkId},
     cargo_toml::{DepsSet, Manifest},
     std::{
         collections::HashSet,
@@ -19,6 +19,10 @@ pub enum SolanaProjectKind {
 }
 
 impl SolanaProjectKind {
+    pub fn framework_id(self) -> FrameworkId {
+        FrameworkId::from_project_kind(self)
+    }
+
     pub fn as_str(self) -> &'static str {
         match self {
             Self::Anchor => "anchor",
@@ -28,32 +32,19 @@ impl SolanaProjectKind {
     }
 
     pub fn label(self) -> &'static str {
-        match self {
-            Self::Anchor => "Anchor",
-            Self::Pinocchio => "Pinocchio",
-            Self::NativeSolana => "native Solana",
-        }
+        self.framework_id().label()
     }
 
     pub fn build_command(self) -> &'static str {
-        match self {
-            Self::Anchor => "anchor build",
-            Self::Pinocchio | Self::NativeSolana => "cargo build-sbf",
-        }
+        self.framework_id().build_command()
     }
 
     pub fn idl_label(self) -> &'static str {
-        match self {
-            Self::Anchor => "Anchor IDL",
-            Self::Pinocchio | Self::NativeSolana => "Solana IDL",
-        }
+        self.framework_id().idl_label()
     }
 
     pub fn types_label(self) -> &'static str {
-        match self {
-            Self::Anchor => "Anchor TypeScript types",
-            Self::Pinocchio | Self::NativeSolana => "generated TypeScript client",
-        }
+        self.framework_id().types_label()
     }
 }
 

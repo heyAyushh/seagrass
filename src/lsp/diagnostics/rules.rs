@@ -4,7 +4,7 @@ use {
         constraint_expressions, constraint_shape, context_accounts, ecosystem, initialization,
         instruction_attributes, pda, project_identity, security, spl_semantics,
     },
-    crate::diagnostics::engine::DiagnosticInput,
+    crate::{diagnostics::engine::DiagnosticInput, solana::frameworks::FrameworkSet},
     tower_lsp::lsp_types::Diagnostic,
 };
 
@@ -20,6 +20,7 @@ pub enum DiagnosticPhase {
 pub struct DiagnosticRule {
     pub id: &'static str,
     pub phase: DiagnosticPhase,
+    pub frameworks: FrameworkSet,
     pub collector: fn(&DiagnosticInput<'_>) -> Vec<Diagnostic>,
 }
 
@@ -31,81 +32,97 @@ static RULES: [DiagnosticRule; 16] = [
     DiagnosticRule {
         id: "anchor-syn",
         phase: DiagnosticPhase::Syntax,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_anchor_syn,
     },
     DiagnosticRule {
         id: "context-accounts",
         phase: DiagnosticPhase::AnchorStructure,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_context_accounts,
     },
     DiagnosticRule {
         id: "instruction-attributes",
         phase: DiagnosticPhase::AnchorStructure,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_instruction_attributes,
     },
     DiagnosticRule {
         id: "initialization",
         phase: DiagnosticPhase::AnchorStructure,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_initialization,
     },
     DiagnosticRule {
         id: "account-references",
         phase: DiagnosticPhase::AnchorUsage,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_account_references,
     },
     DiagnosticRule {
         id: "constraint-expressions",
         phase: DiagnosticPhase::AnchorUsage,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_constraint_expressions,
     },
     DiagnosticRule {
         id: "constraint-shape",
         phase: DiagnosticPhase::AnchorUsage,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_constraint_shape,
     },
     DiagnosticRule {
         id: "spl-semantics",
         phase: DiagnosticPhase::AnchorUsage,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_spl_semantics,
     },
     DiagnosticRule {
         id: "account-usage",
         phase: DiagnosticPhase::AnchorUsage,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_account_usage,
     },
     DiagnosticRule {
         id: "security",
         phase: DiagnosticPhase::Security,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_security,
     },
     DiagnosticRule {
         id: "pda",
         phase: DiagnosticPhase::Security,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_pda,
     },
     DiagnosticRule {
         id: "code-quality",
         phase: DiagnosticPhase::Security,
+        frameworks: FrameworkSet::SOLANA_PROGRAMS,
         collector: collect_code_quality,
     },
     DiagnosticRule {
         id: "check-cfg",
         phase: DiagnosticPhase::Project,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_check_cfg,
     },
     DiagnosticRule {
         id: "project-identity",
         phase: DiagnosticPhase::Project,
+        frameworks: FrameworkSet::ANCHOR,
         collector: collect_project_identity,
     },
     DiagnosticRule {
         id: "artifacts",
         phase: DiagnosticPhase::Project,
+        frameworks: FrameworkSet::SOLANA_PROGRAMS,
         collector: collect_artifacts,
     },
     DiagnosticRule {
         id: "ecosystem",
         phase: DiagnosticPhase::Project,
+        frameworks: FrameworkSet::SOLANA_PROGRAMS,
         collector: collect_ecosystem,
     },
 ];
@@ -155,7 +172,7 @@ fn collect_pda(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
 }
 
 fn collect_code_quality(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
-    code_quality::collect(input.document)
+    code_quality::collect_with_framework(input.document, input.framework)
 }
 
 fn collect_check_cfg(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
@@ -212,5 +229,20 @@ mod tests {
         assert!(ids.contains(&"project-identity"));
         assert!(ids.contains(&"artifacts"));
         assert!(ids.contains(&"ecosystem"));
+    }
+
+    #[test]
+    fn anchor_rules_declare_anchor_framework_scope() {
+        let anchor_rule = registry()
+            .iter()
+            .find(|rule| rule.id == "constraint-shape")
+            .expect("constraint-shape rule");
+
+        assert!(anchor_rule
+            .frameworks
+            .contains(crate::solana::frameworks::FrameworkId::AnchorV1));
+        assert!(!anchor_rule
+            .frameworks
+            .contains(crate::solana::frameworks::FrameworkId::Pinocchio));
     }
 }

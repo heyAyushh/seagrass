@@ -471,12 +471,20 @@ impl Backend {
         let anchor_toml = project::nearest_anchor_toml(uri);
         let seagrass_toml = project::nearest_seagrass_toml(uri);
         let solana_program = solana_project::detect_for_document(uri, document);
+        let framework = crate::solana::frameworks::FrameworkContext::from_project_and_document(
+            solana_program.as_ref(),
+            manifest
+                .as_ref()
+                .map(|(_, manifest_text)| manifest_text.as_str()),
+            document,
+        );
 
         crate::measure_hotpath_block!("lsp.diagnostics.collect_with_input", {
             diagnostics::collect_with_input(diagnostics::DiagnosticInput {
                 document,
                 uri: Some(uri),
                 workspace_index: Some(&workspace_index),
+                framework,
                 manifest: manifest
                     .as_ref()
                     .map(|(manifest_uri, manifest_text)| (manifest_uri, manifest_text.as_str())),

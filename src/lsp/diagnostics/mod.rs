@@ -58,6 +58,7 @@ pub fn collect_with_workspace(
         document,
         uri: None,
         workspace_index,
+        framework: crate::solana::frameworks::FrameworkContext::from_document(document),
         manifest: None,
         anchor_toml: None,
         seagrass_toml: None,

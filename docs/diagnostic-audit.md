@@ -35,6 +35,7 @@ queue across `src/lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/
 | `lsp/diagnostics/project_identity.rs` | Anchor project id diagnostics | Anchor.toml + parsed source | manifest/source bridge | authoritative | `seagrass/anchor.project-id` | low | project identity tests |
 | `lsp/diagnostics/ecosystem.rs` | Solana ecosystem artifact/test diagnostics | project metadata | project files | derived | `seagrass/solana.artifact.idl`, `seagrass/solana.program-metadata`, `seagrass/solana.surfpool-workspace`, `seagrass/solana.test-harness` | low | ecosystem tests |
 | `lsp/completions/mod.rs` | completion router + resolve | yes, `CursorContext` and `RankingContext` | cursor and completion item data | n/a | n/a | low | completion gate and resolve tests |
+| `lsp/completions/account_aliases.rs` | local account alias member completions | cursor-line parser over local `let` assignments | cursor position before member access | n/a | n/a | low | `resolves_direct_ctx_account_alias_variants`, `resolves_intermediate_accounts_alias_variants` |
 | `lsp/completions/account_constraints.rs` | constraint key completions | generated constraint catalog | account attribute only | n/a | n/a | low | generated catalog completion tests |
 | `lsp/completions/constraint_values/mod.rs` | constraint value completions | `CursorContext`, account semantics, workspace symbols | account attribute values | n/a | n/a | low | constraint value core/catalog tests |
 | `lsp/completions/constraint_values/associated_values.rs` | associated const/function completions | parsed impl items + workspace symbols | account attribute expression values | n/a | n/a | low | semantic constraint value tests |
@@ -48,6 +49,7 @@ queue across `src/lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/
 | `lsp/completions/instruction_attributes.rs` | `#[instruction(...)]` completions | parsed handler args | instruction attribute | n/a | n/a | low | instruction attribute completion tests |
 | `lsp/completions/ranking.rs` | global completion ranking | `RankingContext` + item data | cross-provider | n/a | n/a | low | global ranking tests |
 | `lsp/completions/cursor_context.rs` | cursor classification | parsed document + tree-sitter fallback | cursor position and syntax tokens | n/a | n/a | low | cursor context tests |
+| `lsp/completions/proptest_support.rs` | completion property-test identifier strategies | generated test identifiers via regex plus Rust keyword denylist | completion property test inputs | authoritative | n/a | low | generated account alias property tests |
 | `lsp/hover/mod.rs` | hover router + account/context hovers | `CursorContext`, symbols, workspace | cursor position and symbol spans | n/a | n/a | low | hover tests + editor parity |
 | `lsp/hover/account_constraints.rs` | constraint hover docs/evidence | generated catalog + PDA evidence | account attribute only | n/a | n/a | low | generated constraint hover tests |
 | `lsp/actions/mod.rs` | quick-fix router + resolve | diagnostic data + parsed document | diagnostic span | n/a | n/a | low | action routing tests |

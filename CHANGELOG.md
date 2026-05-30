@@ -5,6 +5,10 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: add a framework context and rule-applicability seam for Anchor,
+  Pinocchio, and native Solana diagnostics.
+- cli: make diagnostics input errors retryable with exact examples, add layered
+  help examples, and support stdin with `--stdin-path` workspace context.
 - lsp: property-test account alias diagnostics and preserve the source alias in
   invalid account-data member messages.
 - lsp: keep completion wakeups inside handlers whose local variables contain

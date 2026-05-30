@@ -1,10 +1,11 @@
 use {
     super::*,
     crate::{document::ParsedDocument, workspace::WorkspaceIndex},
-    proptest::prelude::*,
     tower_lsp::lsp_types::Url,
 };
 
+mod account_alias_tests;
+mod mint_decimals_tests;
 mod ranking_tests;
 mod value_expression_tests;
 
@@ -346,92 +347,6 @@ pub struct Run<'info> {
             should_offer_completion(source, position_after(source, cursor)),
             "expected completion gate for {cursor}"
         );
-    }
-}
-
-#[test]
-fn completion_gate_wakes_for_local_account_alias_members() {
-    let source = r#"
-use anchor_lang::prelude::*;
-
-pub fn run(ctx: Context<Run>) -> Result<()> {
-    let account = &mut ctx.accounts.data;
-    account.
-}
-"#;
-
-    assert!(should_offer_completion(
-        source,
-        position_after(source, "account.")
-    ));
-}
-
-#[test]
-fn completion_gate_wakes_for_short_alias_from_longer_accounts_alias() {
-    let source = r#"
-use anchor_lang::prelude::*;
-
-pub fn run(ctx: Context<Run>) -> Result<()> {
-    let afn = &mut ctx.accounts;
-    let a = &mut afn.a0;
-    a.
-}
-"#;
-
-    assert!(should_offer_completion(
-        source,
-        position_after(source, "    a.")
-    ));
-}
-
-prop_compose! {
-    fn identifier()(head in "[a-z]", tail in "[a-z0-9_]{0,10}") -> String {
-        format!("{head}{tail}")
-    }
-}
-
-proptest! {
-    #[test]
-    fn completion_gate_wakes_for_generated_direct_account_alias_members(
-        alias in identifier(),
-        account in identifier(),
-        member_prefix in "[a-z_]{0,8}",
-        mutable in any::<bool>(),
-        reference in any::<bool>(),
-    ) {
-        prop_assume!(alias != "ctx" && alias != account);
-        let mutability = mutable.then_some("mut ").unwrap_or_default();
-        let reference = reference.then_some("&").unwrap_or_default();
-        let source = format!(
-            "use anchor_lang::prelude::*;\n\npub fn run(ctx: Context<Run>) -> Result<()> {{\n    let {alias} = {reference}{mutability}ctx.accounts.{account};\n    {alias}.{member_prefix}\n}}\n"
-        );
-        let completion_line = format!("    {alias}.{member_prefix}");
-
-        prop_assert!(should_offer_completion(
-            &source,
-            position_after(&source, &completion_line)
-        ));
-    }
-
-    #[test]
-    fn completion_gate_wakes_for_generated_intermediate_account_alias_members(
-        accounts_alias in identifier(),
-        account_alias in identifier(),
-        account in identifier(),
-        member_prefix in "[a-z_]{0,8}",
-    ) {
-        prop_assume!(accounts_alias != account_alias);
-        prop_assume!(accounts_alias != "ctx" && account_alias != "ctx");
-        prop_assume!(account_alias != account);
-        let source = format!(
-            "use anchor_lang::prelude::*;\n\npub fn run(ctx: Context<Run>) -> Result<()> {{\n    let {accounts_alias} = &mut ctx.accounts;\n    let {account_alias} = &mut {accounts_alias}.{account};\n    {account_alias}.{member_prefix}\n}}\n"
-        );
-        let completion_line = format!("    {account_alias}.{member_prefix}");
-
-        prop_assert!(should_offer_completion(
-            &source,
-            position_after(&source, &completion_line)
-        ));
     }
 }
 
@@ -791,61 +706,6 @@ pub struct Create<'info> {
     assert!(completions
         .iter()
         .any(|item| item.label == "token_program.key()"));
-}
-
-#[test]
-fn completes_mint_decimals_with_instruction_argument() {
-    let source = r#"
-#[program]
-pub mod demo {
-    pub fn initialize(ctx: Context<Create>, _token_decimals: u8) -> Result<()> { Ok(()) }
-}
-
-#[derive(Accounts)]
-pub struct Create<'info> {
-    #[account(mint::decimals = _)]
-    pub mint: Account<'info, Mint>,
-}
-"#;
-    let document = ParsedDocument::parse(source).unwrap();
-    let completions = completions(
-        &document,
-        Position {
-            line: 8,
-            character: 32,
-        },
-    )
-    .unwrap();
-
-    assert!(completions
-        .iter()
-        .any(|item| item.label == "_token_decimals"));
-}
-
-#[test]
-fn does_not_complete_mint_decimals_from_misleading_non_u8_argument() {
-    let source = r#"
-#[program]
-pub mod demo {
-    pub fn initialize(ctx: Context<Create>, token_decimals_label: String, token_decimals: u64) -> Result<()> { Ok(()) }
-}
-
-#[derive(Accounts)]
-pub struct Create<'info> {
-    #[account(mint::decimals = t)]
-    pub mint: Account<'info, Mint>,
-}
-"#;
-    let document = ParsedDocument::parse(source).unwrap();
-    let completions = completions(
-        &document,
-        Position {
-            line: 8,
-            character: 33,
-        },
-    );
-
-    assert!(completions.is_none());
 }
 
 fn position_after(source: &str, needle: &str) -> Position {

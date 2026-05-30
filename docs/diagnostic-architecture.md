@@ -73,6 +73,17 @@ arithmetic, manual close/reinit, native raw account invariants, native account
 validation, stale CPI, unsafe unwrap, non-canonical PDA bump, and instruction
 data bounds.
 
+## Framework Applicability
+
+The diagnostics engine receives a precomputed framework context for the current
+document. Rules declare their supported framework set in the registry, and the
+engine skips inapplicable collectors before running rule logic. Anchor-only
+rules stay scoped to Anchor v1/v2-preview contexts; shared Solana program rules
+can run for Anchor, Pinocchio, and native Solana.
+
+Hot-path code may derive only cheap parse-level framework facts. Richer project
+or artifact evidence belongs in the cold/project diagnostic lane.
+
 ## Diagnostic Metadata
 
 Every diagnostic emitted through `diagnostic_from_range` /

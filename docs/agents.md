@@ -3,7 +3,13 @@
 Agents that do not speak LSP can use the CLI diagnostics mode:
 
 ```sh
-cargo run -p seagrass -- diagnostics --json programs/demo/src/lib.rs
+cargo run -p seagrass -- diagnostics programs/demo/src/lib.rs --json
+```
+
+Agents can also pipe one Rust file through stdin:
+
+```sh
+cat programs/demo/src/lib.rs | cargo run -p seagrass -- diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
 ```
 
 It prints a JSON array:
@@ -27,6 +33,9 @@ It prints a JSON array:
 
 The command accepts a Rust file or directory, recurses over `.rs` files for
 directories, and exits with code `1` when any diagnostic has ERROR severity.
+Usage and input errors exit with code `2` and include a retryable example
+invocation. Run `cargo run -p seagrass -- diagnostics --help` for the layered
+CLI help.
 
 Use these `workspace/executeCommand` endpoints when an agent needs a compact
 semantic snapshot instead of many granular LSP requests.
