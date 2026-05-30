@@ -28,6 +28,7 @@ const PROGRAM_ID_VALIDATION_HELPERS: &[&str] = &[
     "validate_program_id",
     "check_id",
 ];
+const SIGNER_ACCOUNT_META_CONSTRUCTORS: &[&str] = &["new", "new_readonly"];
 
 pub(super) fn diagnostics(
     document: &crate::document::ParsedDocument,
@@ -211,7 +212,7 @@ fn arbitrary_cpi_diagnostic(evidence: ProgramIdEvidence) -> Diagnostic {
 }
 
 fn signer_meta_evidence(node: &syn::ExprCall) -> Option<SignerMetaEvidence> {
-    if !is_account_meta_new_call(&node.func) || !second_arg_is_true(node) {
+    if !is_account_meta_signer_constructor_call(&node.func) || !second_arg_is_true(node) {
         return None;
     }
     let account_expression = node.args.first().map(expr_text);
@@ -222,8 +223,10 @@ fn signer_meta_evidence(node: &syn::ExprCall) -> Option<SignerMetaEvidence> {
     })
 }
 
-fn is_account_meta_new_call(func: &syn::Expr) -> bool {
-    path_ends_with(func, &["AccountMeta", "new"])
+fn is_account_meta_signer_constructor_call(func: &syn::Expr) -> bool {
+    SIGNER_ACCOUNT_META_CONSTRUCTORS
+        .iter()
+        .any(|constructor| path_ends_with(func, &["AccountMeta", constructor]))
 }
 
 fn second_arg_is_true(node: &syn::ExprCall) -> bool {

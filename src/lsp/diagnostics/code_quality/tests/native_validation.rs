@@ -117,6 +117,33 @@ pub fn process_instruction(
 }
 
 #[test]
+fn reports_readonly_account_meta_signer() {
+    let source = r#"
+use {
+    solana_account_info::AccountInfo,
+    solana_instruction::AccountMeta,
+    solana_program_error::ProgramResult,
+};
+
+solana_program_entrypoint::entrypoint!(process_instruction);
+
+pub fn process_instruction(
+    _program_id: &solana_pubkey::Pubkey,
+    accounts: &[AccountInfo],
+    _instruction_data: &[u8],
+) -> ProgramResult {
+    let _metas = vec![solana_instruction::AccountMeta::new_readonly(*accounts[0].key, true)];
+    let _also_signer = AccountMeta::new_readonly(*accounts[1].key, true);
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_has_attack(&diagnostics, "signer-authorization");
+}
+
+#[test]
 fn accepts_native_account_validation_in_same_function() {
     let source = r#"
 use solana_program::{

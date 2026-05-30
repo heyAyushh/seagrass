@@ -8,6 +8,8 @@ keep future entries aligned with release-plz output.
 - lsp: detect modular native Solana crates such as
   `solana_program_entrypoint` and `solana_account_info` so single-file
   diagnostics run Solana-wide semantic checks without a manifest.
+- lsp: flag native signer authorization gaps for
+  `AccountMeta::new_readonly(_, true)` as well as writable signer metas.
 - lsp: wake Anchor completions and tree-sitter context recovery for Anchor v2
   preview imports such as `anchor_lang_v2::prelude`.
 - lsp: add a framework context and rule-applicability seam for Anchor,
