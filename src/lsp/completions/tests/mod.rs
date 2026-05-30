@@ -1,6 +1,7 @@
 use {
     super::*,
     crate::{document::ParsedDocument, workspace::WorkspaceIndex},
+    proptest::prelude::*,
     tower_lsp::lsp_types::Url,
 };
 
@@ -363,6 +364,57 @@ pub fn run(ctx: Context<Run>) -> Result<()> {
         source,
         position_after(source, "account.")
     ));
+}
+
+prop_compose! {
+    fn identifier()(head in "[a-z]", tail in "[a-z0-9_]{0,10}") -> String {
+        format!("{head}{tail}")
+    }
+}
+
+proptest! {
+    #[test]
+    fn completion_gate_wakes_for_generated_direct_account_alias_members(
+        alias in identifier(),
+        account in identifier(),
+        member_prefix in "[a-z_]{0,8}",
+        mutable in any::<bool>(),
+        reference in any::<bool>(),
+    ) {
+        prop_assume!(alias != "ctx" && alias != account);
+        let mutability = mutable.then_some("mut ").unwrap_or_default();
+        let reference = reference.then_some("&").unwrap_or_default();
+        let source = format!(
+            "use anchor_lang::prelude::*;\n\npub fn run(ctx: Context<Run>) -> Result<()> {{\n    let {alias} = {reference}{mutability}ctx.accounts.{account};\n    {alias}.{member_prefix}\n}}\n"
+        );
+        let completion_line = format!("    {alias}.{member_prefix}");
+
+        prop_assert!(should_offer_completion(
+            &source,
+            position_after(&source, &completion_line)
+        ));
+    }
+
+    #[test]
+    fn completion_gate_wakes_for_generated_intermediate_account_alias_members(
+        accounts_alias in identifier(),
+        account_alias in identifier(),
+        account in identifier(),
+        member_prefix in "[a-z_]{0,8}",
+    ) {
+        prop_assume!(accounts_alias != account_alias);
+        prop_assume!(accounts_alias != "ctx" && account_alias != "ctx");
+        prop_assume!(account_alias != account);
+        let source = format!(
+            "use anchor_lang::prelude::*;\n\npub fn run(ctx: Context<Run>) -> Result<()> {{\n    let {accounts_alias} = &mut ctx.accounts;\n    let {account_alias} = &mut {accounts_alias}.{account};\n    {account_alias}.{member_prefix}\n}}\n"
+        );
+        let completion_line = format!("    {account_alias}.{member_prefix}");
+
+        prop_assert!(should_offer_completion(
+            &source,
+            position_after(&source, &completion_line)
+        ));
+    }
 }
 
 #[test]

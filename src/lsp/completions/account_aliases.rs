@@ -121,3 +121,79 @@ fn is_identifier(value: &str) -> bool {
 fn is_identifier_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_'
 }
+
+#[cfg(test)]
+mod tests {
+    use {super::*, proptest::prelude::*};
+
+    prop_compose! {
+        fn identifier()(head in "[a-z]", tail in "[a-z0-9_]{0,10}") -> String {
+            format!("{head}{tail}")
+        }
+    }
+
+    fn position_after(source: &str, needle: &str) -> Position {
+        let offset = source.find(needle).expect("needle") + needle.len();
+        let prefix = &source[..offset];
+        let line = prefix.bytes().filter(|byte| *byte == b'\n').count() as u32;
+        let character = prefix
+            .rsplit('\n')
+            .next()
+            .map(|line| line.chars().count())
+            .unwrap_or_default() as u32;
+        Position { line, character }
+    }
+
+    proptest! {
+        #[test]
+        fn resolves_direct_ctx_account_alias_variants(
+            alias in identifier(),
+            account in identifier(),
+            member_prefix in "[a-z_]{0,8}",
+            mutable in any::<bool>(),
+            reference in any::<bool>(),
+        ) {
+            prop_assume!(alias != "ctx" && alias != account);
+            let mutability = mutable.then_some("mut ").unwrap_or_default();
+            let reference = reference.then_some("&").unwrap_or_default();
+            let source = format!(
+                "pub fn handler(ctx: Context<Run>) -> Result<()> {{\n    let {alias} = {reference}{mutability}ctx.accounts.{account};\n    {alias}.{member_prefix}\n}}\n"
+            );
+            let completion_line = format!("    {alias}.{member_prefix}");
+            let path = local_account_alias_path_at(
+                &source,
+                position_after(&source, &completion_line),
+            )
+            .expect("alias member path should resolve");
+
+            prop_assert_eq!(path.account_field, account);
+            prop_assert!(path.member_chain.is_empty());
+            prop_assert_eq!(path.member_prefix, member_prefix);
+        }
+
+        #[test]
+        fn resolves_intermediate_accounts_alias_variants(
+            accounts_alias in identifier(),
+            account_alias in identifier(),
+            account in identifier(),
+            member_prefix in "[a-z_]{0,8}",
+        ) {
+            prop_assume!(accounts_alias != account_alias);
+            prop_assume!(accounts_alias != "ctx" && account_alias != "ctx");
+            prop_assume!(account_alias != account);
+            let source = format!(
+                "pub fn handler(ctx: Context<Run>) -> Result<()> {{\n    let {accounts_alias} = &mut ctx.accounts;\n    let {account_alias} = &mut {accounts_alias}.{account};\n    {account_alias}.{member_prefix}\n}}\n"
+            );
+            let completion_line = format!("    {account_alias}.{member_prefix}");
+            let path = local_account_alias_path_at(
+                &source,
+                position_after(&source, &completion_line),
+            )
+            .expect("accounts alias member path should resolve");
+
+            prop_assert_eq!(path.account_field, account);
+            prop_assert!(path.member_chain.is_empty());
+            prop_assert_eq!(path.member_prefix, member_prefix);
+        }
+    }
+}

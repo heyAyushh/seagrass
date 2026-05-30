@@ -471,6 +471,7 @@ mod tests {
     use {
         super::*,
         crate::{document::ParsedDocument, workspace::WorkspaceIndex},
+        proptest::prelude::*,
         tower_lsp::lsp_types::Url,
     };
 
@@ -729,6 +730,59 @@ pub struct PositionBundle {
         .unwrap();
 
         assert_eq!(items[0].label, "position_bundle_mint");
+    }
+
+    prop_compose! {
+        fn identifier()(head in "[a-z]", tail in "[a-z0-9_]{0,10}") -> String {
+            format!("{head}{tail}")
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn completes_members_for_generated_account_alias_shapes(
+            alias in identifier(),
+            account_field in identifier(),
+            data_field in identifier(),
+            mutable in any::<bool>(),
+            reference in any::<bool>(),
+        ) {
+            prop_assume!(alias != "ctx" && alias != account_field && alias != data_field && account_field != data_field);
+            let member_prefix = data_field.chars().next().unwrap_or_default().to_string();
+            let mutability = mutable.then_some("mut ").unwrap_or_default();
+            let reference = reference.then_some("&").unwrap_or_default();
+            let source = format!(
+                "use anchor_lang::prelude::*;\n\npub fn handler(ctx: Context<Run>) -> Result<()> {{\n    let {alias} = {reference}{mutability}ctx.accounts.{account_field};\n    {alias}.{member_prefix}\n    Ok(())\n}}\n"
+            );
+            let completion_line = format!("    {alias}.{member_prefix}");
+            let document = ParsedDocument::parse_or_empty(&source);
+            let index = WorkspaceIndex::build(
+                &[],
+                [
+                    (
+                        Url::parse("file:///tmp/accounts.rs").unwrap(),
+                        format!(
+                            "#[derive(Accounts)]\npub struct Run<'info> {{\n    pub {account_field}: Account<'info, AccountData>,\n}}\n"
+                        ),
+                    ),
+                    (
+                        Url::parse("file:///tmp/state.rs").unwrap(),
+                        format!(
+                            "#[account]\npub struct AccountData {{\n    pub {data_field}: Pubkey,\n}}\n"
+                        ),
+                    ),
+                ],
+            );
+
+            let items = completions(
+                &document,
+                position_after(&source, &completion_line),
+                Some(&index),
+            )
+            .expect("alias member completions should resolve");
+
+            prop_assert!(items.iter().any(|item| item.label == data_field));
+        }
     }
 
     fn position_after(source: &str, needle: &str) -> Position {
