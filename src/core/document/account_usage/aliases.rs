@@ -94,6 +94,9 @@ pub(super) fn direct_account_usage_from_expr(
         syn::Expr::Reference(reference) => {
             direct_account_usage_from_expr(&reference.expr, context_names, accounts_aliases)
         }
+        syn::Expr::MethodCall(method_call) => {
+            direct_account_usage_from_expr(&method_call.receiver, context_names, accounts_aliases)
+        }
         syn::Expr::Paren(paren) => {
             direct_account_usage_from_expr(&paren.expr, context_names, accounts_aliases)
         }

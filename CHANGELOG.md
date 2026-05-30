@@ -12,6 +12,8 @@ keep future entries aligned with release-plz output.
   `AccountMeta::new_readonly(_, true)` as well as writable signer metas.
 - lsp: flag native arbitrary-CPI gaps when dynamic program ids flow through
   `Instruction::new_with_*` constructors.
+- lsp: resolve local account aliases when collecting signer checks, signer
+  usages, CPI program usages, and token-account unpacking security evidence.
 - lsp: wake Anchor completions and tree-sitter context recovery for Anchor v2
   preview imports such as `anchor_lang_v2::prelude`.
 - lsp: add a framework context and rule-applicability seam for Anchor,

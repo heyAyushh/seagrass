@@ -91,6 +91,61 @@ pub mod demo {
 }
 
 #[test]
+fn accepts_manual_signer_check_through_local_alias() {
+    let diagnostics = security_diagnostics(
+        r#"
+use anchor_lang::solana_program::instruction::AccountMeta;
+
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    authority: AccountInfo<'info>,
+}
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+        let authority = &ctx.accounts.authority;
+        require!(authority.is_signer, ErrorCode::MissingSigner);
+        let metas = vec![AccountMeta::new(authority.key(), true)];
+        Ok(())
+    }
+}
+"#,
+    );
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_SIGNER_CODE);
+}
+
+#[test]
+fn flags_signer_usage_through_local_alias() {
+    let diagnostics = security_diagnostics(
+        r#"
+use anchor_lang::solana_program::instruction::AccountMeta;
+
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    authority: AccountInfo<'info>,
+}
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+        let authority = &ctx.accounts.authority;
+        let metas = vec![AccountMeta::new(authority.key(), true)];
+        Ok(())
+    }
+}
+"#,
+    );
+
+    assert_has_code(&diagnostics, ANCHOR_SECURITY_SIGNER_CODE);
+}
+
+#[test]
 fn flags_deref_signer_usage_without_manual_validation() {
     let diagnostics = security_diagnostics(
         r#"
@@ -323,6 +378,36 @@ pub mod demo {
     pub fn cpi(ctx: Context<Cpi>) -> ProgramResult {
         let cpi_accounts = ();
         let cpi_ctx = CpiContext::new(ctx.accounts.external_program.to_account_info(), cpi_accounts);
+        Ok(())
+    }
+}
+"#,
+    );
+
+    let diagnostic = assert_has_code(&diagnostics, ANCHOR_SECURITY_CPI_PROGRAM_CODE);
+    assert!(diagnostic
+        .message
+        .contains("`external_program` is used as a CPI program account"));
+}
+
+#[test]
+fn flags_unchecked_cpi_context_program_account_through_local_alias() {
+    let diagnostics = security_diagnostics(
+        r#"
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    external_program: AccountInfo<'info>,
+    source: AccountInfo<'info>,
+}
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn cpi(ctx: Context<Cpi>) -> ProgramResult {
+        let cpi_accounts = ();
+        let external_program = ctx.accounts.external_program.to_account_info();
+        let cpi_ctx = CpiContext::new(external_program, cpi_accounts);
         Ok(())
     }
 }

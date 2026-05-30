@@ -148,39 +148,31 @@ impl AccountUsageVisitor {
     }
 
     fn record_cpi_program_usage(&mut self, expr: &syn::Expr) {
-        let Some(usage) =
-            account_usage_from_expr(expr, &self.context_names, &self.accounts_aliases)
-        else {
+        let Some(usage) = self.account_usage_from_expr(expr) else {
             return;
         };
         push_unique_account_usage(&mut self.cpi_program_usages, usage);
     }
 
     fn record_signer_usage(&mut self, expr: &syn::Expr) {
-        let Some(usage) =
-            account_usage_from_expr(expr, &self.context_names, &self.accounts_aliases)
-        else {
+        let Some(usage) = self.account_usage_from_expr(expr) else {
             return;
         };
         push_unique_account_usage(&mut self.signer_usages, usage);
     }
 
     fn record_signer_check(&mut self, expr: &syn::Expr) {
-        let Some(usage) =
-            account_usage_from_expr(expr, &self.context_names, &self.accounts_aliases)
-        else {
+        let Some(usage) = self.account_usage_from_expr(expr) else {
             return;
         };
         push_unique_account_usage(&mut self.signer_checks, usage);
     }
 
     fn record_account_key_comparison(&mut self, left: &syn::Expr, right: &syn::Expr) {
-        let Some(left) = account_key_from_expr(left, &self.context_names, &self.accounts_aliases)
-        else {
+        let Some(left) = self.account_key_from_expr(left) else {
             return;
         };
-        let Some(right) = account_key_from_expr(right, &self.context_names, &self.accounts_aliases)
-        else {
+        let Some(right) = self.account_key_from_expr(right) else {
             return;
         };
         if left == right {
@@ -197,9 +189,7 @@ impl AccountUsageVisitor {
     }
 
     fn record_token_account_unpack_usage(&mut self, expr: &syn::Expr) {
-        let Some(usage) =
-            account_usage_from_expr(expr, &self.context_names, &self.accounts_aliases)
-        else {
+        let Some(usage) = self.account_usage_from_expr(expr) else {
             return;
         };
         push_unique_account_usage(&mut self.token_account_unpack_usages, usage);
@@ -274,6 +264,24 @@ impl AccountUsageVisitor {
         self.mutable_depth += 1;
         visit(self);
         self.mutable_depth -= 1;
+    }
+
+    fn account_usage_from_expr(&self, expr: &syn::Expr) -> Option<AccountUsage> {
+        account_usage_from_expr(
+            expr,
+            &self.context_names,
+            &self.accounts_aliases,
+            &self.account_field_aliases,
+        )
+    }
+
+    fn account_key_from_expr(&self, expr: &syn::Expr) -> Option<String> {
+        account_key_from_expr(
+            expr,
+            &self.context_names,
+            &self.accounts_aliases,
+            &self.account_field_aliases,
+        )
     }
 }
 
@@ -488,8 +496,20 @@ fn account_usage_from_expr(
     expr: &syn::Expr,
     context_names: &[String],
     accounts_aliases: &[String],
+    account_field_aliases: &[AccountFieldAlias],
 ) -> Option<AccountUsage> {
     match expr {
+        syn::Expr::Path(path) => {
+            let ident = path.path.get_ident()?;
+            account_field_aliases
+                .iter()
+                .find(|alias| ident == &alias.alias)
+                .map(|alias| AccountUsage {
+                    name: alias.account.clone(),
+                    range: range_from_span(ident.span()),
+                    mutable: false,
+                })
+        }
         syn::Expr::Field(expr_field)
             if is_accounts_container_expr(
                 expr_field.base.as_ref(),
@@ -506,26 +526,42 @@ fn account_usage_from_expr(
                 mutable: false,
             })
         }
-        syn::Expr::Field(expr_field) => {
-            account_usage_from_expr(expr_field.base.as_ref(), context_names, accounts_aliases)
-        }
+        syn::Expr::Field(expr_field) => account_usage_from_expr(
+            expr_field.base.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
         syn::Expr::MethodCall(method_call) => account_usage_from_expr(
             method_call.receiver.as_ref(),
             context_names,
             accounts_aliases,
+            account_field_aliases,
         ),
-        syn::Expr::Reference(reference) => {
-            account_usage_from_expr(reference.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Paren(paren) => {
-            account_usage_from_expr(paren.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Group(group) => {
-            account_usage_from_expr(group.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Unary(unary) => {
-            account_usage_from_expr(unary.expr.as_ref(), context_names, accounts_aliases)
-        }
+        syn::Expr::Reference(reference) => account_usage_from_expr(
+            reference.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Paren(paren) => account_usage_from_expr(
+            paren.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Group(group) => account_usage_from_expr(
+            group.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Unary(unary) => account_usage_from_expr(
+            unary.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
         _ => None,
     }
 }
@@ -602,6 +638,7 @@ fn account_key_from_expr(
     expr: &syn::Expr,
     context_names: &[String],
     accounts_aliases: &[String],
+    account_field_aliases: &[AccountFieldAlias],
 ) -> Option<String> {
     match expr {
         syn::Expr::MethodCall(method_call) if method_call.method == "key" => {
@@ -609,21 +646,34 @@ fn account_key_from_expr(
                 method_call.receiver.as_ref(),
                 context_names,
                 accounts_aliases,
+                account_field_aliases,
             )
             .map(|usage| usage.name)
         }
-        syn::Expr::Reference(reference) => {
-            account_key_from_expr(reference.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Paren(paren) => {
-            account_key_from_expr(paren.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Group(group) => {
-            account_key_from_expr(group.expr.as_ref(), context_names, accounts_aliases)
-        }
-        syn::Expr::Unary(unary) => {
-            account_key_from_expr(unary.expr.as_ref(), context_names, accounts_aliases)
-        }
+        syn::Expr::Reference(reference) => account_key_from_expr(
+            reference.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Paren(paren) => account_key_from_expr(
+            paren.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Group(group) => account_key_from_expr(
+            group.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
+        syn::Expr::Unary(unary) => account_key_from_expr(
+            unary.expr.as_ref(),
+            context_names,
+            accounts_aliases,
+            account_field_aliases,
+        ),
         _ => None,
     }
 }
