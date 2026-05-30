@@ -86,6 +86,39 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
 }
 
 #[test]
+fn reports_instruction_constructor_dynamic_program_id() {
+    let source = r#"
+use {
+    solana_account_info::AccountInfo,
+    solana_cpi::invoke,
+    solana_instruction::{AccountMeta, Instruction},
+    solana_program_error::ProgramResult,
+    solana_pubkey::Pubkey,
+};
+
+solana_program_entrypoint::entrypoint!(process_instruction);
+
+pub fn process_instruction(
+    program_id: &Pubkey,
+    accounts: &[AccountInfo],
+    _instruction_data: &[u8],
+) -> ProgramResult {
+    let ix = Instruction::new_with_bytes(
+        *program_id,
+        &[0],
+        vec![AccountMeta::new_readonly(*accounts[0].key, false)],
+    );
+    invoke(&ix, accounts)?;
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_has_attack(&diagnostics, "arbitrary-cpi");
+}
+
+#[test]
 fn reports_modular_native_cpi_validation_gaps() {
     let source = r#"
 use {

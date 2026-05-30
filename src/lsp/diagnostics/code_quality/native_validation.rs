@@ -28,6 +28,8 @@ const PROGRAM_ID_VALIDATION_HELPERS: &[&str] = &[
     "validate_program_id",
     "check_id",
 ];
+const INSTRUCTION_PROGRAM_ID_CONSTRUCTORS: &[&str] =
+    &["new_with_bincode", "new_with_borsh", "new_with_bytes"];
 const SIGNER_ACCOUNT_META_CONSTRUCTORS: &[&str] = &["new", "new_readonly"];
 
 pub(super) fn diagnostics(
@@ -99,6 +101,9 @@ impl<'ast> Visit<'ast> for NativeAccountValidationVisitor {
     fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
         if let Some(evidence) = signer_meta_evidence(node) {
             self.signer_meta.get_or_insert(evidence);
+        }
+        if let Some(evidence) = instruction_constructor_program_id_evidence(node) {
+            self.cpi_program.get_or_insert(evidence);
         }
 
         if is_invoke_signed_call(&node.func) {
@@ -209,6 +214,24 @@ fn arbitrary_cpi_diagnostic(evidence: ProgramIdEvidence) -> Diagnostic {
             "absorbedFrom": "coral-xyz/sealevel-attacks",
         })),
     )
+}
+
+fn instruction_constructor_program_id_evidence(node: &syn::ExprCall) -> Option<ProgramIdEvidence> {
+    if !is_instruction_program_id_constructor_call(&node.func) {
+        return None;
+    }
+    let program_id = node.args.first()?;
+    Some(ProgramIdEvidence {
+        span: program_id.span(),
+        expression: Some(program_id_expression(program_id)),
+        dynamic: is_dynamic_program_id(program_id),
+    })
+}
+
+fn is_instruction_program_id_constructor_call(func: &syn::Expr) -> bool {
+    INSTRUCTION_PROGRAM_ID_CONSTRUCTORS
+        .iter()
+        .any(|constructor| path_ends_with(func, &["Instruction", constructor]))
 }
 
 fn signer_meta_evidence(node: &syn::ExprCall) -> Option<SignerMetaEvidence> {
