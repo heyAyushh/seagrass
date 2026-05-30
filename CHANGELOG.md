@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: complete account-data members after local aliases of `ctx.accounts.*`
+  fields, including while the member access is mid-edit.
 - lsp: point missing-semicolon parser diagnostics at the unterminated
   statement instead of the following recovery token.
 - lsp: resolve imported helper function calls in Anchor constraint expressions

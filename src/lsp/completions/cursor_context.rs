@@ -214,6 +214,15 @@ impl CursorContext {
                 prefix: prefix.to_string(),
             };
         }
+        if has_enclosing_anchor_context(source, offset) {
+            if let Some(path) =
+                super::account_aliases::local_account_alias_path_at(source, position)
+            {
+                return CursorContextKind::AccountPath {
+                    prefix: path.member_prefix,
+                };
+            }
+        }
 
         if let Some(prefix) = context_type_typed_prefix(source, offset, line_prefix) {
             return CursorContextKind::ContextType {

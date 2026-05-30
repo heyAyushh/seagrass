@@ -376,6 +376,14 @@ fn account_path_completion_context(
     source: &str,
     position: Position,
 ) -> Option<AccountPathCompletionContext> {
+    ctx_accounts_completion_context(source, position)
+        .or_else(|| local_alias_completion_context(source, position))
+}
+
+fn ctx_accounts_completion_context(
+    source: &str,
+    position: Position,
+) -> Option<AccountPathCompletionContext> {
     let line = line_at(source, position.line)?;
     let cursor = usize::try_from(position.character).ok()?.min(line.len());
     let prefix = &line[..cursor];
@@ -402,6 +410,20 @@ fn account_path_completion_context(
     Some(AccountPathCompletionContext {
         completed_segments: segments,
         prefix,
+    })
+}
+
+fn local_alias_completion_context(
+    source: &str,
+    position: Position,
+) -> Option<AccountPathCompletionContext> {
+    let alias_path = super::account_aliases::local_account_alias_path_at(source, position)?;
+    let mut completed_segments = Vec::with_capacity(alias_path.member_chain.len() + 1);
+    completed_segments.push(alias_path.account_field);
+    completed_segments.extend(alias_path.member_chain);
+    Some(AccountPathCompletionContext {
+        completed_segments,
+        prefix: alias_path.member_prefix,
     })
 }
 
@@ -603,6 +625,110 @@ pub struct Update<'info> {
         .unwrap();
 
         assert_eq!(items[0].label, "counter");
+    }
+
+    #[test]
+    fn completes_account_data_members_after_local_account_alias_dot() {
+        let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<CloseBundledPosition>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle.
+
+    Ok(())
+}
+"#;
+        let document = ParsedDocument::parse_or_empty(source);
+        let index = WorkspaceIndex::build(
+            &[],
+            [
+                (
+                    Url::parse("file:///tmp/close_bundled_position.rs").unwrap(),
+                    r#"
+#[derive(Accounts)]
+pub struct CloseBundledPosition<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+"#
+                    .to_string(),
+                ),
+                (
+                    Url::parse("file:///tmp/state.rs").unwrap(),
+                    r#"
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub owner: Pubkey,
+}
+"#
+                    .to_string(),
+                ),
+            ],
+        );
+
+        let items = completions(
+            &document,
+            position_after(source, "position_bundle."),
+            Some(&index),
+        )
+        .unwrap();
+
+        assert_eq!(items[0].label, "owner");
+        assert!(items
+            .iter()
+            .any(|item| item.label == "position_bundle_mint"));
+    }
+
+    #[test]
+    fn completes_account_data_members_after_accounts_alias_dot() {
+        let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<CloseBundledPosition>) -> Result<()> {
+    let accounts = &mut ctx.accounts;
+    let position_bundle = &mut accounts.position_bundle;
+    position_bundle.position_bundle_m;
+
+    Ok(())
+}
+"#;
+        let document = ParsedDocument::parse_or_empty(source);
+        let index = WorkspaceIndex::build(
+            &[],
+            [
+                (
+                    Url::parse("file:///tmp/close_bundled_position.rs").unwrap(),
+                    r#"
+#[derive(Accounts)]
+pub struct CloseBundledPosition<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+"#
+                    .to_string(),
+                ),
+                (
+                    Url::parse("file:///tmp/state.rs").unwrap(),
+                    r#"
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub owner: Pubkey,
+}
+"#
+                    .to_string(),
+                ),
+            ],
+        );
+
+        let items = completions(
+            &document,
+            position_after(source, "position_bundle.position_bundle_m"),
+            Some(&index),
+        )
+        .unwrap();
+
+        assert_eq!(items[0].label, "position_bundle_mint");
     }
 
     fn position_after(source: &str, needle: &str) -> Position {

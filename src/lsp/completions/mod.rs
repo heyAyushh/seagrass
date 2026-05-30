@@ -1,3 +1,4 @@
+mod account_aliases;
 pub mod account_constraints;
 mod account_fields;
 mod account_paths;

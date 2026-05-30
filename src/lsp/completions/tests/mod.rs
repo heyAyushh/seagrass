@@ -349,6 +349,23 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn completion_gate_wakes_for_local_account_alias_members() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    let account = &mut ctx.accounts.data;
+    account.
+}
+"#;
+
+    assert!(should_offer_completion(
+        source,
+        position_after(source, "account.")
+    ));
+}
+
+#[test]
 fn completion_gate_allows_empty_anchor_slot_wakeups_only_in_anchor_contexts() {
     let source = r#"
 #[program]
