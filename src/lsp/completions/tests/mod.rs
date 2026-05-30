@@ -366,6 +366,24 @@ pub fn run(ctx: Context<Run>) -> Result<()> {
     ));
 }
 
+#[test]
+fn completion_gate_wakes_for_short_alias_from_longer_accounts_alias() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    let afn = &mut ctx.accounts;
+    let a = &mut afn.a0;
+    a.
+}
+"#;
+
+    assert!(should_offer_completion(
+        source,
+        position_after(source, "    a.")
+    ));
+}
+
 prop_compose! {
     fn identifier()(head in "[a-z]", tail in "[a-z0-9_]{0,10}") -> String {
         format!("{head}{tail}")

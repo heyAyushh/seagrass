@@ -9,21 +9,35 @@ pub(super) struct AccountFieldAlias {
     pub(super) account: String,
 }
 
-pub(super) fn account_field_alias_for_expr(
+pub(super) struct AccountFieldAliasTarget {
+    pub(super) account: String,
+    pub(super) source: String,
+}
+
+pub(super) fn account_field_alias_target_for_expr(
     expr: &syn::Expr,
     account_field_aliases: &[AccountFieldAlias],
-) -> Option<String> {
+) -> Option<AccountFieldAliasTarget> {
     match expr {
         syn::Expr::Path(path) => account_field_aliases
             .iter()
             .find(|alias| path.path.is_ident(&alias.alias))
-            .map(|alias| alias.account.clone()),
+            .map(|alias| AccountFieldAliasTarget {
+                account: alias.account.clone(),
+                source: alias.alias.clone(),
+            }),
         syn::Expr::Reference(reference) => {
-            account_field_alias_for_expr(&reference.expr, account_field_aliases)
+            account_field_alias_target_for_expr(&reference.expr, account_field_aliases)
         }
-        syn::Expr::Paren(paren) => account_field_alias_for_expr(&paren.expr, account_field_aliases),
-        syn::Expr::Group(group) => account_field_alias_for_expr(&group.expr, account_field_aliases),
-        syn::Expr::Unary(unary) => account_field_alias_for_expr(&unary.expr, account_field_aliases),
+        syn::Expr::Paren(paren) => {
+            account_field_alias_target_for_expr(&paren.expr, account_field_aliases)
+        }
+        syn::Expr::Group(group) => {
+            account_field_alias_target_for_expr(&group.expr, account_field_aliases)
+        }
+        syn::Expr::Unary(unary) => {
+            account_field_alias_target_for_expr(&unary.expr, account_field_aliases)
+        }
         _ => None,
     }
 }

@@ -154,7 +154,7 @@ fn account_data_field_diagnostics(
                         &accounts,
                         &field,
                         AccountMemberAccess::Direct,
-                        &usage.account,
+                        &usage.source_account,
                         std::slice::from_ref(&usage.field),
                     )?;
                     Some(diagnostic_from_range(

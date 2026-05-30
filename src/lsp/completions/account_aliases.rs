@@ -196,4 +196,15 @@ mod tests {
             prop_assert_eq!(path.member_prefix, member_prefix);
         }
     }
+
+    #[test]
+    fn resolves_short_alias_from_longer_accounts_alias() {
+        let source = "pub fn handler(ctx: Context<Run>) -> Result<()> {\n    let afn = &mut ctx.accounts;\n    let a = &mut afn.a0;\n    a.\n}\n";
+        let path = local_account_alias_path_at(source, position_after(source, "    a."))
+            .expect("short alias should not be confused with accounts alias prefix");
+
+        assert_eq!(path.account_field, "a0");
+        assert!(path.member_chain.is_empty());
+        assert_eq!(path.member_prefix, "");
+    }
 }

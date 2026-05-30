@@ -355,10 +355,41 @@ pub mod demo {
         .find(|instruction| instruction.name == "increment")
         .unwrap();
 
-    assert!(increment
-        .account_data_field_usages
+    assert!(increment.account_data_field_usages.iter().any(|usage| {
+        usage.account == "counter"
+            && usage.source_account == "counter"
+            && usage.field == "count"
+            && usage.mutable
+    }));
+}
+
+#[test]
+fn parsed_document_preserves_source_alias_for_account_data_usages() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn increment(ctx: Context<Update>) -> Result<()> {
+        let account = &mut ctx.accounts.counter;
+        account.count += 1;
+        Ok(())
+    }
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let increment = document
+        .symbols()
+        .instructions
         .iter()
-        .any(|usage| usage.account == "counter" && usage.field == "count" && usage.mutable));
+        .find(|instruction| instruction.name == "increment")
+        .unwrap();
+
+    assert!(increment.account_data_field_usages.iter().any(|usage| {
+        usage.account == "counter"
+            && usage.source_account == "account"
+            && usage.field == "count"
+            && usage.mutable
+    }));
 }
 
 #[test]

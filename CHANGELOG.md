@@ -5,6 +5,10 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: property-test account alias diagnostics and preserve the source alias in
+  invalid account-data member messages.
+- lsp: keep completion wakeups inside handlers whose local variables contain
+  `fn`, such as short aliases next to `afn` accounts bindings.
 - lsp: complete account-data members after local aliases of `ctx.accounts.*`
   fields, including while the member access is mid-edit.
 - lsp: point missing-semicolon parser diagnostics at the unterminated

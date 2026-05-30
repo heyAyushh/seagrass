@@ -520,7 +520,7 @@ fn context_type_typed_prefix<'a>(source: &str, offset: usize, prefix: &'a str) -
 
 fn has_enclosing_function_signature(source: &str, offset: usize) -> bool {
     let before_cursor = &source[..offset.min(source.len())];
-    let Some(function_start) = before_cursor.rfind("fn ") else {
+    let Some(function_start) = rfind_function_keyword(before_cursor) else {
         return false;
     };
     let function_prefix = &before_cursor[function_start..];
@@ -532,10 +532,29 @@ fn has_enclosing_anchor_context(source: &str, offset: usize) -> bool {
         return false;
     }
     let before_cursor = &source[..offset.min(source.len())];
-    let Some(function_start) = before_cursor.rfind("fn ") else {
+    let Some(function_start) = rfind_function_keyword(before_cursor) else {
         return false;
     };
     before_cursor[function_start..].contains("Context<")
+}
+
+fn rfind_function_keyword(source: &str) -> Option<usize> {
+    let mut search_end = source.len();
+    while let Some(index) = source[..search_end].rfind("fn ") {
+        if source[..index]
+            .chars()
+            .next_back()
+            .is_none_or(|ch| !is_rust_identifier_char(ch))
+        {
+            return Some(index);
+        }
+        search_end = index;
+    }
+    None
+}
+
+fn is_rust_identifier_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_'
 }
 
 fn has_anchor_framework_hint(source: &str, offset: usize) -> bool {

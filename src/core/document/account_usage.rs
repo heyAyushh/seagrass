@@ -5,7 +5,7 @@ use {
     },
     crate::range::range_from_span,
     aliases::{
-        account_field_alias_for_expr, account_field_alias_segment_for_expr,
+        account_field_alias_segment_for_expr, account_field_alias_target_for_expr,
         direct_account_usage_from_expr, AccountFieldAlias,
     },
     syn::{
@@ -75,11 +75,13 @@ impl AccountUsageVisitor {
         let syn::Member::Named(field_ident) = &expr_field.member else {
             return;
         };
-        if let Some(account) =
-            account_field_alias_for_expr(expr_field.base.as_ref(), &self.account_field_aliases)
-        {
+        if let Some(target) = account_field_alias_target_for_expr(
+            expr_field.base.as_ref(),
+            &self.account_field_aliases,
+        ) {
             self.push_data_field_usage(AccountDataFieldUsage {
-                account,
+                account: target.account,
+                source_account: target.source,
                 field: field_ident.to_string(),
                 range: range_from_span(field_ident.span()),
                 mutable: self.mutable_depth > 0,
@@ -103,6 +105,7 @@ impl AccountUsageVisitor {
 
         self.push_data_field_usage(AccountDataFieldUsage {
             account: account_ident.to_string(),
+            source_account: account_ident.to_string(),
             field: field_ident.to_string(),
             range: range_from_span(field_ident.span()),
             mutable: self.mutable_depth > 0,
@@ -112,6 +115,7 @@ impl AccountUsageVisitor {
     fn push_data_field_usage(&mut self, usage: AccountDataFieldUsage) {
         if !self.data_field_usages.iter().any(|existing| {
             existing.account == usage.account
+                && existing.source_account == usage.source_account
                 && existing.field == usage.field
                 && existing.range == usage.range
                 && existing.mutable == usage.mutable

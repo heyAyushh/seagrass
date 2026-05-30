@@ -488,10 +488,7 @@ fn constraint_related_information(
     constraint: &str,
 ) -> Option<DiagnosticRelatedInformation> {
     let range = index.matching_constraint_key_range(diagnostic.range, constraint)?;
-    current_document_related_information(
-        range,
-        format!("Constraint declaration for `{constraint}`."),
-    )
+    current_document_related_information(range, format!("`{constraint}` constraint declaration."))
 }
 
 struct RelatedInformationIndex<'a> {
