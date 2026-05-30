@@ -5,6 +5,10 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: build a workspace index for single-file CLI diagnostics so split-file
+  account data member mistakes are caught consistently with editor analysis.
+- lsp: use declaration-specific related information labels instead of generic
+  diagnostic back-reference text.
 - lsp: offer scoped seed quick fixes for static-only Anchor PDA diagnostics
   when the accounts context has an account key candidate.
 - lsp: resolve `Box<Account<'info, T>>` and nested optional boxed account

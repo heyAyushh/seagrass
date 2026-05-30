@@ -163,9 +163,9 @@ pub struct Create<'info> {
         .as_ref()
         .expect("structured diagnostic should be enriched");
     for expected in [
-        "`init` constraint",
-        "`state` account field",
-        "`Create` accounts context",
+        "Constraint declaration for `init`.",
+        "Account field declaration for `state`.",
+        "Accounts context declaration for `Create`.",
     ] {
         assert!(
             related.iter().any(|info| info.message.contains(expected)),

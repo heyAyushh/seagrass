@@ -401,7 +401,7 @@ fn semantic_related_information(
             if let Some(field) = account_field_by_name(index.document, account) {
                 if let Some(info) = current_document_related_information(
                     field.selection_range,
-                    format!("`{}` account field related to this diagnostic.", field.name),
+                    format!("Account field declaration for `{}`.", field.name),
                 ) {
                     related_information.push(info);
                 }
@@ -414,10 +414,7 @@ fn semantic_related_information(
             if let Some(accounts) = accounts_struct_by_name(index.document, context) {
                 if let Some(info) = current_document_related_information(
                     accounts.selection_range,
-                    format!(
-                        "`{}` accounts context related to this diagnostic.",
-                        accounts.name
-                    ),
+                    format!("Accounts context declaration for `{}`.", accounts.name),
                 ) {
                     related_information.push(info);
                 }
@@ -436,7 +433,7 @@ fn constraint_related_information(
     let range = index.matching_constraint_key_range(diagnostic.range, constraint)?;
     current_document_related_information(
         range,
-        format!("`{constraint}` constraint related to this diagnostic."),
+        format!("Constraint declaration for `{constraint}`."),
     )
 }
 

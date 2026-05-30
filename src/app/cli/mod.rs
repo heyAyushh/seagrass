@@ -1,5 +1,5 @@
 use {
-    crate::{diagnostics, document::ParsedDocument, server},
+    crate::{diagnostics, document::ParsedDocument, server, workspace::WorkspaceIndex},
     clap::{Args, Parser, Subcommand},
     serde::Serialize,
     std::{
@@ -7,7 +7,7 @@ use {
         fs, io,
         path::{Path, PathBuf},
     },
-    tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range},
+    tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString, Range, Url},
 };
 
 pub const USAGE_ERROR_EXIT_CODE: i32 = 2;
@@ -97,17 +97,21 @@ enum SeverityLabel {
 }
 
 fn diagnostics_for_path(path: &Path) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
+    let workspace_index = workspace_index_for_path(path);
     rust_files(path)?
         .into_iter()
-        .map(|file| diagnostics_for_file(&file))
+        .map(|file| diagnostics_for_file(&file, workspace_index.as_ref()))
         .collect::<Result<Vec<_>, _>>()
         .map(|groups| groups.into_iter().flatten().collect())
 }
 
-fn diagnostics_for_file(path: &Path) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
+fn diagnostics_for_file(
+    path: &Path,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
     let source = fs::read_to_string(path)?;
     let diagnostics = match ParsedDocument::parse(source) {
-        Ok(document) => diagnostics::collect_with_workspace(&document, None),
+        Ok(document) => diagnostics::collect_with_workspace(&document, workspace_index),
         Err(error) => vec![diagnostics::diagnostic_from_parse_error(error)],
     };
     let file = display_path(path);
@@ -115,6 +119,34 @@ fn diagnostics_for_file(path: &Path) -> Result<Vec<CliDiagnostic>, Box<dyn Error
         .into_iter()
         .map(|diagnostic| CliDiagnostic::from_lsp(file.clone(), diagnostic))
         .collect())
+}
+
+fn workspace_index_for_path(path: &Path) -> Option<WorkspaceIndex> {
+    let roots = workspace_roots_for_path(path)
+        .into_iter()
+        .filter_map(|root| Url::from_directory_path(root).ok())
+        .collect::<Vec<_>>();
+    (!roots.is_empty()).then(|| WorkspaceIndex::build(&roots, std::iter::empty::<(Url, String)>()))
+}
+
+fn workspace_roots_for_path(path: &Path) -> Vec<PathBuf> {
+    if path.is_file() {
+        return anchor_source_root_for_file(path)
+            .into_iter()
+            .collect::<Vec<_>>();
+    }
+    if path.is_dir() {
+        return vec![path.to_path_buf()];
+    }
+    Vec::new()
+}
+
+fn anchor_source_root_for_file(path: &Path) -> Option<PathBuf> {
+    path.ancestors()
+        .skip(1)
+        .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "src"))
+        .map(Path::to_path_buf)
+        .or_else(|| path.parent().map(Path::to_path_buf))
 }
 
 fn rust_files(path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
@@ -200,6 +232,7 @@ fn diagnostic_data_string(diagnostic: &Diagnostic, key: &str) -> Option<String> 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
     #[test]
     fn serializes_security_diagnostic_for_agent_cli() {
@@ -235,5 +268,65 @@ pub mod demo {
             Some("seagrass/security.signer.authorization")
         );
         assert_eq!(serialized.confidence.as_deref(), Some("authoritative"));
+    }
+
+    #[test]
+    fn diagnostics_cli_uses_workspace_index_for_single_file() {
+        let temp_root = unique_temp_dir("seagrass-cli-workspace-index");
+        let instructions_dir = temp_root.join("programs/whirlpool/src/instructions");
+        let state_dir = temp_root.join("programs/whirlpool/src/state");
+        fs::create_dir_all(&instructions_dir).unwrap();
+        fs::create_dir_all(&state_dir).unwrap();
+
+        let handler_path = instructions_dir.join("close_bundled_position.rs");
+        fs::write(
+            &handler_path,
+            r#"
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<CloseBundledPosition>) -> Result<()> {
+        let position_bundle = &mut ctx.accounts.position_bundle;
+        position_bundle.s.s;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct CloseBundledPosition<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            state_dir.join("position_bundle.rs"),
+            r#"
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = diagnostics_for_path(&handler_path).unwrap();
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("`position_bundle.s` does not resolve")),
+            "single-file CLI diagnostics should use sibling workspace type evidence: {diagnostics:#?}"
+        );
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    fn unique_temp_dir(prefix: &str) -> PathBuf {
+        let nanos = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", std::process::id()))
     }
 }
