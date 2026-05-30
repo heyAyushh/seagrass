@@ -146,6 +146,121 @@ pub mod demo {
 }
 
 #[test]
+fn flags_unchecked_signer_used_in_reachable_split_helper() {
+    let accounts_source = r#"
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+"#;
+    let helper_source = r#"
+use anchor_lang::solana_program::instruction::AccountMeta;
+
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+
+pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+    let metas = vec![AccountMeta::new(ctx.accounts.authority.key(), true)];
+    Ok(())
+}
+"#;
+    let program_source = r#"
+#[program]
+pub mod demo {
+    pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+        instructions::log_message(ctx)
+    }
+}
+"#;
+    let accounts_document = ParsedDocument::parse(accounts_source).unwrap();
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/accounts.rs").unwrap(),
+                accounts_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/instructions.rs").unwrap(),
+                helper_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/lib.rs").unwrap(),
+                program_source.to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&accounts_document, Some(&workspace_index));
+
+    let diagnostic = assert_has_code(&diagnostics, ANCHOR_SECURITY_SIGNER_CODE);
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("account"))
+            .and_then(|value| value.as_str()),
+        Some("authority")
+    );
+}
+
+#[test]
+fn accepts_reachable_split_helper_signer_check() {
+    let accounts_source = r#"
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+"#;
+    let helper_source = r#"
+use anchor_lang::solana_program::instruction::AccountMeta;
+
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+
+pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+    require!(ctx.accounts.authority.is_signer, ErrorCode::MissingSigner);
+    let metas = vec![AccountMeta::new(ctx.accounts.authority.key(), true)];
+    Ok(())
+}
+"#;
+    let program_source = r#"
+#[program]
+pub mod demo {
+    pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+        instructions::log_message(ctx)
+    }
+}
+"#;
+    let accounts_document = ParsedDocument::parse(accounts_source).unwrap();
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/accounts.rs").unwrap(),
+                accounts_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/instructions.rs").unwrap(),
+                helper_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/lib.rs").unwrap(),
+                program_source.to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&accounts_document, Some(&workspace_index));
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_SIGNER_CODE);
+}
+
+#[test]
 fn flags_deref_signer_usage_without_manual_validation() {
     let diagnostics = security_diagnostics(
         r#"

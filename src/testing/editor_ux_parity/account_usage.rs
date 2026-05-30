@@ -1,6 +1,10 @@
 use {
-    crate::{diagnostics, document::ParsedDocument, workspace::WorkspaceIndex},
-    tower_lsp::lsp_types::Url,
+    crate::{
+        diagnostics::{self, ANCHOR_SECURITY_SIGNER_CODE},
+        document::ParsedDocument,
+        workspace::WorkspaceIndex,
+    },
+    tower_lsp::lsp_types::{NumberOrString, Url},
 };
 
 #[test]
@@ -50,4 +54,69 @@ pub struct PositionBundle {
     assert!(diagnostic
         .message
         .contains("`PositionBundle` has no field `s`"));
+}
+
+#[test]
+fn editor_ux_flags_split_helper_signer_usage() {
+    let accounts_source = r#"
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(accounts_source);
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/accounts.rs").unwrap(),
+                accounts_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/instructions/log_message.rs").unwrap(),
+                r#"
+use anchor_lang::solana_program::instruction::AccountMeta;
+
+pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+    let metas = vec![AccountMeta::new(ctx.accounts.authority.key(), true)];
+    Ok(())
+}
+"#
+                .to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/lib.rs").unwrap(),
+                r#"
+#[program]
+pub mod demo {
+    pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+        instructions::log_message(ctx)
+    }
+}
+"#
+                .to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = diagnostics::collect_with_workspace(&document, Some(&workspace_index));
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            matches!(
+                diagnostic.code.as_ref(),
+                Some(NumberOrString::String(code)) if code == ANCHOR_SECURITY_SIGNER_CODE
+            )
+        })
+        .unwrap_or_else(|| panic!("missing split helper signer diagnostic: {diagnostics:#?}"));
+
+    assert!(diagnostic.message.contains("`authority`"));
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("account"))
+            .and_then(|value| value.as_str()),
+        Some("authority")
+    );
 }

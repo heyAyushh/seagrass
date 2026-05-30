@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: use reachable split-file helper evidence for signer authorization
+  diagnostics and manual signer checks.
 - lsp: detect modular native Solana crates such as
   `solana_program_entrypoint` and `solana_account_info` so single-file
   diagnostics run Solana-wide semantic checks without a manifest.

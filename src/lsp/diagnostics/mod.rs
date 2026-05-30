@@ -38,6 +38,8 @@ use {
 
 pub(crate) use arbitration::{DiagnosticLevel, DiagnosticSettings, TypingSuppressionRegion};
 pub(crate) use engine::DiagnosticInput;
+#[cfg(test)]
+pub(crate) use registry::ANCHOR_SECURITY_SIGNER_CODE;
 pub use registry::{
     ANCHOR_CONSTRAINT_EXPRESSION_CODE, ANCHOR_INIT_CONSTRAINTS_CODE,
     ANCHOR_MISSING_INIT_CONSTRAINT_CODE, ANCHOR_PDA_SEED_RESOLUTION_CODE,

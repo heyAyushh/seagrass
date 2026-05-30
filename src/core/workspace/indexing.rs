@@ -128,6 +128,8 @@ pub(super) struct IndexedFunction {
     pub(super) is_program_instruction: bool,
     pub(super) calls: Vec<String>,
     pub(super) cpi_program_usages: Vec<AccountUsage>,
+    pub(super) signer_usages: Vec<AccountUsage>,
+    pub(super) signer_checks: Vec<AccountUsage>,
     pub(super) arguments: Vec<IndexedFunctionArgument>,
 }
 
@@ -147,6 +149,8 @@ pub(super) struct IndexedFunctionEntry {
     pub(super) is_program_instruction: bool,
     pub(super) calls: Vec<String>,
     pub(super) cpi_program_usages: Vec<AccountUsage>,
+    pub(super) signer_usages: Vec<AccountUsage>,
+    pub(super) signer_checks: Vec<AccountUsage>,
     pub(super) arguments: Vec<IndexedFunctionArgument>,
 }
 
@@ -163,6 +167,8 @@ impl IndexedFunctionEntry {
             is_program_instruction: function.is_program_instruction,
             calls: function.calls.clone(),
             cpi_program_usages: function.cpi_program_usages.clone(),
+            signer_usages: function.signer_usages.clone(),
+            signer_checks: function.signer_checks.clone(),
             arguments: function.arguments.clone(),
         }
     }
@@ -199,6 +205,8 @@ fn indexed_function(function: &InstructionSymbol, is_program_instruction: bool) 
             .map(|call| call.name.clone())
             .collect(),
         cpi_program_usages: function.cpi_program_usages.clone(),
+        signer_usages: function.signer_usages.clone(),
+        signer_checks: function.signer_checks.clone(),
         arguments: function
             .arguments
             .iter()

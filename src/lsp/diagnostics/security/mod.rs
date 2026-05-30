@@ -29,7 +29,7 @@ pub fn collect_with_workspace(
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    diagnostics.extend(signer_authorization_diagnostics(document));
+    diagnostics.extend(signer_authorization_diagnostics(document, workspace_index));
     diagnostics.extend(sysvar_address_diagnostics(document));
     diagnostics.extend(token_account_unpacking_diagnostics(document));
     diagnostics.extend(raw_owner_checking_diagnostics(document));
@@ -39,11 +39,15 @@ pub fn collect_with_workspace(
     diagnostics
 }
 
-fn signer_authorization_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
+fn signer_authorization_diagnostics(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<Diagnostic> {
     run_lint_visitor(
         document,
         SignerAuthorizationVisitor {
             document,
+            workspace_index,
             diagnostics: Vec::new(),
         },
     )
@@ -51,6 +55,7 @@ fn signer_authorization_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic
 
 struct SignerAuthorizationVisitor<'a> {
     document: &'a ParsedDocument,
+    workspace_index: Option<&'a WorkspaceIndex>,
     diagnostics: Vec<Diagnostic>,
 }
 
@@ -70,12 +75,10 @@ impl<'ast> Visit<'ast> for SignerAuthorizationVisitor<'_> {
 
     fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
         if let Some(accounts) = accounts_for_item(self.document, node) {
-            self.diagnostics.extend(
-                accounts
-                    .fields
-                    .iter()
-                    .filter_map(|field| signer_authorization(self.document, accounts, field)),
-            );
+            self.diagnostics
+                .extend(accounts.fields.iter().filter_map(|field| {
+                    signer_authorization(self.document, self.workspace_index, accounts, field)
+                }));
         }
         visit::visit_item_struct(self, node);
     }
@@ -83,13 +86,14 @@ impl<'ast> Visit<'ast> for SignerAuthorizationVisitor<'_> {
 
 fn signer_authorization(
     document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
     accounts: &SymbolRange,
     field: &SymbolRange,
 ) -> Option<Diagnostic> {
     if !is_unchecked_account(field)
-        || !account_used_as_signer(document, accounts, field)
+        || !account_used_as_signer(document, workspace_index, accounts, field)
         || has_signer_constraint(field)
-        || has_manual_signer_check(document, accounts, field)
+        || has_manual_signer_check(document, workspace_index, accounts, field)
     {
         return None;
     }
@@ -591,10 +595,11 @@ fn account_used_as_cpi_program(
 
 fn account_used_as_signer(
     document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
     accounts: &SymbolRange,
     field: &SymbolRange,
 ) -> bool {
-    document.symbols().callable_functions().any(|instruction| {
+    let local_usage = document.symbols().callable_functions().any(|instruction| {
         instruction
             .context
             .as_ref()
@@ -603,15 +608,23 @@ fn account_used_as_signer(
                 .signer_usages
                 .iter()
                 .any(|usage| usage.name == field.name)
-    })
+    });
+    if local_usage {
+        return true;
+    }
+
+    workspace_index
+        .and_then(|index| index.reachable_signer_usage_names_for_context(&accounts.name))
+        .is_some_and(|usages| usages.contains(&field.name))
 }
 
 fn has_manual_signer_check(
     document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
     accounts: &SymbolRange,
     field: &SymbolRange,
 ) -> bool {
-    document.symbols().callable_functions().any(|instruction| {
+    let local_check = document.symbols().callable_functions().any(|instruction| {
         instruction
             .context
             .as_ref()
@@ -620,7 +633,14 @@ fn has_manual_signer_check(
                 .signer_checks
                 .iter()
                 .any(|usage| usage.name == field.name)
-    })
+    });
+    if local_check {
+        return true;
+    }
+
+    workspace_index
+        .and_then(|index| index.reachable_signer_check_names_for_context(&accounts.name))
+        .is_some_and(|checks| checks.contains(&field.name))
 }
 
 fn typed_cpi_program_quickfix(field: &SymbolRange) -> Option<serde_json::Value> {

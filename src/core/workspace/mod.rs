@@ -476,13 +476,41 @@ impl WorkspaceIndex {
         &self,
         context_name: &str,
     ) -> Option<HashSet<String>> {
+        self.reachable_account_usage_names_for_context(context_name, |function| {
+            &function.cpi_program_usages
+        })
+    }
+
+    pub fn reachable_signer_usage_names_for_context(
+        &self,
+        context_name: &str,
+    ) -> Option<HashSet<String>> {
+        self.reachable_account_usage_names_for_context(context_name, |function| {
+            &function.signer_usages
+        })
+    }
+
+    pub fn reachable_signer_check_names_for_context(
+        &self,
+        context_name: &str,
+    ) -> Option<HashSet<String>> {
+        self.reachable_account_usage_names_for_context(context_name, |function| {
+            &function.signer_checks
+        })
+    }
+
+    fn reachable_account_usage_names_for_context(
+        &self,
+        context_name: &str,
+        usages: impl Fn(&IndexedFunctionEntry) -> &[crate::document::AccountUsage],
+    ) -> Option<HashSet<String>> {
         let reachable = self.reachable_function_names_for_context(context_name)?;
         let functions = self.functions_by_context.get(context_name)?;
         Some(
             functions
                 .iter()
                 .filter(|function| reachable.contains(&function.name))
-                .flat_map(|function| function.cpi_program_usages.iter())
+                .flat_map(usages)
                 .map(|usage| usage.name.clone())
                 .collect(),
         )
