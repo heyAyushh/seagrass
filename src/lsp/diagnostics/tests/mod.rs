@@ -445,6 +445,37 @@ pub struct Create<'info> {
 }
 
 #[test]
+fn parse_error_expected_semicolon_points_to_unterminated_statement() {
+    let source = r#"use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<CloseBundledPosition>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle
+
+    Ok(())
+}
+"#;
+
+    let err = syn::parse_file(source).unwrap_err();
+    let diagnostic = diagnostic_from_parse_error_with_source(err, source);
+
+    assert_eq!(diagnostic.message, "unexpected token, expected `;`");
+    assert_eq!(
+        diagnostic.range,
+        Range {
+            start: Position {
+                line: 4,
+                character: 4
+            },
+            end: Position {
+                line: 4,
+                character: 19
+            },
+        }
+    );
+}
+
+#[test]
 fn parser_ordering_and_conflict_diagnostics_are_actionable() {
     let ordering_source = r#"
 #[derive(Accounts)]

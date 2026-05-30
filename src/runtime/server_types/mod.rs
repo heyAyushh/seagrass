@@ -74,15 +74,38 @@ impl ParsedOpenDocument {
                 open: OpenDocument::new(text, version),
                 parsed,
             },
-            Err(err) => Self {
-                parsed: ParsedDocument::parse_or_empty(text.clone()),
-                open: OpenDocument::with_syntax_diagnostic(
-                    text,
-                    version,
-                    diagnostics::diagnostic_from_parse_error(err),
-                ),
-            },
+            Err(err) => {
+                let diagnostic = diagnostics::diagnostic_from_parse_error_with_source(err, &text);
+                Self {
+                    parsed: ParsedDocument::parse_or_empty(text.clone()),
+                    open: OpenDocument::with_syntax_diagnostic(text, version, diagnostic),
+                }
+            }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parsed_open_document_places_semicolon_error_on_unterminated_statement() {
+        let source = r#"pub fn handler() -> Result<()> {
+    position_bundle
+
+    Ok(())
+}
+"#
+        .to_string();
+        let document = ParsedOpenDocument::new(source, Some(1));
+        let diagnostic = document
+            .open
+            .syntax_diagnostic
+            .expect("expected syntax diagnostic");
+
+        assert_eq!(diagnostic.range.start.line, 1);
+        assert_eq!(diagnostic.range.start.character, 4);
     }
 }
 

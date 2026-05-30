@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: point missing-semicolon parser diagnostics at the unterminated
+  statement instead of the following recovery token.
 - lsp: resolve imported helper function calls in Anchor constraint expressions
   without accepting unbound call names.
 - lsp: build a workspace index for single-file CLI diagnostics so split-file

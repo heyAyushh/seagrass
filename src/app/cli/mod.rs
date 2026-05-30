@@ -110,9 +110,11 @@ fn diagnostics_for_file(
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
     let source = fs::read_to_string(path)?;
-    let diagnostics = match ParsedDocument::parse(source) {
+    let diagnostics = match ParsedDocument::parse(source.clone()) {
         Ok(document) => diagnostics::collect_with_workspace(&document, workspace_index),
-        Err(error) => vec![diagnostics::diagnostic_from_parse_error(error)],
+        Err(error) => vec![diagnostics::diagnostic_from_parse_error_with_source(
+            error, &source,
+        )],
     };
     let file = display_path(path);
     Ok(diagnostics

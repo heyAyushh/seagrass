@@ -23,13 +23,16 @@ mod suppression;
 
 use {
     crate::{
-        constraint_catalog, constraint_ranges, document::ParsedDocument, range::range_from_span,
+        constraint_catalog, constraint_ranges,
+        document::ParsedDocument,
+        range::{line_at, range_from_span},
         workspace::WorkspaceIndex,
     },
     proc_macro2::Span,
     registry::AnchorDiagnosticKind,
     tower_lsp::lsp_types::{
-        CodeDescription, Diagnostic, DiagnosticRelatedInformation, NumberOrString, Range, Url,
+        CodeDescription, Diagnostic, DiagnosticRelatedInformation, NumberOrString, Position, Range,
+        Url,
     },
 };
 
@@ -71,11 +74,17 @@ pub(crate) fn collect_hot_with_input(input: DiagnosticInput<'_>) -> Vec<Diagnost
     engine::collect_hot(input)
 }
 
-pub fn diagnostic_from_parse_error(err: syn::Error) -> Diagnostic {
-    diagnostic_from_syn_error(err)
+pub fn diagnostic_from_parse_error_with_source(err: syn::Error, source: &str) -> Diagnostic {
+    let parser_message = err.to_string();
+    let corrected_range = parse_error_range_in_source(&err, source, &parser_message);
+    diagnostic_from_syn_error_with_range(err, corrected_range)
 }
 
 pub(crate) fn diagnostic_from_syn_error(err: syn::Error) -> Diagnostic {
+    diagnostic_from_syn_error_with_range(err, None)
+}
+
+fn diagnostic_from_syn_error_with_range(err: syn::Error, range: Option<Range>) -> Diagnostic {
     let parser_message = err.to_string();
     let is_init_constraint = parser_message_has(&parser_message, INIT_PAYER_REQUIRED_MESSAGE)
         || parser_message_has(&parser_message, INIT_SPACE_REQUIRED_MESSAGE);
@@ -117,7 +126,12 @@ pub(crate) fn diagnostic_from_syn_error(err: syn::Error) -> Diagnostic {
         parser_message
     };
 
-    diagnostic_from_span(err.span(), kind, message, data)
+    diagnostic_from_range(
+        range.unwrap_or_else(|| range_from_span(err.span())),
+        kind,
+        message,
+        data,
+    )
 }
 
 fn init_constraint_topic(parser_message: &str) -> &'static str {
@@ -219,9 +233,52 @@ fn normalized_constraint_phrase(value: &str) -> String {
 
 const INIT_PAYER_REQUIRED_MESSAGE: &str = "payer must be provided";
 const INIT_SPACE_REQUIRED_MESSAGE: &str = "space must be provided";
+const EXPECTED_SEMICOLON_PARSE_MESSAGE: &str = "unexpected token, expected `;`";
+const STATEMENT_TERMINATOR_CHARS: &[char] = &[';', '{', '}', ',', '(', '['];
 
 fn parser_message_has(parser_message: &str, expected: &str) -> bool {
     parser_message.contains(expected)
+}
+
+fn parse_error_range_in_source(
+    err: &syn::Error,
+    source: &str,
+    parser_message: &str,
+) -> Option<Range> {
+    if !parser_message_has(parser_message, EXPECTED_SEMICOLON_PARSE_MESSAGE) {
+        return None;
+    }
+    previous_unterminated_statement_range(source, range_from_span(err.span()).start.line)
+}
+
+fn previous_unterminated_statement_range(source: &str, error_line: u32) -> Option<Range> {
+    let candidate_line = (0..error_line).rev().find(|line_number| {
+        line_at(source, *line_number).is_some_and(line_is_unterminated_statement_candidate)
+    })?;
+    let line = line_at(source, candidate_line)?;
+    let trimmed_end = line.trim_end();
+    let start_character = line.chars().position(|ch| !ch.is_whitespace())?;
+    Some(Range {
+        start: Position {
+            line: candidate_line,
+            character: u32::try_from(start_character).ok()?,
+        },
+        end: Position {
+            line: candidate_line,
+            character: u32::try_from(trimmed_end.chars().count()).ok()?,
+        },
+    })
+}
+
+fn line_is_unterminated_statement_candidate(line: &str) -> bool {
+    let trimmed = line.trim();
+    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("#[") {
+        return false;
+    }
+    trimmed
+        .chars()
+        .next_back()
+        .is_some_and(|ch| !STATEMENT_TERMINATOR_CHARS.contains(&ch))
 }
 
 pub(crate) fn diagnostic_from_span(
