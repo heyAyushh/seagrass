@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: surface unresolved Anchor handler identifiers in the hot diagnostics
+  lane so editor Problems update without waiting for full cold analysis.
 - lsp: recover account-data member completions for `ctx.accounts.*` and local
   account aliases while the handler contains incomplete dot access.
 - lsp: flag obvious unresolved lowercase identifiers in Anchor handler bodies

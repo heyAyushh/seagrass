@@ -54,6 +54,12 @@ static RULES: [DiagnosticRule; 17] = [
         collector: collect_initialization,
     },
     DiagnosticRule {
+        id: "handler-scope",
+        phase: DiagnosticPhase::AnchorStructure,
+        frameworks: FrameworkSet::ANCHOR,
+        collector: collect_handler_scope,
+    },
+    DiagnosticRule {
         id: "account-references",
         phase: DiagnosticPhase::AnchorUsage,
         frameworks: FrameworkSet::ANCHOR,
@@ -82,12 +88,6 @@ static RULES: [DiagnosticRule; 17] = [
         phase: DiagnosticPhase::AnchorUsage,
         frameworks: FrameworkSet::ANCHOR,
         collector: collect_account_usage,
-    },
-    DiagnosticRule {
-        id: "handler-scope",
-        phase: DiagnosticPhase::AnchorUsage,
-        frameworks: FrameworkSet::ANCHOR,
-        collector: collect_handler_scope,
     },
     DiagnosticRule {
         id: "security",

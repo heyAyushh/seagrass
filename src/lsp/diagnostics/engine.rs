@@ -304,6 +304,42 @@ demo = "Expected111111111111111111111111111111111"
     }
 
     #[test]
+    fn hot_engine_flags_unresolved_handler_identifiers() {
+        let document = ParsedDocument::parse(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle = position_bundle = sd;
+    Ok(())
+}
+"#,
+        )
+        .unwrap();
+        let uri = Url::parse("file:///workspace/programs/demo/src/instructions/close.rs").unwrap();
+
+        let diagnostics = collect_hot(DiagnosticInput {
+            document: &document,
+            uri: Some(&uri),
+            workspace_index: None,
+            framework: FrameworkContext::from_document(&document),
+            manifest: None,
+            anchor_toml: None,
+            seagrass_toml: None,
+            solana_program: None,
+            settings: DiagnosticSettings::default(),
+        });
+
+        assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains("`sd` does not resolve")),
+            "hot diagnostics should flag unresolved handler identifiers: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn framework_filter_skips_anchor_rules_for_pinocchio_context() {
         let document = ParsedDocument::parse(
             r#"
