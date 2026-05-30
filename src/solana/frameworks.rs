@@ -21,11 +21,32 @@ const ANCHOR_SOURCE_HINTS: &[&str] = &[
 ];
 const PINOCCHIO_DEPENDENCY: &str = "pinocchio";
 const NATIVE_SOLANA_DEPENDENCIES: &[&str] = &[
+    "solana-address",
     "solana-account-info",
     "solana-cpi",
+    "solana-instruction",
+    "solana-msg",
     "solana-program",
     "solana-program-entrypoint",
+    "solana-program-error",
     "solana-pubkey",
+    "solana-sdk-ids",
+    "solana-sysvar",
+    "solana-system-interface",
+];
+const NATIVE_SOLANA_SOURCE_CRATES: &[&str] = &[
+    "solana_address",
+    "solana_account_info",
+    "solana_cpi",
+    "solana_instruction",
+    "solana_msg",
+    "solana_program",
+    "solana_program_entrypoint",
+    "solana_program_error",
+    "solana_pubkey",
+    "solana_sdk_ids",
+    "solana_sysvar",
+    "solana_system_interface",
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -255,7 +276,10 @@ impl FrameworkVisitor {
                 self.id = FrameworkId::AnchorV1;
             }
             "pinocchio" if !self.id.is_anchor() => self.id = FrameworkId::Pinocchio,
-            "solana_program" if self.id == FrameworkId::Unknown => {
+            ident
+                if NATIVE_SOLANA_SOURCE_CRATES.contains(&ident)
+                    && self.id == FrameworkId::Unknown =>
+            {
                 self.id = FrameworkId::NativeSolana;
             }
             _ => {}
@@ -344,6 +368,54 @@ entrypoint!(process_instruction);
         assert_eq!(
             FrameworkContext::from_document(&document).id(),
             FrameworkId::Pinocchio
+        );
+    }
+
+    #[test]
+    fn detects_native_solana_from_modular_document_crates() {
+        let document = ParsedDocument::parse_or_empty(
+            r#"
+use {
+    solana_account_info::AccountInfo,
+    solana_address::Address,
+    solana_msg::msg,
+    solana_program_error::ProgramResult,
+};
+
+solana_program_entrypoint::entrypoint!(process_instruction);
+
+fn process_instruction(
+    program_id: &Address,
+    accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    msg!("processing native program");
+    Ok(())
+}
+"#,
+        );
+
+        assert_eq!(
+            FrameworkContext::from_document(&document).id(),
+            FrameworkId::NativeSolana
+        );
+    }
+
+    #[test]
+    fn detects_native_solana_from_modular_manifest_crates() {
+        let manifest = r#"
+[package]
+name = "native-program"
+
+[dependencies]
+solana-account-info = "3"
+solana-program-entrypoint = "3"
+solana-program-error = "3"
+"#;
+
+        assert_eq!(
+            framework_from_manifest(manifest),
+            Some(FrameworkId::NativeSolana)
         );
     }
 

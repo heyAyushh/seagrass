@@ -775,6 +775,47 @@ pub fn process_instruction(
     );
 }
 
+#[test]
+fn reports_modular_native_solana_instruction_bounds() {
+    let source = r#"
+use {
+    solana_account_info::AccountInfo,
+    solana_address::Address,
+    solana_msg::msg,
+    solana_program_error::ProgramResult,
+};
+
+solana_program_entrypoint::entrypoint!(process_instruction);
+
+pub fn process_instruction(
+    _program_id: &Address,
+    _accounts: &[AccountInfo],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let tag = instruction_data[0];
+    msg!("tag {tag}");
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.data.as_ref().and_then(|data| data.get("attack"))
+                == Some(&serde_json::json!("instruction-data-bounds"))
+        })
+        .expect("expected native modular bounds diagnostic");
+
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("programKind")),
+        Some(&serde_json::json!("native-solana"))
+    );
+}
+
 fn assert_no_attack(diagnostics: &[Diagnostic], attack: &str) {
     assert!(
         !diagnostics.iter().any(|diagnostic| {
