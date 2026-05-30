@@ -120,3 +120,48 @@ pub mod demo {
         Some("authority")
     );
 }
+
+#[test]
+fn editor_ux_flags_unresolved_anchor_handler_identifier() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let position_bundle = &mut ctx.accounts.position_bundle;
+        position_bundle = position_bundle = sd;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub position_bundle: Account<'info, PositionBundle>,
+}
+
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    );
+
+    let diagnostics = diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("`sd` does not resolve"))
+        .unwrap_or_else(|| {
+            panic!("missing unresolved handler identifier diagnostic: {diagnostics:#?}")
+        });
+
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|value| value.as_str()),
+        Some("unresolved-handler-identifier")
+    );
+}

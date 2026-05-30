@@ -6,7 +6,8 @@ Source: `seagrass`
 
 ## What It Catches
 
-Anchor account mutability and usage diagnostics.
+Anchor account mutability, account-data member usage, and shallow handler scope
+diagnostics.
 
 Seagrass should emit this topic only when parsed Anchor, Solana, workspace, or
 artifact evidence proves this specific invariant. The diagnostic must not be
@@ -25,6 +26,8 @@ derived from raw substring matches.
 | `seagrass/anchor.account.usage` appears only in a comment, doc comment, or string literal | no diagnostic |
 | an unrelated identifier contains words from this topic | no diagnostic |
 | the parsed semantic evidence for this invariant is absent | no diagnostic |
+| a bare lowercase value in an Anchor handler is not an argument, local binding, import, or item | diagnostic |
+| a call name is unresolved but the arguments are valid | no diagnostic |
 | parsed evidence satisfies anchor account usage | diagnostic |
 
 ## Suppression

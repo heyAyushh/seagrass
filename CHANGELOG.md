@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: flag obvious unresolved lowercase identifiers in Anchor handler bodies
+  using a shallow parsed local scope.
 - lsp: use reachable split-file helper evidence for signer authorization
   diagnostics and manual signer checks.
 - lsp: detect modular native Solana crates such as

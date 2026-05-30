@@ -1,0 +1,483 @@
+use {
+    super::{
+        diagnostic_from_range,
+        lint::{run_lint_visitor, Applicability, Confidence, LintVisitor, Region},
+        registry::AnchorDiagnosticKind,
+    },
+    crate::{document::ParsedDocument, range::range_from_span},
+    std::collections::HashSet,
+    syn::{
+        visit::{self, Visit},
+        ExprCall, ExprPath, FnArg, GenericArgument, ItemFn, ItemMod, Pat, PathArguments, Type,
+    },
+    tower_lsp::lsp_types::{Diagnostic, Range},
+};
+
+const TOPIC: &str = "seagrass/anchor.account.usage";
+const REASON: &str = "unresolved-handler-identifier";
+const EVIDENCE_SOURCE: &str = "parsed-anchor-handler-scope";
+const KNOWN_SINGLE_SEGMENT_VALUES: &[&str] = &["self", "crate", "super"];
+
+pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
+    run_lint_visitor(document, HandlerScopeVisitor::new(document))
+}
+
+struct HandlerScopeVisitor {
+    global_values: HashSet<String>,
+    scopes: ScopeStack,
+    in_program_module: bool,
+    diagnostics: Vec<Diagnostic>,
+    emitted: HashSet<(String, u32, u32)>,
+}
+
+impl HandlerScopeVisitor {
+    fn new(document: &ParsedDocument) -> Self {
+        Self {
+            global_values: global_values(document),
+            scopes: ScopeStack::default(),
+            in_program_module: false,
+            diagnostics: Vec::new(),
+            emitted: HashSet::new(),
+        }
+    }
+
+    fn visit_anchor_function(&mut self, item_fn: &ItemFn) {
+        self.scopes.push();
+        self.declare_function_inputs(item_fn);
+        self.visit_block(&item_fn.block);
+        self.scopes.pop();
+    }
+
+    fn declare_function_inputs(&mut self, item_fn: &ItemFn) {
+        for input in &item_fn.sig.inputs {
+            match input {
+                FnArg::Receiver(_) => self.scopes.declare("self"),
+                FnArg::Typed(pat_type) => self.scopes.declare_pat(&pat_type.pat),
+            }
+        }
+    }
+
+    fn report_unresolved_identifier(&mut self, identifier: &str, range: Range) {
+        let key = (
+            identifier.to_string(),
+            range.start.line,
+            range.start.character,
+        );
+        if !self.emitted.insert(key) {
+            return;
+        }
+
+        self.diagnostics.push(diagnostic_from_range(
+            range,
+            AnchorDiagnosticKind::AnchorAccountUsage,
+            format!(
+                "`{identifier}` does not resolve in this Anchor handler; declare a local, add an argument, or import the value before using it."
+            ),
+            Some(serde_json::json!({
+                "topic": TOPIC,
+                "reason": REASON,
+                "identifier": identifier,
+                "evidenceSource": EVIDENCE_SOURCE,
+                "confidence": Confidence::Derived.as_str(),
+                "applicability": Applicability::Unspecified.as_str(),
+            })),
+        ));
+    }
+
+    fn identifier_resolves(&self, identifier: &str) -> bool {
+        self.scopes.contains(identifier)
+            || self.global_values.contains(identifier)
+            || KNOWN_SINGLE_SEGMENT_VALUES.contains(&identifier)
+    }
+}
+
+impl<'ast> LintVisitor<'ast> for HandlerScopeVisitor {
+    const SCOPE: &'static [Region] = &[Region::InstructionBody, Region::HelperFnBody];
+    const CONFIDENCE: Confidence = Confidence::Derived;
+    const APPLICABILITY: Applicability = Applicability::Unspecified;
+    const TOPIC: &'static str = TOPIC;
+
+    fn finish(self) -> Vec<Diagnostic> {
+        self.diagnostics
+    }
+}
+
+impl<'ast> Visit<'ast> for HandlerScopeVisitor {
+    fn visit_item_mod(&mut self, node: &'ast ItemMod) {
+        let was_program_module = self.in_program_module;
+        if has_attr(&node.attrs, "program") {
+            self.in_program_module = true;
+        }
+        visit::visit_item_mod(self, node);
+        self.in_program_module = was_program_module;
+    }
+
+    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
+        if self.in_program_module || item_fn_has_context_arg(node) {
+            self.visit_anchor_function(node);
+        }
+    }
+
+    fn visit_block(&mut self, node: &'ast syn::Block) {
+        self.scopes.push();
+        visit::visit_block(self, node);
+        self.scopes.pop();
+    }
+
+    fn visit_local(&mut self, node: &'ast syn::Local) {
+        if let Some(init) = &node.init {
+            self.visit_expr(&init.expr);
+            if let Some((_, diverge)) = &init.diverge {
+                self.visit_expr(diverge);
+            }
+        }
+        self.scopes.declare_pat(&node.pat);
+    }
+
+    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        self.visit_expr(&node.expr);
+        self.scopes.push();
+        self.scopes.declare_pat(&node.pat);
+        self.visit_block(&node.body);
+        self.scopes.pop();
+    }
+
+    fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
+        self.scopes.push();
+        for input in &node.inputs {
+            self.scopes.declare_pat(input);
+        }
+        self.visit_expr(&node.body);
+        self.scopes.pop();
+    }
+
+    fn visit_expr_call(&mut self, node: &'ast ExprCall) {
+        // Function resolution needs imports, traits, and module graphs. This rule is
+        // intentionally limited to value expressions so it stays low-noise.
+        for arg in &node.args {
+            self.visit_expr(arg);
+        }
+    }
+
+    fn visit_expr_path(&mut self, node: &'ast ExprPath) {
+        let Some(identifier) = bare_value_identifier(node) else {
+            return;
+        };
+        if identifier_should_be_resolved(&identifier) && !self.identifier_resolves(&identifier) {
+            self.report_unresolved_identifier(
+                &identifier,
+                range_from_span(node.path.segments[0].ident.span()),
+            );
+        }
+    }
+}
+
+#[derive(Default)]
+struct ScopeStack {
+    scopes: Vec<HashSet<String>>,
+}
+
+impl ScopeStack {
+    fn push(&mut self) {
+        self.scopes.push(HashSet::new());
+    }
+
+    fn pop(&mut self) {
+        self.scopes.pop();
+    }
+
+    fn declare(&mut self, name: &str) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string());
+        }
+    }
+
+    fn declare_pat(&mut self, pat: &Pat) {
+        let mut names = Vec::new();
+        collect_pattern_bindings(pat, &mut names);
+        for name in names {
+            self.declare(&name);
+        }
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.scopes.iter().rev().any(|scope| scope.contains(name))
+    }
+}
+
+fn collect_pattern_bindings(pat: &Pat, names: &mut Vec<String>) {
+    match pat {
+        Pat::Ident(ident) => names.push(ident.ident.to_string()),
+        Pat::Reference(reference) => collect_pattern_bindings(&reference.pat, names),
+        Pat::Slice(slice) => {
+            for element in &slice.elems {
+                collect_pattern_bindings(element, names);
+            }
+        }
+        Pat::Struct(strukt) => {
+            for field in &strukt.fields {
+                collect_pattern_bindings(&field.pat, names);
+            }
+        }
+        Pat::Tuple(tuple) => {
+            for element in &tuple.elems {
+                collect_pattern_bindings(element, names);
+            }
+        }
+        Pat::TupleStruct(tuple) => {
+            for element in &tuple.elems {
+                collect_pattern_bindings(element, names);
+            }
+        }
+        Pat::Type(typed) => collect_pattern_bindings(&typed.pat, names),
+        Pat::Or(or) => {
+            for case in &or.cases {
+                collect_pattern_bindings(case, names);
+            }
+        }
+        Pat::Paren(paren) => collect_pattern_bindings(&paren.pat, names),
+        _ => {}
+    }
+}
+
+fn global_values(document: &ParsedDocument) -> HashSet<String> {
+    let mut values = document
+        .symbols()
+        .value_items
+        .iter()
+        .chain(document.symbols().constants.iter())
+        .chain(document.symbols().imported_names.iter())
+        .map(|item| item.name.clone())
+        .collect::<HashSet<_>>();
+    if document.symbols().declared_program_id.is_some() {
+        values.insert("ID".to_string());
+    }
+    values
+}
+
+fn bare_value_identifier(path: &ExprPath) -> Option<String> {
+    if path.qself.is_some() || path.path.segments.len() != 1 {
+        return None;
+    }
+    let segment = &path.path.segments[0];
+    if !matches!(&segment.arguments, PathArguments::None) {
+        return None;
+    }
+    Some(segment.ident.to_string())
+}
+
+fn identifier_should_be_resolved(identifier: &str) -> bool {
+    identifier
+        .chars()
+        .next()
+        .is_some_and(|ch| ch.is_ascii_lowercase())
+}
+
+fn item_fn_has_context_arg(item_fn: &ItemFn) -> bool {
+    item_fn.sig.inputs.iter().any(|input| match input {
+        FnArg::Typed(pat_type) => type_has_context_arg(pat_type.ty.as_ref()),
+        FnArg::Receiver(_) => false,
+    })
+}
+
+fn type_has_context_arg(ty: &Type) -> bool {
+    let ty = match ty {
+        Type::Reference(reference) => reference.elem.as_ref(),
+        _ => ty,
+    };
+    let Type::Path(type_path) = ty else {
+        return false;
+    };
+    type_path.path.segments.iter().any(|segment| {
+        (segment.ident == "Context" || segment.ident.to_string().ends_with("Context"))
+            && matches!(&segment.arguments, PathArguments::AngleBracketed(_))
+            && context_type_has_account_argument(&segment.arguments)
+    })
+}
+
+fn context_type_has_account_argument(arguments: &PathArguments) -> bool {
+    let PathArguments::AngleBracketed(args) = arguments else {
+        return false;
+    };
+    args.args
+        .iter()
+        .any(|arg| matches!(arg, GenericArgument::Type(Type::Path(_))))
+}
+
+fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
+    attrs.iter().any(|attr| attr.path().is_ident(name))
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::collect,
+        crate::{diagnostics::registry::ANCHOR_ACCOUNT_USAGE_CODE, document::ParsedDocument},
+        proptest::prelude::*,
+        tower_lsp::lsp_types::NumberOrString,
+    };
+
+    prop_compose! {
+        fn generated_ident()(tail in "[a-z0-9_]{1,10}") -> String {
+            format!("sg_{tail}")
+        }
+    }
+
+    #[test]
+    fn reports_unresolved_handler_identifier() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let position_bundle = &mut ctx.accounts.position_bundle;
+        position_bundle = position_bundle = sd;
+        Ok(())
+    }
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.message.contains("`sd` does not resolve"))
+            .unwrap_or_else(|| {
+                panic!("missing unresolved identifier diagnostic: {diagnostics:#?}")
+            });
+
+        assert_eq!(
+            diagnostic.code.as_ref(),
+            Some(&NumberOrString::String(
+                ANCHOR_ACCOUNT_USAGE_CODE.to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn accepts_arguments_locals_and_imported_helpers() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+use crate::util::verify_position_bundle_authority;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let position_bundle = &mut ctx.accounts.position_bundle;
+        let copied_index = bundle_index;
+        verify_position_bundle_authority(copied_index)?;
+        let nested = |value| {
+            let local = value;
+            local
+        };
+        nested(copied_index);
+        Ok(())
+    }
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "bound handler identifiers should stay quiet: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn reports_unresolved_identifier_in_context_helper() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle = missing_value;
+    Ok(())
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("`missing_value` does not resolve")),
+            "missing context helper identifier diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn ignores_non_anchor_rust_functions() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn close() -> Result<()> {
+    missing_value;
+    Ok(())
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "non-Anchor helper should stay quiet: {diagnostics:#?}"
+        );
+    }
+
+    proptest! {
+        #[test]
+        fn reports_generated_unresolved_handler_identifiers(
+            missing in generated_ident(),
+            local in generated_ident(),
+            argument in generated_ident(),
+        ) {
+            prop_assume!(missing != local && missing != argument);
+            prop_assume!(local != "ctx" && argument != "ctx" && missing != "ctx");
+            let source = format!(
+                r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {{
+    pub fn close(ctx: Context<Close>, {argument}: u16) -> Result<()> {{
+        let {local} = {argument};
+        {local};
+        {missing};
+        Ok(())
+    }}
+}}
+"#
+            );
+
+            let diagnostics = collect(&ParsedDocument::parse(source).unwrap());
+
+            prop_assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains(&format!("`{missing}` does not resolve"))),
+                "expected generated unresolved handler identifier diagnostic, got {diagnostics:#?}"
+            );
+            prop_assert!(
+                diagnostics
+                    .iter()
+                    .all(|diagnostic| !diagnostic.message.contains(&format!("`{local}` does not resolve"))
+                        && !diagnostic.message.contains(&format!("`{argument}` does not resolve"))),
+                "bound generated identifiers should stay quiet: {diagnostics:#?}"
+            );
+        }
+    }
+}
