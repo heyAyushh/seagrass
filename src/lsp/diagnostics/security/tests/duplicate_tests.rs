@@ -190,6 +190,42 @@ pub struct User {
 }
 
 #[test]
+fn accepts_duplicate_account_types_with_alias_runtime_check() {
+    let diagnostics = security_diagnostics(
+        r#"
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn update(ctx: Context<Update>) -> ProgramResult {
+        let user_a = &ctx.accounts.user_a;
+        let user_b = &ctx.accounts.user_b;
+        if user_a.key() == user_b.key() {
+            return Err(ProgramError::InvalidArgument);
+        }
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Update<'info> {
+    #[account(mut)]
+    user_a: Account<'info, User>,
+    #[account(mut)]
+    user_b: Account<'info, User>,
+}
+
+#[account]
+pub struct User {
+    data: u64,
+}
+"#,
+    );
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_DUPLICATE_ACCOUNT_CODE);
+}
+
+#[test]
 fn accepts_readonly_duplicate_account_types() {
     let diagnostics = security_diagnostics(
         r#"
