@@ -131,7 +131,7 @@ pub mod demo {
 #[derive(Accounts)]
 pub struct Close<'info> {
     #[account(mut)]
-    pub position_bundle: Account<'info, PositionBundle>,
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
 }
 
 #[account]

@@ -10,6 +10,7 @@ use {
     tower_lsp::lsp_types::{Diagnostic, NumberOrString, Position, Url},
 };
 
+mod account_usage;
 mod proactive_assists;
 
 struct EditorCase<'a> {

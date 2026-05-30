@@ -164,6 +164,42 @@ pub struct Create<'info> {
 }
 
 #[test]
+fn parsed_document_unwraps_boxed_account_field_types() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+    pub maybe_mint: Option<Box<InterfaceAccount<'info, Mint>>>,
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let close = document.symbols().accounts_structs.get("Close").unwrap();
+    let position_bundle = close
+        .fields
+        .iter()
+        .find(|field| field.name == "position_bundle")
+        .unwrap();
+    let maybe_mint = close
+        .fields
+        .iter()
+        .find(|field| field.name == "maybe_mint")
+        .unwrap();
+
+    assert_eq!(position_bundle.type_name.as_deref(), Some("Account"));
+    assert!(position_bundle
+        .generic_type_names
+        .iter()
+        .any(|name| name == "PositionBundle"));
+    assert!(maybe_mint.is_optional);
+    assert_eq!(maybe_mint.type_name.as_deref(), Some("InterfaceAccount"));
+    assert!(maybe_mint
+        .generic_type_names
+        .iter()
+        .any(|name| name == "Mint"));
+}
+
+#[test]
 fn parsed_document_captures_instruction_arguments() {
     let source = r#"
 #[program]

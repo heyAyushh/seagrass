@@ -13,9 +13,12 @@ use {
 };
 
 mod account_attribute;
+mod account_field_type;
 mod account_usage;
 mod associated_values;
 mod symbols;
+
+use account_field_type::account_field_type;
 
 pub use {
     account_attribute::{AccountAttributeCursor, AccountAttributeSlot},
@@ -547,25 +550,6 @@ fn pda_seeds_from_expr(seeds: &anchor_syn::SeedsExpr) -> PdaSeeds {
             PdaSeeds::Expr(normalize_token_text(&expr.to_token_stream().to_string()))
         }
     }
-}
-
-fn account_field_type(ty: &Type) -> (&Type, bool) {
-    let Type::Path(type_path) = ty else {
-        return (ty, false);
-    };
-    let Some(segment) = type_path.path.segments.last() else {
-        return (ty, false);
-    };
-    if segment.ident != "Option" {
-        return (ty, false);
-    }
-    let PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return (ty, false);
-    };
-    let Some(GenericArgument::Type(inner)) = args.args.first() else {
-        return (ty, false);
-    };
-    (inner, true)
 }
 
 fn type_name(ty: &Type) -> Option<String> {

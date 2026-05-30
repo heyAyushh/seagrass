@@ -5,6 +5,9 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: resolve `Box<Account<'info, T>>` and nested optional boxed account
+  fields to their inner Anchor wrapper so editor diagnostics catch invalid
+  account-data member access through local bindings.
 - editors: move the bundled feedback link into `editors/feedback.toml` and
   point editor feedback commands at the Seagrass Telegram.
 - scripts: resolve generated-support Anchor sources from explicit
