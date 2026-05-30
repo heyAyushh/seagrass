@@ -409,6 +409,29 @@ fn authority_is_allowed(authority: Pubkey) -> bool {
 }
 
 #[test]
+fn accepts_imported_constraint_call_identifier() {
+    let source = r#"
+use anchor_lang::prelude::*;
+use crate::auth::admin::is_admin_key;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(constraint = is_admin_key(funder.key))]
+    pub funder: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = collect(&document);
+
+    assert!(
+        !diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("`is_admin_key` does not resolve")),
+        "imported constraint helper calls should resolve: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn validates_unresolved_seed_identifier() {
     let source = r#"
 #[program]

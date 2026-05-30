@@ -17,7 +17,7 @@ use {
     },
     syn::{
         visit::{self, Visit},
-        Expr, ExprField, ExprMethodCall, ExprPath, Member,
+        Expr, ExprCall, ExprField, ExprMethodCall, ExprPath, Member,
     },
     tower_lsp::lsp_types::{Diagnostic, Range},
 };
@@ -265,6 +265,13 @@ struct ConstraintExpressionVisitor<'a, 'b> {
 }
 
 impl<'ast> Visit<'ast> for ConstraintExpressionVisitor<'_, '_> {
+    fn visit_expr_call(&mut self, call: &'ast ExprCall) {
+        self.validate_call_function(&call.func);
+        for argument in &call.args {
+            self.visit_expr(argument);
+        }
+    }
+
     fn visit_expr_path(&mut self, path: &'ast ExprPath) {
         if let Some(identifier) = resolution::unresolved_path_identifier(
             self.document,
@@ -296,6 +303,32 @@ impl<'ast> Visit<'ast> for ConstraintExpressionVisitor<'_, '_> {
 }
 
 impl ConstraintExpressionVisitor<'_, '_> {
+    fn validate_call_function(&mut self, function: &Expr) {
+        let Expr::Path(path) = function else {
+            self.visit_expr(function);
+            return;
+        };
+        let Some(identifier) = resolution::unresolved_call_identifier(
+            self.document,
+            self.workspace_index,
+            self.accounts,
+            path,
+        ) else {
+            return;
+        };
+        if !self.has_issue_for_identifier(&identifier) {
+            self.issues
+                .push(ConstraintExpressionIssue::UnresolvedIdentifier {
+                    constraint_key: self.constraint_key.clone(),
+                    identifier,
+                    candidates: resolution::identifier_replacement_candidates(
+                        self.document,
+                        self.accounts,
+                    ),
+                });
+        }
+    }
+
     fn validate_member(&mut self, access: &MemberAccess) {
         let Some(field) = self
             .accounts

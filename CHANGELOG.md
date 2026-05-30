@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: resolve imported helper function calls in Anchor constraint expressions
+  without accepting unbound call names.
 - lsp: build a workspace index for single-file CLI diagnostics so split-file
   account data member mistakes are caught consistently with editor analysis.
 - lsp: use declaration-specific related information labels instead of generic

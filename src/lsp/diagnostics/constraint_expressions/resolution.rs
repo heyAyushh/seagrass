@@ -32,6 +32,25 @@ pub(super) fn unresolved_path_identifier(
     }
 }
 
+pub(super) fn unresolved_call_identifier(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts: &AccountSetEvidence<'_>,
+    path: &ExprPath,
+) -> Option<String> {
+    if path.qself.is_some() {
+        return None;
+    }
+    let segments = path_segments(path);
+    match segments.as_slice() {
+        [] => None,
+        [identifier] if call_identifier_resolves(document, accounts, identifier) => None,
+        [identifier] => Some(identifier.to_string()),
+        _ if path_resolves(document, workspace_index, &segments) => None,
+        _ => Some(segments.join(PATH_SEPARATOR)),
+    }
+}
+
 pub(super) fn identifier_replacement_candidates(
     document: &ParsedDocument,
     accounts: &AccountSetEvidence<'_>,
@@ -78,6 +97,15 @@ fn identifier_resolves(
         || document_has_value_item(document, identifier)
         || document_has_imported_const_like_name(document, identifier)
         || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&identifier)
+}
+
+fn call_identifier_resolves(
+    document: &ParsedDocument,
+    accounts: &AccountSetEvidence<'_>,
+    identifier: &str,
+) -> bool {
+    identifier_resolves(document, accounts, identifier)
+        || document_has_imported_name(document, identifier)
 }
 
 fn path_resolves(
