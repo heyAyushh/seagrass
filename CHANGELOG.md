@@ -5,6 +5,7 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: offer quick fixes for misspelled typed handler member access.
 - lsp: complete and validate handler member access for locals and arguments
   with shallow resolved struct types.
 - lsp: complete in-scope values inside Anchor handlers using parsed local

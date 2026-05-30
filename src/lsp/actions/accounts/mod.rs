@@ -27,6 +27,7 @@ pub fn code_actions(
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
     let mut actions = context_structs::code_actions(document, uri.clone(), range, diagnostics);
+    actions.extend(replace_handler_member_actions(uri.clone(), diagnostics));
     actions.extend(replace_missing_account_actions(
         document,
         uri.clone(),
@@ -59,6 +60,43 @@ pub fn code_actions(
         diagnostics,
     ));
     actions
+}
+
+fn replace_handler_member_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-missing-account-reference")
+        })
+        .filter(|diagnostic| {
+            diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("reason"))
+                .and_then(|value| value.as_str())
+                == Some("unknown-handler-member")
+        })
+        .filter_map(|diagnostic| {
+            let data = diagnostic.data.as_ref()?;
+            let missing = data.get("field").and_then(|value| value.as_str())?;
+            let replacement = closest_candidate(data, missing)?;
+            let edit = single_text_edit(diagnostic.range, replacement.to_string());
+
+            Some(CodeAction {
+                title: format!("Replace `{missing}` with `{replacement}`"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(single_document_edit(uri.clone(), edit)),
+                command: None,
+                is_preferred: Some(false),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "replace-handler-member",
+                    "replacement": replacement,
+                })),
+            })
+        })
+        .collect()
 }
 
 fn replace_missing_account_actions(

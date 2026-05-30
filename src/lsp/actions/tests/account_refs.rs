@@ -243,6 +243,7 @@ pub mod demo {
         Ok(())
     }
 }
+
 "#;
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = vec![Diagnostic {
@@ -285,4 +286,56 @@ pub mod demo {
     assert!(actions
         .iter()
         .any(|action| action.title.contains("Replace `iner` with `inner`")));
+}
+
+#[test]
+fn offers_typed_handler_member_replacement_from_candidates() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+        bundle.position_bundle_mnit;
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = crate::diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-missing-account-reference")
+                && diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("reason"))
+                    .and_then(|value| value.as_str())
+                    == Some("unknown-handler-member")
+        })
+        .unwrap_or_else(|| panic!("missing typed handler member diagnostic: {diagnostics:#?}"));
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        diagnostic.range,
+        std::slice::from_ref(diagnostic),
+    );
+
+    let action = actions
+        .iter()
+        .find(|action| action.title == "Replace `position_bundle_mnit` with `position_bundle_mint`")
+        .unwrap_or_else(|| panic!("missing handler member replacement action: {actions:#?}"));
+
+    assert_eq!(
+        action
+            .data
+            .as_ref()
+            .and_then(|data| data.get("anchorAction"))
+            .and_then(|value| value.as_str()),
+        Some("replace-handler-member")
+    );
 }
