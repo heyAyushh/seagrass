@@ -4,11 +4,15 @@ use {
         lint::{run_lint_visitor, Applicability, Confidence, LintVisitor, Region},
         registry::AnchorDiagnosticKind,
     },
-    crate::{document::ParsedDocument, range::range_from_span},
+    crate::{
+        document::ParsedDocument,
+        lsp::scope::{has_attr, item_fn_has_anchor_context_arg},
+        range::range_from_span,
+    },
     std::collections::HashSet,
     syn::{
         visit::{self, Visit},
-        ExprCall, ExprPath, FnArg, GenericArgument, ItemFn, ItemMod, Pat, PathArguments, Type,
+        ExprCall, ExprPath, FnArg, ItemFn, ItemMod, Pat, PathArguments,
     },
     tower_lsp::lsp_types::{Diagnostic, Range},
 };
@@ -113,7 +117,7 @@ impl<'ast> Visit<'ast> for HandlerScopeVisitor {
     }
 
     fn visit_item_fn(&mut self, node: &'ast ItemFn) {
-        if self.in_program_module || item_fn_has_context_arg(node) {
+        if self.in_program_module || item_fn_has_anchor_context_arg(node) {
             self.visit_anchor_function(node);
         }
     }
@@ -236,41 +240,6 @@ fn identifier_should_be_resolved(identifier: &str) -> bool {
         .chars()
         .next()
         .is_some_and(|ch| ch.is_ascii_lowercase())
-}
-
-fn item_fn_has_context_arg(item_fn: &ItemFn) -> bool {
-    item_fn.sig.inputs.iter().any(|input| match input {
-        FnArg::Typed(pat_type) => type_has_context_arg(pat_type.ty.as_ref()),
-        FnArg::Receiver(_) => false,
-    })
-}
-
-fn type_has_context_arg(ty: &Type) -> bool {
-    let ty = match ty {
-        Type::Reference(reference) => reference.elem.as_ref(),
-        _ => ty,
-    };
-    let Type::Path(type_path) = ty else {
-        return false;
-    };
-    type_path.path.segments.iter().any(|segment| {
-        (segment.ident == "Context" || segment.ident.to_string().ends_with("Context"))
-            && matches!(&segment.arguments, PathArguments::AngleBracketed(_))
-            && context_type_has_account_argument(&segment.arguments)
-    })
-}
-
-fn context_type_has_account_argument(arguments: &PathArguments) -> bool {
-    let PathArguments::AngleBracketed(args) = arguments else {
-        return false;
-    };
-    args.args
-        .iter()
-        .any(|arg| matches!(arg, GenericArgument::Type(Type::Path(_))))
-}
-
-fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
-    attrs.iter().any(|attr| attr.path().is_ident(name))
 }
 
 #[cfg(test)]

@@ -7,6 +7,7 @@ pub(crate) mod document_links;
 pub(crate) mod folding;
 pub(crate) mod hover;
 pub(crate) mod inlay_hints;
+pub(crate) mod local_types;
 pub(crate) mod navigation;
 pub(crate) mod renaming;
 pub(crate) mod scope;

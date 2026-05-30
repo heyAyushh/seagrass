@@ -32,7 +32,8 @@ impl<'a> RankingContext<'a> {
             | CursorContextKind::AccountConstraintValue { prefix }
             | CursorContextKind::InstructionAttribute { prefix }
             | CursorContextKind::AccountsField { prefix }
-            | CursorContextKind::HandlerValue { prefix } => Some(prefix.as_str()),
+            | CursorContextKind::HandlerValue { prefix }
+            | CursorContextKind::HandlerMember { prefix } => Some(prefix.as_str()),
             CursorContextKind::AccountConstraintKey { context } => Some(context.prefix.as_str()),
             CursorContextKind::NotAnchor => None,
         }

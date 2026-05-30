@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: complete and validate handler member access for locals and arguments
+  with shallow resolved struct types.
 - lsp: complete in-scope values inside Anchor handlers using parsed local
   bindings, instruction args, imports, constants, and accounts fields.
 - lsp: surface unresolved Anchor handler identifiers in the hot diagnostics

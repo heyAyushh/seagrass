@@ -10,6 +10,7 @@ mod constraint_shape;
 mod context_accounts;
 mod ecosystem;
 mod engine;
+mod handler_members;
 mod handler_scope;
 mod initialization;
 mod instruction_attributes;

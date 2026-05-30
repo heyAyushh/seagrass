@@ -63,6 +63,28 @@ pub(crate) fn resolved_field_chain_members(
     Some(members)
 }
 
+pub(crate) fn resolved_struct_chain_members(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    receiver_type: &str,
+    member_chain: &[String],
+) -> Option<ResolvedAccountMembers> {
+    let mut members = struct_members(document, workspace_index, receiver_type)?;
+    for member_name in member_chain {
+        let next_type = members.member(member_name)?.type_name.as_ref()?;
+        members = struct_members(document, workspace_index, next_type)?;
+    }
+    Some(members)
+}
+
+pub(crate) fn resolved_struct_members(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    receiver_type: &str,
+) -> Option<ResolvedAccountMembers> {
+    struct_members(document, workspace_index, receiver_type)
+}
+
 pub(crate) fn missing_member_in_chain(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,

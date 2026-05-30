@@ -16,6 +16,7 @@ pub enum CompletionSignatureKind {
     InstructionAttribute,
     AccountsField,
     HandlerValue,
+    HandlerMember,
 }
 
 impl CompletionSignatureKind {
@@ -28,6 +29,7 @@ impl CompletionSignatureKind {
             Self::InstructionAttribute => "instructionAttribute",
             Self::AccountsField => "accountsField",
             Self::HandlerValue => "handlerValue",
+            Self::HandlerMember => "handlerMember",
         }
     }
 }
@@ -94,6 +96,9 @@ pub(crate) enum CursorContextKind {
         prefix: String,
     },
     HandlerValue {
+        prefix: String,
+    },
+    HandlerMember {
         prefix: String,
     },
     NotAnchor,
@@ -254,6 +259,11 @@ impl CursorContext {
                 prefix: prefix.to_string(),
             };
         }
+        if let Some(prefix) = handler_member_typed_prefix(source, offset, line_prefix) {
+            return CursorContextKind::HandlerMember {
+                prefix: prefix.to_string(),
+            };
+        }
 
         CursorContextKind::NotAnchor
     }
@@ -291,6 +301,10 @@ impl CursorContext {
                 kind: CursorContextKind::HandlerValue { prefix },
                 ..
             } => (CompletionSignatureKind::HandlerValue, prefix),
+            Self {
+                kind: CursorContextKind::HandlerMember { prefix },
+                ..
+            } => (CompletionSignatureKind::HandlerMember, prefix),
             Self {
                 kind: CursorContextKind::NotAnchor,
                 ..
@@ -660,6 +674,28 @@ fn handler_value_typed_prefix<'a>(
     }
 
     Some(prefix)
+}
+
+fn handler_member_typed_prefix<'a>(
+    source: &str,
+    offset: usize,
+    line_prefix: &'a str,
+) -> Option<&'a str> {
+    if !has_enclosing_anchor_context(source, offset)
+        || has_enclosing_function_signature(source, offset)
+    {
+        return None;
+    }
+
+    let tail = line_prefix
+        .rsplit(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'))
+        .next()
+        .unwrap_or_default();
+    let (_, member_prefix) = tail.rsplit_once('.')?;
+    if !member_prefix.chars().all(is_identifier_char) {
+        return None;
+    }
+    Some(member_prefix)
 }
 
 fn account_field_hint_prefix(line_prefix: &str) -> Option<&str> {
