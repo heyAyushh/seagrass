@@ -226,6 +226,29 @@ fn helper(ctx: Context<Ma>, wrapper: Wrapper) {
 }
 
 #[test]
+fn completion_gate_accepts_anchor_v2_preview_context_hint() {
+    let source = r#"
+use anchor_lang_v2::prelude::*;
+
+#[derive(Accounts)]
+pub struct MakeOffer<'info> {
+    pub maker: Signer<'info>,
+}
+
+pub fn helper(ctx: Context<MakeOffer>) {
+    let _value = ctx.accounts.ma;
+}
+"#;
+
+    for cursor in ["Context<Make", "ctx.accounts.ma"] {
+        assert!(
+            should_offer_completion(source, position_after(source, cursor)),
+            "Anchor v2 preview Context-shaped code should wake at {cursor}"
+        );
+    }
+}
+
+#[test]
 fn completion_gate_requires_real_anchor_accounts_path() {
     let source = r#"
 pub struct Wrapper {

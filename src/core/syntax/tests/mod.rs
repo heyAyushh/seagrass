@@ -65,6 +65,29 @@ pub struct Create<'info> {
 }
 
 #[test]
+fn recovers_context_prefix_with_anchor_v2_preview_hint() {
+    let source = r#"
+use anchor_lang_v2::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn create(ctx: Context<Cr
+}
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    pub payer: Signer<'info>,
+}
+"#;
+    let syntax = RustSyntax::parse(source).unwrap();
+    let context = syntax
+        .context_type_prefix_at_position(source, position_after(source, "Context<Cr"))
+        .expect("tree-sitter context generic prefix");
+
+    assert_eq!(context.prefix, "Cr");
+}
+
+#[test]
 fn finds_accounts_struct_for_incomplete_field_type_argument() {
     let source = r#"
 #[derive(Accounts)]

@@ -12,6 +12,13 @@ const ANCHOR_LANG_V2_DEPENDENCY: &str = "anchor-lang-v2";
 const ANCHOR_SPL_V2_DEPENDENCY: &str = "anchor-spl-v2";
 const ANCHOR_LANG_DEPENDENCY: &str = "anchor-lang";
 const ANCHOR_SPL_DEPENDENCY: &str = "anchor-spl";
+const ANCHOR_SOURCE_HINTS: &[&str] = &[
+    "anchor_lang::",
+    "anchor_spl::",
+    "anchor_lang_v2::",
+    "anchor_spl_v2::",
+    "#[program]",
+];
 const PINOCCHIO_DEPENDENCY: &str = "pinocchio";
 const NATIVE_SOLANA_DEPENDENCIES: &[&str] = &[
     "solana-account-info",
@@ -137,6 +144,10 @@ impl Default for FrameworkContext {
     fn default() -> Self {
         Self::unknown()
     }
+}
+
+pub fn source_has_anchor_framework_hint(source: &str) -> bool {
+    ANCHOR_SOURCE_HINTS.iter().any(|hint| source.contains(hint))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -339,5 +350,21 @@ entrypoint!(process_instruction);
     #[test]
     fn unknown_framework_keeps_rules_eligible_for_partial_sources() {
         assert!(FrameworkSet::ANCHOR.contains(FrameworkId::Unknown));
+    }
+
+    #[test]
+    fn anchor_source_hint_covers_v1_and_v2_import_paths() {
+        for source in [
+            "use anchor_lang::prelude::*;",
+            "use anchor_spl::token::Token;",
+            "use anchor_lang_v2::prelude::*;",
+            "use anchor_spl_v2::token::Token;",
+            "#[program]\npub mod demo {}",
+        ] {
+            assert!(source_has_anchor_framework_hint(source), "{source}");
+        }
+        assert!(!source_has_anchor_framework_hint(
+            "use pinocchio::{entrypoint, ProgramResult};"
+        ));
     }
 }

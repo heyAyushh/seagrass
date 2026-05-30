@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: wake Anchor completions and tree-sitter context recovery for Anchor v2
+  preview imports such as `anchor_lang_v2::prelude`.
 - lsp: add a framework context and rule-applicability seam for Anchor,
   Pinocchio, and native Solana diagnostics.
 - cli: make diagnostics input errors retryable with exact examples, add layered

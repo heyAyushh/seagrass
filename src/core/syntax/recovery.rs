@@ -91,7 +91,5 @@ fn position_at_byte_offset(source: &str, offset: usize) -> Position {
 
 fn has_anchor_framework_hint(source: &str, offset: usize) -> bool {
     let before_cursor = &source[..offset.min(source.len())];
-    before_cursor.contains("anchor_lang::prelude")
-        || before_cursor.contains("#[program]")
-        || before_cursor.contains("anchor_lang::context::Context")
+    crate::solana::frameworks::source_has_anchor_framework_hint(before_cursor)
 }
