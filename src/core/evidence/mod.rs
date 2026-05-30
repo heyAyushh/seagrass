@@ -106,8 +106,16 @@ impl<'a> AccountSetEvidence<'a> {
         self.account_names.contains(name)
     }
 
+    pub fn account_names(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.account_names.iter().copied()
+    }
+
     pub fn has_instruction_argument(&self, name: &str) -> bool {
         self.instruction_argument_names.contains(name)
+    }
+
+    pub fn instruction_argument_names(&self) -> impl Iterator<Item = &'a str> + '_ {
+        self.instruction_argument_names.iter().copied()
     }
 
     pub fn instruction_argument_type(&self, name: &str) -> Option<&'a str> {

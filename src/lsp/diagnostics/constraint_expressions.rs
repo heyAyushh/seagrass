@@ -4,6 +4,7 @@ use {
         constraint_catalog,
         diagnostics::{
             diagnostic_from_range, registry::AnchorDiagnosticKind,
+            REPLACE_CONSTRAINT_EXPRESSION_IDENTIFIER_QUICKFIX,
             REPLACE_CONSTRAINT_EXPRESSION_MEMBER_QUICKFIX,
         },
         document::ParsedDocument,
@@ -107,6 +108,7 @@ enum ConstraintExpressionIssue {
     UnresolvedIdentifier {
         constraint_key: String,
         identifier: String,
+        candidates: Vec<String>,
     },
     UnknownMember {
         constraint_key: String,
@@ -134,6 +136,7 @@ impl ConstraintExpressionIssue {
             Self::UnresolvedIdentifier {
                 constraint_key,
                 identifier,
+                candidates,
             } => diagnostic_from_range(
                 expression_token_range(document, constraint, identifier)
                     .unwrap_or_else(|| value_range(document, constraint, constraint_key, identifier)),
@@ -145,6 +148,8 @@ impl ConstraintExpressionIssue {
                     "constraint": constraint_key,
                     "identifier": identifier,
                     "accountsStruct": accounts.accounts.name,
+                    "candidates": candidates,
+                    "quickfix": REPLACE_CONSTRAINT_EXPRESSION_IDENTIFIER_QUICKFIX,
                 })),
             ),
             Self::UnknownMember {
@@ -272,6 +277,10 @@ impl<'ast> Visit<'ast> for ConstraintExpressionVisitor<'_, '_> {
                     .push(ConstraintExpressionIssue::UnresolvedIdentifier {
                         constraint_key: self.constraint_key.clone(),
                         identifier,
+                        candidates: resolution::identifier_replacement_candidates(
+                            self.document,
+                            self.accounts,
+                        ),
                     });
             }
         }
@@ -324,6 +333,7 @@ impl ConstraintExpressionVisitor<'_, '_> {
             ConstraintExpressionIssue::UnresolvedIdentifier {
                 constraint_key: _,
                 identifier: existing,
+                candidates: _,
             } => existing == identifier,
             ConstraintExpressionIssue::UnknownMember { .. }
             | ConstraintExpressionIssue::UnexpectedType { .. } => false,
@@ -571,6 +581,14 @@ pub struct Run<'info> {
         ));
         assert_eq!(diagnostic.range.start.line, 10);
         assert_eq!(diagnostic.range.start.character, 21);
+        let candidates = diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data["candidates"].as_array());
+        assert!(
+            candidates.is_some_and(|candidates| candidates.iter().any(|value| value == "amount")),
+            "expected in-scope instruction argument candidate; got {diagnostic:#?}"
+        );
     }
 
     #[test]

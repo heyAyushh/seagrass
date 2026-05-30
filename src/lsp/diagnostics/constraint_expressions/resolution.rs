@@ -1,5 +1,6 @@
 use {
     crate::{document::ParsedDocument, evidence::AccountSetEvidence, workspace::WorkspaceIndex},
+    std::collections::BTreeSet,
     syn::ExprPath,
     tower_lsp::lsp_types::SymbolKind,
 };
@@ -29,6 +30,34 @@ pub(super) fn unresolved_path_identifier(
         _ if path_resolves(document, workspace_index, &segments) => None,
         _ => Some(segments.join(PATH_SEPARATOR)),
     }
+}
+
+pub(super) fn identifier_replacement_candidates(
+    document: &ParsedDocument,
+    accounts: &AccountSetEvidence<'_>,
+) -> Vec<String> {
+    accounts
+        .account_names()
+        .chain(accounts.instruction_argument_names())
+        .map(str::to_string)
+        .chain(
+            document
+                .symbols()
+                .value_items
+                .iter()
+                .map(|item| item.name.clone()),
+        )
+        .chain(
+            document
+                .symbols()
+                .imported_names
+                .iter()
+                .filter(|import| is_const_like_identifier(&import.name))
+                .map(|import| import.name.clone()),
+        )
+        .collect::<BTreeSet<_>>()
+        .into_iter()
+        .collect()
 }
 
 fn path_segments(path: &ExprPath) -> Vec<String> {

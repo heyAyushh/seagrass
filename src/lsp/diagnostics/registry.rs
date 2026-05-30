@@ -38,6 +38,8 @@ pub const ANCHOR_PDA_SEED_RESOLUTION_CODE: &str = "anchor-pda-seed-resolution";
 pub const INIT_PLACEHOLDERS_QUICKFIX: &str = "init-placeholders";
 pub const REPLACE_CONSTRAINT_EXPRESSION_MEMBER_QUICKFIX: &str =
     "replace-constraint-expression-member";
+pub const REPLACE_CONSTRAINT_EXPRESSION_IDENTIFIER_QUICKFIX: &str =
+    "replace-constraint-expression-identifier";
 pub const SOURCE: &str = "seagrass";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -10,6 +10,8 @@ keep future entries aligned with release-plz output.
 - scripts: resolve generated-support Anchor sources from explicit
   `SEAGRASS_ANCHOR_PATH`, the current checkout, or Cargo's pinned git checkout
   instead of sibling mirrors.
+- lsp: offer scoped quick fixes for misspelled Anchor constraint identifiers
+  using resolved account fields, instruction args, and const-like values.
 - lsp: validate account-data member access through local account bindings such
   as `let position_bundle = &mut ctx.accounts.position_bundle`.
 - lsp: link diagnostics and constraint document links to exact Anchor reference
