@@ -272,6 +272,13 @@ pub struct SymbolRange {
     pub derive_accounts_range: Option<Range>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AccountFieldTypeSummary {
+    pub type_name: Option<String>,
+    pub generic_type_names: Vec<String>,
+    pub is_optional: bool,
+}
+
 impl SymbolRange {
     fn from_struct(item_struct: &ItemStruct) -> Self {
         Self {
@@ -289,6 +296,18 @@ impl SymbolRange {
             instruction_arguments: instruction_attribute_arguments(&item_struct.attrs),
             derive_accounts_range: derive_accounts_range(&item_struct.attrs),
         }
+    }
+}
+
+pub fn summarize_account_field_type(ty: &Type) -> AccountFieldTypeSummary {
+    let (field_ty, is_optional) = account_field_type(ty);
+    AccountFieldTypeSummary {
+        type_name: type_name(field_ty),
+        generic_type_names: generic_type_ranges(field_ty)
+            .into_iter()
+            .map(|range| range.name)
+            .collect(),
+        is_optional,
     }
 }
 

@@ -1,9 +1,12 @@
 use {
     crate::{
-        document::{ParsedDocument, SymbolRange},
+        document::{
+            summarize_account_field_type, AccountFieldTypeSummary, ParsedDocument, SymbolRange,
+        },
         range::line_at,
         workspace::{WorkspaceAccountField, WorkspaceIndex},
     },
+    quote::ToTokens,
     tower_lsp::lsp_types::{
         CompletionItem, CompletionItemKind, CompletionTextEdit, Position, Range, TextEdit,
     },
@@ -20,6 +23,18 @@ struct FieldCandidate {
     name: String,
     detail: String,
     kind: CompletionItemKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TextAccountField {
+    name: String,
+    type_summary: AccountFieldTypeSummary,
+    type_display: Option<String>,
+}
+
+struct TextStructFields {
+    fields: Vec<TextAccountField>,
+    derives_accounts: bool,
 }
 
 pub fn completions(
@@ -42,6 +57,14 @@ pub fn completions(
         .or_else(|| text_enclosing_context_name(document.source(), position))?;
 
     let mut candidates = local_candidates(document, &accounts_context, &context.completed_segments)
+        .or_else(|| {
+            text_recovery_candidates(
+                document.source(),
+                workspace_index,
+                &accounts_context,
+                &context.completed_segments,
+            )
+        })
         .or_else(|| {
             workspace_candidates(
                 workspace_index?,
@@ -142,69 +165,148 @@ fn workspace_candidates(
                 .collect()
         }),
         FieldContainer::AccountData(name) => {
-            let names = workspace_index.field_names_in_container(&name);
-            (!names.is_empty()).then(|| {
-                names
-                    .into_iter()
-                    .map(|field_name| {
-                        let detail = workspace_index
-                            .field_info_in_container(&field_name, &name)
-                            .and_then(|info| info.type_display)
-                            .map(|display| {
-                                format!("Anchor account data field in `{name}`: `{display}`")
-                            })
-                            .unwrap_or_else(|| format!("Anchor account data field in `{name}`"));
-                        FieldCandidate {
-                            name: field_name,
-                            detail,
-                            kind: CompletionItemKind::FIELD,
-                        }
-                    })
-                    .collect()
-            })
+            workspace_account_data_field_candidates(workspace_index, &name)
         }
     }
+}
+
+fn text_recovery_candidates(
+    source: &str,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts_context: &str,
+    completed_segments: &[String],
+) -> Option<Vec<FieldCandidate>> {
+    if completed_segments.is_empty() {
+        return text_account_field_candidates(source, accounts_context);
+    }
+
+    let container = text_container_after_segments(
+        source,
+        workspace_index,
+        accounts_context,
+        completed_segments,
+    )?;
+    match container {
+        FieldContainer::Accounts(name) => {
+            text_account_field_candidates(source, &name).or_else(|| {
+                workspace_index.and_then(|index| {
+                    index.accounts_struct(&name).map(|accounts| {
+                        accounts
+                            .fields
+                            .iter()
+                            .map(|field| workspace_account_field_candidate(&name, field))
+                            .collect()
+                    })
+                })
+            })
+        }
+        FieldContainer::AccountData(name) => text_account_data_field_candidates(source, &name)
+            .or_else(|| {
+                workspace_index
+                    .and_then(|index| workspace_account_data_field_candidates(index, &name))
+            }),
+    }
+}
+
+fn workspace_account_data_field_candidates(
+    workspace_index: &WorkspaceIndex,
+    name: &str,
+) -> Option<Vec<FieldCandidate>> {
+    let names = workspace_index.field_names_in_container(name);
+    (!names.is_empty()).then(|| {
+        names
+            .into_iter()
+            .map(|field_name| {
+                let detail = workspace_index
+                    .field_info_in_container(&field_name, name)
+                    .and_then(|info| info.type_display)
+                    .map(|display| format!("Anchor account data field in `{name}`: `{display}`"))
+                    .unwrap_or_else(|| format!("Anchor account data field in `{name}`"));
+                FieldCandidate {
+                    name: field_name,
+                    detail,
+                    kind: CompletionItemKind::FIELD,
+                }
+            })
+            .collect()
+    })
 }
 
 fn text_account_field_candidates(
     source: &str,
     accounts_context: &str,
 ) -> Option<Vec<FieldCandidate>> {
+    let mut candidates = text_accounts_struct_fields(source, accounts_context)?
+        .into_iter()
+        .map(|field| FieldCandidate {
+            name: field.name,
+            detail: field
+                .type_display
+                .map(|display| format!("Anchor account field in `{accounts_context}`: `{display}`"))
+                .unwrap_or_else(|| format!("Anchor account field in `{accounts_context}`")),
+            kind: CompletionItemKind::FIELD,
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| left.name.cmp(&right.name));
+    (!candidates.is_empty()).then_some(candidates)
+}
+
+fn text_account_data_field_candidates(
+    source: &str,
+    container: &str,
+) -> Option<Vec<FieldCandidate>> {
+    let mut candidates = text_struct_fields(source, container)?
+        .fields
+        .into_iter()
+        .map(|field| FieldCandidate {
+            name: field.name,
+            detail: field
+                .type_display
+                .map(|display| format!("Anchor account data field in `{container}`: `{display}`"))
+                .unwrap_or_else(|| format!("Anchor account data field in `{container}`")),
+            kind: CompletionItemKind::FIELD,
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| left.name.cmp(&right.name));
+    (!candidates.is_empty()).then_some(candidates)
+}
+
+fn text_accounts_struct_fields(
+    source: &str,
+    accounts_context: &str,
+) -> Option<Vec<TextAccountField>> {
+    let fields = text_struct_fields(source, accounts_context)?;
+    fields.derives_accounts.then_some(fields.fields)
+}
+
+fn text_struct_fields(source: &str, accounts_context: &str) -> Option<TextStructFields> {
     let struct_marker = format!("struct {accounts_context}");
     let struct_idx = source.find(&struct_marker)?;
     let open = source[struct_idx..].find('{').map(|idx| struct_idx + idx)?;
     let close = matching_close_brace(source, open).unwrap_or(source.len());
     let body = &source[open + 1..close];
-    let mut candidates = body
-        .lines()
-        .filter_map(|line| {
-            let trimmed = line.trim();
-            let after_pub = trimmed
-                .strip_prefix("pub ")
-                .or_else(|| trimmed.strip_prefix("pub(crate) "))?;
-            let (name, ty) = after_pub.split_once(':')?;
-            let name = name.trim();
-            if name.is_empty()
-                || !name
-                    .chars()
-                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-            {
-                return None;
-            }
-            let type_display = ty.trim().trim_end_matches(',').trim();
-            Some(FieldCandidate {
-                name: name.to_string(),
-                detail: if type_display.is_empty() {
-                    format!("Anchor account field in `{accounts_context}`")
-                } else {
-                    format!("Anchor account field in `{accounts_context}`: `{type_display}`")
-                },
-                kind: CompletionItemKind::FIELD,
+    let synthetic = format!("struct __SeagrassRecovery {{\n{body}\n}}");
+    let item = syn::parse_str::<syn::ItemStruct>(&synthetic).ok()?;
+    let syn::Fields::Named(fields) = item.fields else {
+        return None;
+    };
+    let fields = fields
+        .named
+        .into_iter()
+        .filter_map(|field| {
+            let ident = field.ident?;
+            let type_summary = summarize_account_field_type(&field.ty);
+            Some(TextAccountField {
+                name: ident.to_string(),
+                type_display: Some(field.ty.to_token_stream().to_string()),
+                type_summary,
             })
         })
         .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| left.name.cmp(&right.name));
-    (!candidates.is_empty()).then_some(candidates)
+    (!fields.is_empty()).then_some(TextStructFields {
+        fields,
+        derives_accounts: struct_derives_accounts(source, struct_idx),
+    })
 }
 
 fn matching_close_brace(source: &str, open: usize) -> Option<usize> {
@@ -223,6 +325,16 @@ fn matching_close_brace(source: &str, open: usize) -> Option<usize> {
         }
     }
     None
+}
+
+fn struct_derives_accounts(source: &str, struct_idx: usize) -> bool {
+    const DERIVE_ACCOUNTS_MARKER: &str = "#[derive(Accounts";
+    let before_struct = &source[..struct_idx.min(source.len())];
+    let attribute_block_start = before_struct
+        .rfind("\n\n")
+        .map(|idx| idx + "\n\n".len())
+        .unwrap_or(0);
+    before_struct[attribute_block_start..].contains(DERIVE_ACCOUNTS_MARKER)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -305,6 +417,121 @@ fn workspace_container_after_segments(
         return None;
     }
     None
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct FieldShape {
+    type_name: Option<String>,
+    generic_type_names: Vec<String>,
+}
+
+fn text_container_after_segments(
+    source: &str,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts_context: &str,
+    completed_segments: &[String],
+) -> Option<FieldContainer> {
+    let mut container = FieldContainer::Accounts(accounts_context.to_string());
+    for (index, segment) in completed_segments.iter().enumerate() {
+        let field = field_shape_for_segment(source, workspace_index, &container, segment)?;
+        container = next_container_for_field(source, workspace_index, &field)?;
+        if index + 1 == completed_segments.len() {
+            return Some(container);
+        }
+    }
+    None
+}
+
+fn field_shape_for_segment(
+    source: &str,
+    workspace_index: Option<&WorkspaceIndex>,
+    container: &FieldContainer,
+    segment: &str,
+) -> Option<FieldShape> {
+    match container {
+        FieldContainer::Accounts(name) => text_field_shape(source, name, segment).or_else(|| {
+            workspace_index.and_then(|index| {
+                index
+                    .accounts_struct(name)?
+                    .fields
+                    .iter()
+                    .find(|field| field.name == segment)
+                    .map(field_shape_from_workspace_account_field)
+            })
+        }),
+        FieldContainer::AccountData(name) => {
+            text_field_shape(source, name, segment).or_else(|| {
+                workspace_index.and_then(|index| {
+                    index
+                        .field_info_in_container(segment, name)
+                        .and_then(|field| field.type_display)
+                        .and_then(|display| field_shape_from_type_display(&display))
+                })
+            })
+        }
+    }
+}
+
+fn text_field_shape(source: &str, container: &str, segment: &str) -> Option<FieldShape> {
+    text_struct_fields(source, container)?
+        .fields
+        .into_iter()
+        .find(|field| field.name == segment)
+        .map(|field| field_shape_from_type_summary(field.type_summary))
+}
+
+fn next_container_for_field(
+    source: &str,
+    workspace_index: Option<&WorkspaceIndex>,
+    field: &FieldShape,
+) -> Option<FieldContainer> {
+    if let Some(type_name) = field.type_name.as_deref() {
+        if has_accounts_struct(source, workspace_index, type_name) {
+            return Some(FieldContainer::Accounts(type_name.to_string()));
+        }
+    }
+
+    field
+        .generic_type_names
+        .last()
+        .or(field.type_name.as_ref())
+        .filter(|name| has_account_data_struct(source, workspace_index, name))
+        .map(|name| FieldContainer::AccountData(name.clone()))
+}
+
+fn has_accounts_struct(source: &str, workspace_index: Option<&WorkspaceIndex>, name: &str) -> bool {
+    text_accounts_struct_fields(source, name).is_some()
+        || workspace_index.is_some_and(|index| index.accounts_struct(name).is_some())
+}
+
+fn has_account_data_struct(
+    source: &str,
+    workspace_index: Option<&WorkspaceIndex>,
+    name: &str,
+) -> bool {
+    text_struct_fields(source, name).is_some()
+        || workspace_index.is_some_and(|index| !index.field_names_in_container(name).is_empty())
+}
+
+fn field_shape_from_workspace_account_field(field: &WorkspaceAccountField) -> FieldShape {
+    FieldShape {
+        type_name: field.type_name.clone(),
+        generic_type_names: field.generic_type_names.clone(),
+    }
+}
+
+fn field_shape_from_type_summary(summary: AccountFieldTypeSummary) -> FieldShape {
+    FieldShape {
+        type_name: summary.type_name,
+        generic_type_names: summary.generic_type_names,
+    }
+}
+
+fn field_shape_from_type_display(display: &str) -> Option<FieldShape> {
+    let ty = syn::parse_str::<syn::Type>(display).ok()?;
+    Some(field_shape_from_type_summary(summarize_account_field_type(
+        &ty,
+    )))
 }
 
 fn account_field_candidates(container: &str, fields: &[SymbolRange]) -> Vec<FieldCandidate> {
@@ -682,6 +909,93 @@ pub struct PositionBundle {
         assert!(items
             .iter()
             .any(|item| item.label == "position_bundle_mint"));
+    }
+
+    #[test]
+    fn completes_same_file_account_alias_members_when_handler_is_incomplete() {
+        let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct CloseBundledPosition<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<CloseBundledPosition>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle.
+
+    Ok(())
+}
+"#;
+        let document = ParsedDocument::parse_or_empty(source);
+        let index = WorkspaceIndex::build(
+            &[],
+            [(
+                Url::parse("file:///tmp/state.rs").unwrap(),
+                r#"
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#
+                .to_string(),
+            )],
+        );
+
+        let items = completions(
+            &document,
+            position_after(source, "position_bundle."),
+            Some(&index),
+        )
+        .expect("same-file account alias member completions should recover");
+
+        assert!(items
+            .iter()
+            .any(|item| item.label == "position_bundle_mint"));
+        assert!(items.iter().any(|item| item.label == "position_bitmap"));
+    }
+
+    #[test]
+    fn completes_same_file_ctx_account_members_when_handler_is_incomplete() {
+        let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct CloseBundledPosition<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<CloseBundledPosition>) -> Result<()> {
+    ctx.accounts.position_bundle.
+
+    Ok(())
+}
+"#;
+        let document = ParsedDocument::parse_or_empty(source);
+        let index = WorkspaceIndex::build(
+            &[],
+            [(
+                Url::parse("file:///tmp/state.rs").unwrap(),
+                r#"
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#
+                .to_string(),
+            )],
+        );
+
+        let items = completions(
+            &document,
+            position_after(source, "ctx.accounts.position_bundle."),
+            Some(&index),
+        )
+        .expect("same-file ctx account member completions should recover");
+
+        assert_eq!(items[0].label, "position_bundle_mint");
     }
 
     #[test]

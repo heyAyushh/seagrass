@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: recover account-data member completions for `ctx.accounts.*` and local
+  account aliases while the handler contains incomplete dot access.
 - lsp: flag obvious unresolved lowercase identifiers in Anchor handler bodies
   using a shallow parsed local scope.
 - lsp: use reachable split-file helper evidence for signer authorization
