@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: complete in-scope values inside Anchor handlers using parsed local
+  bindings, instruction args, imports, constants, and accounts fields.
 - lsp: surface unresolved Anchor handler identifiers in the hot diagnostics
   lane so editor Problems update without waiting for full cold analysis.
 - lsp: recover account-data member completions for `ctx.accounts.*` and local

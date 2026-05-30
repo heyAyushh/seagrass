@@ -47,6 +47,7 @@ queue across `src/lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/
 | `lsp/completions/account_fields/mod.rs` | account field/type completions | account semantics + workspace index | accounts structs | n/a | n/a | low | account field tests |
 | `lsp/completions/account_fields/context.rs` | account field completion context classifier | parsed document, tree-sitter fallback, and account semantics | accounts structs | n/a | n/a | low | account field context tests |
 | `lsp/completions/account_paths.rs` | `ctx.accounts.*` path completions | parsed account path + workspace index + same-file text recovery for incomplete handlers | instruction body | n/a | n/a | low | account path tests |
+| `lsp/completions/handler_values.rs` | handler expression value completions | parsed handler scope, account context fields, imports, and constants | Anchor handler expression values | n/a | n/a | low | handler value tests + generated proptest |
 | `lsp/completions/instruction_attributes.rs` | `#[instruction(...)]` completions | parsed handler args | instruction attribute | n/a | n/a | low | instruction attribute completion tests |
 | `lsp/completions/ranking.rs` | global completion ranking | `RankingContext` + item data | cross-provider | n/a | n/a | low | global ranking tests |
 | `lsp/completions/cursor_context.rs` | cursor classification | parsed document + tree-sitter fallback | cursor position and syntax tokens | n/a | n/a | low | cursor context tests |

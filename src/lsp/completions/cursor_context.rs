@@ -15,6 +15,7 @@ pub enum CompletionSignatureKind {
     AccountConstraintValue,
     InstructionAttribute,
     AccountsField,
+    HandlerValue,
 }
 
 impl CompletionSignatureKind {
@@ -26,6 +27,7 @@ impl CompletionSignatureKind {
             Self::AccountConstraintValue => "accountConstraintValue",
             Self::InstructionAttribute => "instructionAttribute",
             Self::AccountsField => "accountsField",
+            Self::HandlerValue => "handlerValue",
         }
     }
 }
@@ -89,6 +91,9 @@ pub(crate) enum CursorContextKind {
         prefix: String,
     },
     AccountsField {
+        prefix: String,
+    },
+    HandlerValue {
         prefix: String,
     },
     NotAnchor,
@@ -244,6 +249,12 @@ impl CursorContext {
             };
         }
 
+        if let Some(prefix) = handler_value_typed_prefix(source, offset, line_prefix) {
+            return CursorContextKind::HandlerValue {
+                prefix: prefix.to_string(),
+            };
+        }
+
         CursorContextKind::NotAnchor
     }
 
@@ -276,6 +287,10 @@ impl CursorContext {
                 kind: CursorContextKind::AccountsField { prefix },
                 ..
             } => (CompletionSignatureKind::AccountsField, prefix),
+            Self {
+                kind: CursorContextKind::HandlerValue { prefix },
+                ..
+            } => (CompletionSignatureKind::HandlerValue, prefix),
             Self {
                 kind: CursorContextKind::NotAnchor,
                 ..
@@ -538,7 +553,7 @@ fn has_enclosing_anchor_context(source: &str, offset: usize) -> bool {
     before_cursor[function_start..].contains("Context<")
 }
 
-pub(super) fn last_function_keyword_before(source: &str) -> Option<usize> {
+pub(crate) fn last_function_keyword_before(source: &str) -> Option<usize> {
     source
         .rmatch_indices("fn")
         .find_map(|(idx, _)| function_keyword_at(source, idx).then_some(idx))
@@ -567,7 +582,7 @@ fn is_anchor_context_receiver(receiver: &str) -> bool {
     matches!(receiver, "ctx" | "context")
 }
 
-fn is_identifier_char(ch: char) -> bool {
+pub(crate) fn is_identifier_char(ch: char) -> bool {
     ch.is_ascii_alphanumeric() || ch == '_'
 }
 
@@ -612,6 +627,41 @@ fn looks_like_accounts_field_completion(source: &str, offset: usize, line_prefix
     matching_close_brace(source, open).is_none_or(|close| close >= offset)
 }
 
+fn handler_value_typed_prefix<'a>(
+    source: &str,
+    offset: usize,
+    line_prefix: &'a str,
+) -> Option<&'a str> {
+    if !has_enclosing_anchor_context(source, offset)
+        || has_enclosing_function_signature(source, offset)
+    {
+        return None;
+    }
+
+    let tail_start = line_prefix
+        .char_indices()
+        .rev()
+        .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx + ch.len_utf8()))
+        .unwrap_or(0);
+    let prefix = &line_prefix[tail_start..];
+    if prefix.is_empty() {
+        return None;
+    }
+    let previous = line_prefix[..tail_start].chars().next_back();
+    if matches!(previous, Some('.') | Some(':')) {
+        return None;
+    }
+    if line_prefix[..tail_start]
+        .rsplit([';', '{', '}'])
+        .next()
+        .is_some_and(|segment| segment.contains("let ") && !segment.contains('='))
+    {
+        return None;
+    }
+
+    Some(prefix)
+}
+
 fn account_field_hint_prefix(line_prefix: &str) -> Option<&str> {
     let trimmed = line_prefix.trim_start();
     if trimmed.starts_with("//") || trimmed.starts_with("#[") {
@@ -636,7 +686,7 @@ fn account_field_hint_prefix(line_prefix: &str) -> Option<&str> {
     (!trimmed.is_empty()).then_some(trimmed)
 }
 
-fn matching_close_brace(source: &str, open: usize) -> Option<usize> {
+pub(crate) fn matching_close_brace(source: &str, open: usize) -> Option<usize> {
     let mut depth = 0usize;
     for (idx, ch) in source[open..].char_indices() {
         let absolute = open + idx;
