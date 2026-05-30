@@ -7,11 +7,13 @@ use {
             registry::AnchorDiagnosticKind,
         },
         document::{ParsedDocument, PdaSeeds},
-        evidence::{ConstraintEvidence, FieldEvidence},
+        evidence::{AccountSetEvidence, ConstraintEvidence, FieldEvidence},
     },
     syn::{Expr, Lit},
     tower_lsp::lsp_types::Diagnostic,
 };
+
+const ADD_SCOPED_PDA_SEED_QUICKFIX: &str = "add-scoped-pda-seed";
 
 pub(super) fn constraint_diagnostics(
     document: &ParsedDocument,
@@ -30,9 +32,12 @@ pub(super) fn constraint_diagnostics(
     diagnostics
 }
 
-pub(super) fn field_diagnostics(field: &FieldEvidence<'_>) -> Vec<Diagnostic> {
+pub(super) fn field_diagnostics(
+    accounts: &AccountSetEvidence<'_>,
+    field: &FieldEvidence<'_>,
+) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
-    diagnostics.extend(static_pda_seed_diagnostic(field));
+    diagnostics.extend(static_pda_seed_diagnostic(accounts, field));
     diagnostics.extend(pda_seed_count_diagnostic(field));
     diagnostics.extend(pda_seed_length_diagnostics(field));
     diagnostics
@@ -175,7 +180,10 @@ fn associated_token_seeds_conflict_diagnostic(
         })),
     ))
 }
-fn static_pda_seed_diagnostic(field: &FieldEvidence<'_>) -> Option<Diagnostic> {
+fn static_pda_seed_diagnostic(
+    accounts: &AccountSetEvidence<'_>,
+    field: &FieldEvidence<'_>,
+) -> Option<Diagnostic> {
     let constraint = field
         .constraints()
         .iter()
@@ -183,6 +191,7 @@ fn static_pda_seed_diagnostic(field: &FieldEvidence<'_>) -> Option<Diagnostic> {
     if !constraint.has_flag_or_key("bump") || !field.seeds_are_static_only() {
         return None;
     }
+    let scoped_seed = static_pda_scoped_seed(accounts, field);
 
     Some(diagnostic_from_range(
         constraint.range(),
@@ -191,11 +200,50 @@ fn static_pda_seed_diagnostic(field: &FieldEvidence<'_>) -> Option<Diagnostic> {
             "`{}` derives a PDA from only static seeds; add an account or instruction seed if this state should be scoped.",
             field.field.name
         ),
-        Some(serde_json::json!({
-            "account": field.field.name,
-            "constraint": "seeds",
-        })),
+        Some(static_pda_seed_data(field.field.name.as_str(), scoped_seed)),
     ))
+}
+
+fn static_pda_seed_data(account: &str, scoped_seed: Option<String>) -> serde_json::Value {
+    if let Some(scoped_seed) = scoped_seed {
+        return serde_json::json!({
+            "account": account,
+            "constraint": "seeds",
+            "quickfix": ADD_SCOPED_PDA_SEED_QUICKFIX,
+            "scopedSeed": scoped_seed,
+        });
+    }
+
+    serde_json::json!({
+        "account": account,
+        "constraint": "seeds",
+    })
+}
+
+fn static_pda_scoped_seed(
+    accounts: &AccountSetEvidence<'_>,
+    field: &FieldEvidence<'_>,
+) -> Option<String> {
+    accounts
+        .fields()
+        .iter()
+        .filter(|candidate| candidate.field.name != field.field.name)
+        .find(|candidate| candidate.type_name() == Some("Signer"))
+        .or_else(|| {
+            accounts
+                .fields()
+                .iter()
+                .filter(|candidate| candidate.field.name != field.field.name)
+                .find(|candidate| seedable_account_field(candidate))
+        })
+        .map(|candidate| format!("{}.key().as_ref()", candidate.field.name))
+}
+
+fn seedable_account_field(field: &FieldEvidence<'_>) -> bool {
+    !matches!(
+        field.type_name(),
+        Some("Program" | "Interface" | "Sysvar" | "SystemAccount")
+    )
 }
 fn pda_seed_count_diagnostic(field: &FieldEvidence<'_>) -> Option<Diagnostic> {
     let pda = field.pda()?;

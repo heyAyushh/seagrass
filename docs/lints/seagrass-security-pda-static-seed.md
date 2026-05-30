@@ -61,3 +61,9 @@ allow = ["seagrass/security.pda.static-seed"]
 
 Prefer fixing the underlying Anchor or Solana invariant when the diagnostic has
 enough evidence to point at a concrete issue.
+
+## Quick Fixes
+
+When the surrounding accounts struct contains a scoped account candidate,
+Seagrass can insert that account key as an additional PDA seed, for example
+`authority.key().as_ref()`.

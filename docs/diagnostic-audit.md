@@ -169,7 +169,7 @@ means the diagnostic currently has no code action.
 | `anchor-security-duplicate-account` | covered | `lsp/actions/accounts/mod.rs` | `duplicate-account-remediation` | none |
 | `anchor-security-owner-check` | covered | `lsp/actions/security.rs` | `add-owner-constraint`, `add-owner-check` | none |
 | `anchor-security-signer` | covered | `lsp/actions/security.rs` | `replace-account-type` | none |
-| `anchor-security-static-pda` | gap | n/a | none | Add scoped seed insertion action for static-only PDA diagnostics. |
+| `anchor-security-static-pda` | covered | `lsp/actions/security.rs` | `add-scoped-pda-seed` | none |
 | `anchor-security-sysvar` | covered | `lsp/actions/security.rs` | `replace-account-type` | none |
 | `anchor-security-token-account` | covered | `lsp/actions/security.rs` | `replace-account-type` | none |
 | `anchor-security-type-cosplay` | guidance | `lsp/actions/security.rs` | `typed-account-or-discriminator`, `add-discriminator-check` | Add concrete discriminator/type edit for raw native branches. |

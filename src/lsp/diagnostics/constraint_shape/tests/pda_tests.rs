@@ -169,7 +169,62 @@ pub struct Vault<'info> {
 "#,
     );
 
-    assert!(has_code(&diagnostics, ANCHOR_SECURITY_STATIC_PDA_CODE));
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            matches!(
+                diagnostic.code.as_ref(),
+                Some(NumberOrString::String(code)) if code == ANCHOR_SECURITY_STATIC_PDA_CODE
+            )
+        })
+        .expect("static PDA diagnostic");
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("quickfix"))
+            .and_then(|quickfix| quickfix.as_str()),
+        None
+    );
+}
+#[test]
+fn reports_static_only_pda_seeds_with_scoped_seed_candidate() {
+    let diagnostics = diagnostics_for(
+        r#"
+#[derive(Accounts)]
+pub struct Vault<'info> {
+    #[account(seeds = [b"vault"], bump)]
+    pub vault: Account<'info, VaultState>,
+    pub authority: Signer<'info>,
+}
+"#,
+    );
+
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            matches!(
+                diagnostic.code.as_ref(),
+                Some(NumberOrString::String(code)) if code == ANCHOR_SECURITY_STATIC_PDA_CODE
+            )
+        })
+        .expect("static PDA diagnostic");
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("quickfix"))
+            .and_then(|quickfix| quickfix.as_str()),
+        Some("add-scoped-pda-seed")
+    );
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("scopedSeed"))
+            .and_then(|seed| seed.as_str()),
+        Some("authority.key().as_ref()")
+    );
 }
 #[test]
 fn reports_too_many_pda_seeds_from_parser_projection() {

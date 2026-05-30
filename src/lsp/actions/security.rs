@@ -6,6 +6,7 @@ use {
     crate::{
         anchor_types,
         document::{ParsedDocument, SymbolRange},
+        range::byte_offset_at,
     },
     std::collections::HashMap,
     tower_lsp::lsp_types::{
@@ -160,7 +161,8 @@ fn security_edit_actions(
                 "add-signer-check" => signer_guard_edit(document, diagnostic),
                 "add-program-id-check" => program_id_guard_edit(document, diagnostic),
                 "use-checked-data-access" => bounds_guard_edit(document, diagnostic),
-                "add-static-pda-domain-seed" => static_pda_seed_edit(diagnostic),
+                "add-static-pda-domain-seed" => static_pda_domain_seed_edit(diagnostic),
+                "add-scoped-pda-seed" => scoped_pda_seed_edit(document, diagnostic),
                 "add-owner-check" => native_owner_guard_edit(document, diagnostic),
                 _ => None,
             }?;
@@ -170,6 +172,7 @@ fn security_edit_actions(
                 "add-program-id-check" => "Insert CPI program-id guard",
                 "use-checked-data-access" => "Insert data bounds guard",
                 "add-static-pda-domain-seed" => "Insert static PDA seed",
+                "add-scoped-pda-seed" => "Insert scoped PDA seed",
                 "add-owner-check" => "Insert owner guard",
                 _ => return None,
             };
@@ -243,7 +246,7 @@ fn bounds_guard_edit(document: &ParsedDocument, diagnostic: &Diagnostic) -> Opti
     ))
 }
 
-fn static_pda_seed_edit(diagnostic: &Diagnostic) -> Option<TextEdit> {
+fn static_pda_domain_seed_edit(diagnostic: &Diagnostic) -> Option<TextEdit> {
     Some(snippet_text_edit(
         Range {
             start: diagnostic.range.end,
@@ -251,6 +254,31 @@ fn static_pda_seed_edit(diagnostic: &Diagnostic) -> Option<TextEdit> {
         },
         "b\"state\", ",
     ))
+}
+
+fn scoped_pda_seed_edit(document: &ParsedDocument, diagnostic: &Diagnostic) -> Option<TextEdit> {
+    let seed = data_string(diagnostic, "scopedSeed")?;
+    let position = seed_list_insert_position(document.source(), diagnostic.range)?;
+    Some(snippet_text_edit(
+        Range {
+            start: position,
+            end: position,
+        },
+        &format!("{seed}, "),
+    ))
+}
+
+fn seed_list_insert_position(source: &str, range: Range) -> Option<Position> {
+    const SEEDS_KEY: &str = "seeds";
+    let start = byte_offset_at(source, range.start)?;
+    let end = byte_offset_at(source, range.end)?;
+    let attribute = source.get(start..end)?;
+    let seeds_offset = attribute.find(SEEDS_KEY)?;
+    let bracket_offset = attribute.get(seeds_offset..)?.find('[')?;
+    position_at_byte_offset(
+        source,
+        start + seeds_offset + bracket_offset + '['.len_utf8(),
+    )
 }
 
 fn native_owner_guard_edit(document: &ParsedDocument, diagnostic: &Diagnostic) -> Option<TextEdit> {
@@ -293,6 +321,30 @@ fn insert_line_edit(line: u32, new_text: String) -> TextEdit {
         },
         &new_text,
     )
+}
+
+fn position_at_byte_offset(source: &str, offset: usize) -> Option<Position> {
+    let offset = offset.min(source.len());
+    if !source.is_char_boundary(offset) {
+        return None;
+    }
+
+    let mut line = 0u32;
+    let mut line_start = 0usize;
+    for (index, ch) in source.char_indices() {
+        if index >= offset {
+            break;
+        }
+        if ch == '\n' {
+            line = line.saturating_add(1);
+            line_start = index + 1;
+        }
+    }
+
+    Some(Position {
+        line,
+        character: u32::try_from(source[line_start..offset].chars().count()).ok()?,
+    })
 }
 
 fn replace_account_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {

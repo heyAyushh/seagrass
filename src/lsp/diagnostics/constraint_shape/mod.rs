@@ -63,7 +63,7 @@ fn field_diagnostics(
     }
 
     diagnostics.extend(program_account::field_diagnostic(document, accounts, field));
-    diagnostics.extend(pda::field_diagnostics(field));
+    diagnostics.extend(pda::field_diagnostics(accounts, field));
 
     diagnostics
 }

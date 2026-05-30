@@ -134,6 +134,44 @@ pub struct Update<'info> {
     let text_edit = changes.values().next().unwrap().first().unwrap();
     assert_eq!(text_edit.new_text.trim(), "#[account(mut)]");
 }
+
+#[test]
+fn offers_scoped_pda_seed_quickfix_for_static_only_pda() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(seeds = [b"state"], bump)]
+    pub state: AccountInfo<'info>,
+    pub authority: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = crate::diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic_code(diagnostic) == Some("anchor-security-static-pda"))
+        .expect("static PDA diagnostic");
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        diagnostic.range,
+        &diagnostics,
+    );
+
+    let action = actions
+        .iter()
+        .find(|action| action.title.contains("scoped PDA seed"))
+        .expect("expected scoped PDA seed quickfix");
+    let edit = action.edit.as_ref().unwrap();
+    let changes = edit.changes.as_ref().unwrap();
+    let text_edit = changes.values().next().unwrap().first().unwrap();
+    let updated = apply_text_edit(source, text_edit);
+
+    assert!(updated.contains("seeds = [authority.key().as_ref(), b\"state\"]"));
+}
+
 #[test]
 fn add_mut_quickfix_uses_accounts_struct_from_diagnostic() {
     let source = r#"

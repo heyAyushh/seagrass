@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: offer scoped seed quick fixes for static-only Anchor PDA diagnostics
+  when the accounts context has an account key candidate.
 - lsp: resolve `Box<Account<'info, T>>` and nested optional boxed account
   fields to their inner Anchor wrapper so editor diagnostics catch invalid
   account-data member access through local bindings.
