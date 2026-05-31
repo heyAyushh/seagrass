@@ -338,7 +338,8 @@ pub(crate) fn expression_type_name_with_item_scope(
                 scope_item_type_name,
             )
         }),
-        Expr::Call(call) => call_returns::call_return_type_name(document, workspace_index, call)
+        Expr::Call(call) => type_names::wrapper_constructor_type_name(call)
+            .or_else(|| call_returns::call_return_type_name(document, workspace_index, call))
             .or_else(|| constructed_type_name(expr)),
         Expr::Block(block) => block_type_name(
             document,

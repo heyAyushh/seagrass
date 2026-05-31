@@ -13,6 +13,8 @@ keep future entries aligned with release-plz output.
   and unwrap combinator chains.
 - lsp: infer handler member types from `Option`/`Result` `Some` and `Ok`
   pattern bindings in if-let, let-else, while-let, and match arms.
+- lsp: infer handler member types from standard `Some` and `Ok`
+  constructor values before pattern matching and unwraps.
 - lsp: infer handler member types from `if`, `match`, and block expression
   results when every branch resolves to the same shallow type.
 - lsp: infer handler member types from assignment expressions that initialize

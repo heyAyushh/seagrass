@@ -4,11 +4,6 @@ use {
     syn::{Member, Pat},
 };
 
-const OPTION_PATTERN_CONSTRUCTOR: &str = "Some";
-const OPTION_PATTERN_TYPE: &str = "Option";
-const RESULT_OK_PATTERN_CONSTRUCTOR: &str = "Ok";
-const RESULT_PATTERN_TYPE: &str = "Result";
-
 pub(crate) fn typed_pattern_bindings(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
@@ -41,10 +36,7 @@ pub(crate) fn wrapper_type_name(pat: &Pat) -> Option<&'static str> {
     let Pat::TupleStruct(tuple) = pat else {
         return None;
     };
-    wrapper_pattern_type(tuple).map(|kind| match kind {
-        ValueWrapperKind::Option => OPTION_PATTERN_TYPE,
-        ValueWrapperKind::Result => RESULT_PATTERN_TYPE,
-    })
+    wrapper_pattern_type(tuple).map(ValueWrapperKind::type_name)
 }
 
 fn collect_typed_pattern_bindings(
@@ -195,10 +187,5 @@ fn pre_unwrapped_option_pattern(tuple: &syn::PatTupleStruct, type_name: &str) ->
 }
 
 fn wrapper_pattern_type(tuple: &syn::PatTupleStruct) -> Option<ValueWrapperKind> {
-    let constructor = tuple.path.segments.last()?.ident.to_string();
-    match constructor.as_str() {
-        OPTION_PATTERN_CONSTRUCTOR => Some(ValueWrapperKind::Option),
-        RESULT_OK_PATTERN_CONSTRUCTOR => Some(ValueWrapperKind::Result),
-        _ => None,
-    }
+    ValueWrapperKind::from_constructor_path(&tuple.path)
 }

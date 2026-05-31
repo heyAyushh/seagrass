@@ -9,8 +9,6 @@ use {
 
 type TypeLookup<'a> = dyn Fn(&str) -> Option<String> + 'a;
 
-const OPTION_CONSTRUCTOR: &str = "Some";
-const RESULT_OK_CONSTRUCTOR: &str = "Ok";
 const WRAPPER_AND_THEN_METHOD: &str = "and_then";
 const WRAPPER_AS_MUT_METHOD: &str = "as_mut";
 const WRAPPER_AS_REF_METHOD: &str = "as_ref";
@@ -106,6 +104,16 @@ pub(super) fn optional_item_type_name_with_scope(
     scope_item_type_name: &TypeLookup<'_>,
 ) -> Option<String> {
     match expr {
+        Expr::Call(call) => wrapper_constructor_value_type_name(
+            document,
+            workspace_index,
+            call,
+            None,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .map(|value| value.type_name),
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             wrapper_value_type_name_with_scope(
                 document,
@@ -193,6 +201,16 @@ pub(crate) fn expression_iterable_item_type_name_with_item_scope(
     scope_item_type_name: &TypeLookup<'_>,
 ) -> Option<String> {
     match expr {
+        Expr::Call(call) => wrapper_constructor_value_type_name(
+            document,
+            workspace_index,
+            call,
+            None,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .map(|value| value.type_name),
         Expr::MethodCall(method_call)
             if iterables::item_transforming_iterator_method_matches(
                 &method_call.method.to_string(),
@@ -282,6 +300,15 @@ fn wrapper_value_type_name_with_scope(
     scope_item_type_name: &TypeLookup<'_>,
 ) -> Option<WrapperValue> {
     match expr {
+        Expr::Call(call) => wrapper_constructor_value_type_name(
+            document,
+            workspace_index,
+            call,
+            None,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             let name = path.path.segments[0].ident.to_string();
             let kind = scope_type_name(&name)
@@ -361,6 +388,33 @@ fn wrapper_method_value_type_name(
             scope_item_type_name,
         ),
     }
+}
+
+fn wrapper_constructor_value_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    call: &syn::ExprCall,
+    expected_kind: Option<type_names::ValueWrapperKind>,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<WrapperValue> {
+    let kind = type_names::wrapper_constructor_kind(call)?;
+    if expected_kind.is_some_and(|expected| expected != kind) || call.args.len() != 1 {
+        return None;
+    }
+    let type_lookup = |name: &str| scope_type_name(name);
+    let context_lookup = |name: &str| context_type_name(name);
+    let item_lookup = |name: &str| scope_item_type_name(name);
+    let type_name = expression_type_name_with_item_scope(
+        document,
+        workspace_index,
+        call.args.first()?,
+        &type_lookup,
+        &context_lookup,
+        &item_lookup,
+    )?;
+    Some(WrapperValue { kind, type_name })
 }
 
 fn wrapper_preserving_value_type_name(
@@ -644,26 +698,14 @@ fn constructor_wrapped_value_type_name(
     context_type_name: &TypeLookup<'_>,
     scope_item_type_name: &TypeLookup<'_>,
 ) -> Option<String> {
-    let Expr::Path(path) = call.func.as_ref() else {
-        return None;
-    };
-    let constructor = path.path.segments.last()?.ident.to_string();
-    let expected_constructor = match expected_wrapper {
-        type_names::ValueWrapperKind::Option => OPTION_CONSTRUCTOR,
-        type_names::ValueWrapperKind::Result => RESULT_OK_CONSTRUCTOR,
-    };
-    if constructor != expected_constructor || call.args.len() != 1 {
-        return None;
-    }
-    let type_lookup = |name: &str| scope_type_name(name);
-    let context_lookup = |name: &str| context_type_name(name);
-    let item_lookup = |name: &str| scope_item_type_name(name);
-    expression_type_name_with_item_scope(
+    wrapper_constructor_value_type_name(
         document,
         workspace_index,
-        call.args.first()?,
-        &type_lookup,
-        &context_lookup,
-        &item_lookup,
+        call,
+        Some(expected_wrapper),
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
     )
+    .map(|value| value.type_name)
 }

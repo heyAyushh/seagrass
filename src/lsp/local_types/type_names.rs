@@ -1,9 +1,13 @@
 use {
     super::account_loader,
-    syn::{GenericArgument, PathArguments, ReturnType, Type, TypePath},
+    syn::{Expr, GenericArgument, PathArguments, ReturnType, Type, TypePath},
 };
 
 const TRANSPARENT_LOCAL_TYPE_WRAPPERS: &[&str] = &["Box"];
+const OPTION_TYPE_NAME: &str = "Option";
+const RESULT_TYPE_NAME: &str = "Result";
+const OPTION_SOME_CONSTRUCTOR: &str = "Some";
+const RESULT_OK_CONSTRUCTOR: &str = "Ok";
 const TRY_UNWRAP_RETURN_TYPE_WRAPPERS: &[&str] = &["Result"];
 const ACCOUNT_DATA_TYPE_WRAPPERS: &[&str] = &[
     "Account",
@@ -22,8 +26,26 @@ pub(super) enum ValueWrapperKind {
 impl ValueWrapperKind {
     pub(super) fn from_type_name(type_name: &str) -> Option<Self> {
         match type_name {
-            "Option" => Some(Self::Option),
-            "Result" => Some(Self::Result),
+            OPTION_TYPE_NAME => Some(Self::Option),
+            RESULT_TYPE_NAME => Some(Self::Result),
+            _ => None,
+        }
+    }
+
+    pub(super) fn type_name(self) -> &'static str {
+        match self {
+            Self::Option => OPTION_TYPE_NAME,
+            Self::Result => RESULT_TYPE_NAME,
+        }
+    }
+
+    pub(super) fn from_constructor_path(path: &syn::Path) -> Option<Self> {
+        let mut segments = path.segments.iter().rev();
+        let constructor = segments.next()?.ident.to_string();
+        let parent = segments.next().map(|segment| segment.ident.to_string());
+        match (constructor.as_str(), parent.as_deref()) {
+            (OPTION_SOME_CONSTRUCTOR, None | Some(OPTION_TYPE_NAME)) => Some(Self::Option),
+            (RESULT_OK_CONSTRUCTOR, None | Some(RESULT_TYPE_NAME)) => Some(Self::Result),
             _ => None,
         }
     }
@@ -157,6 +179,20 @@ pub(super) fn return_type_name(output: &ReturnType) -> Option<String> {
 pub(super) fn return_type_name_from_text(text: &str) -> Option<String> {
     let ty = syn::parse_str::<Type>(text).ok()?;
     local_value_type_name(&ty)
+}
+
+pub(super) fn wrapper_constructor_kind(call: &syn::ExprCall) -> Option<ValueWrapperKind> {
+    let Expr::Path(path) = call.func.as_ref() else {
+        return None;
+    };
+    if path.qself.is_some() {
+        return None;
+    }
+    ValueWrapperKind::from_constructor_path(&path.path)
+}
+
+pub(super) fn wrapper_constructor_type_name(call: &syn::ExprCall) -> Option<String> {
+    wrapper_constructor_kind(call).map(|kind| kind.type_name().to_string())
 }
 
 pub(super) fn wrapped_value_type_name_for_kind(

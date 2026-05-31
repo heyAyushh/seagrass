@@ -11,6 +11,7 @@ use {
 };
 
 mod account_usage;
+mod handler_constructor_wrappers;
 mod handler_return_usage;
 mod handler_scope;
 mod proactive_assists;

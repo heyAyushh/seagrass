@@ -38,6 +38,158 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn completes_members_after_option_constructor_local_pattern() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let maybe_record = Some(SampleRecord { real_mint: Pubkey::default() });
+    if let Some(record) = maybe_record {
+        record.real_
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_"))
+        .expect("Option constructor local pattern member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "Option constructor local should complete inner members: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_direct_option_constructor_pattern() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    if let Some(record) = Some(SampleRecord { real_mint: Pubkey::default() }) {
+        record.real_
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_"))
+        .expect("direct Option constructor pattern member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "direct Option constructor pattern should complete inner members: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_qualified_option_constructor_pattern() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    if let Some(record) = std::option::Option::Some(SampleRecord { real_mint: Pubkey::default() }) {
+        record.real_
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_"))
+        .expect("qualified Option constructor pattern member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "qualified Option constructor should complete inner members: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_option_constructor_unwrap() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let record = Some(SampleRecord { real_mint: Pubkey::default() }).unwrap();
+    record.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_"))
+        .expect("Option constructor unwrap member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "Option constructor unwrap should complete inner members: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_result_constructor_local_match() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let record_result = Ok(SampleRecord { real_mint: Pubkey::default() });
+    match record_result {
+        Ok(record) => record.real_,
+        _ => return Ok(()),
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_"))
+        .expect("Result constructor local match member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "Result constructor local should complete inner members: {items:#?}"
+    );
+}
+
+#[test]
 fn completes_members_on_option_let_else_pattern_binding() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -161,6 +313,36 @@ pub struct Run<'info> {
     );
 }
 
+#[test]
+fn does_not_infer_members_for_arbitrary_some_constructor_path() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let maybe_record = custom::Some(SampleRecord { real_mint: Pubkey::default() });
+    if let Some(record) = maybe_record {
+        record.real_
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_")).unwrap_or_default();
+
+    assert!(
+        items.iter().all(|item| item.label != "real_mint"),
+        "arbitrary namespaced Some path should not infer Option inner members: {items:#?}"
+    );
+}
+
 proptest! {
     #[test]
     fn completes_generated_option_if_let_pattern_members(
@@ -197,6 +379,45 @@ pub struct Run<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated Option if-let member should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_option_constructor_local_members(
+        field_tail in rust_identifier(),
+        binding_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let binding = format!("record_{binding_tail}");
+        prop_assume!(field != binding);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {{
+    let maybe_record = Some(SampleRecord {{ {field}: Pubkey::default() }});
+    if let Some({binding}) = maybe_record {{
+        {binding}.real_
+    }}
+}}
+
+pub struct SampleRecord {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, &format!("{binding}.real_")))
+            .expect("generated Option constructor local member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated Option constructor local member should complete; items: {items:#?}"
         );
     }
 }
