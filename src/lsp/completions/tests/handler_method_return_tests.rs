@@ -1,7 +1,11 @@
 use {
     super::{completions, position_after},
-    crate::{document::ParsedDocument, lsp::completions::proptest_support::rust_identifier},
+    crate::{
+        document::ParsedDocument, lsp::completions::proptest_support::rust_identifier,
+        workspace::WorkspaceIndex,
+    },
     proptest::prelude::*,
+    tower_lsp::lsp_types::Url,
 };
 
 #[test]
@@ -109,6 +113,59 @@ pub struct BundleMetadata {
         items.is_none_or(|items| items.iter().all(|item| item.label != "asset_mint")),
         "Result<T> method returns should not expose T members without `?`"
     );
+}
+
+#[test]
+fn completes_members_from_workspace_method_return() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let metadata = bundle.metadata()?;
+    metadata.asset_
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/bundle.rs").unwrap(),
+                r#"
+use anchor_lang::prelude::*;
+
+pub struct PositionBundle {
+    pub value: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn metadata(&self) -> Result<BundleMetadata> {
+        unreachable!()
+    }
+}
+"#
+                .to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/metadata.rs").unwrap(),
+                r#"
+pub struct BundleMetadata {
+    pub asset_mint: Pubkey,
+}
+"#
+                .to_string(),
+            ),
+        ],
+    );
+
+    let items = crate::lsp::completions::completions_with_workspace(
+        &document,
+        position_after(source, "metadata.asset_"),
+        Some(&index),
+    )
+    .expect("workspace method return member completions");
+
+    assert_eq!(items[0].label, "asset_mint");
 }
 
 proptest! {

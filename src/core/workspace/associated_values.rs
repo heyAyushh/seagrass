@@ -4,6 +4,7 @@ use {super::WorkspaceIndex, tower_lsp::lsp_types::SymbolKind};
 pub struct WorkspaceAssociatedValue {
     pub name: String,
     pub kind: SymbolKind,
+    pub type_display: Option<String>,
 }
 
 impl WorkspaceIndex {
@@ -24,6 +25,7 @@ impl WorkspaceIndex {
             .map(|entry| WorkspaceAssociatedValue {
                 name: entry.name.to_string(),
                 kind: entry.kind,
+                type_display: entry.type_display.clone(),
             })
             .collect::<Vec<_>>();
         values.sort_by(|left, right| {

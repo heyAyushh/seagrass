@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: carry inherent method return types through workspace associated-value
+  indexing so split-file method returns drive member completions and diagnostics.
 - lsp: carry helper function return types through the workspace index so
   split-file handler member completions and diagnostics can resolve them.
 - lsp: infer same-file inherent method return types for handler member

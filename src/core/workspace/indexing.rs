@@ -433,7 +433,7 @@ fn indexed_symbols(document: &ParsedDocument) -> Vec<IndexedSymbol> {
                 kind: associated_value_symbol_kind(item.kind),
                 selection_range: item.range,
                 container_name: Some(container_name.clone()),
-                type_display: None,
+                type_display: item.type_display.clone(),
             })
         },
     ));

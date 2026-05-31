@@ -1,5 +1,6 @@
 use {
     crate::range::range_from_span,
+    quote::ToTokens,
     std::collections::HashMap,
     syn::{Attribute, ImplItem, ItemImpl, Path, Type},
     tower_lsp::lsp_types::Range,
@@ -12,6 +13,7 @@ pub struct AssociatedValueRange {
     pub name: String,
     pub range: Range,
     pub kind: AssociatedValueKind,
+    pub type_display: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -35,6 +37,7 @@ pub fn collect_from_impl(
                 name: item_const.ident.to_string(),
                 range: range_from_span(item_const.ident.span()),
                 kind: AssociatedValueKind::Constant,
+                type_display: Some(item_const.ty.to_token_stream().to_string()),
             }),
             ImplItem::Fn(item_fn) => {
                 let kind = if item_fn.sig.receiver().is_some() {
@@ -46,6 +49,7 @@ pub fn collect_from_impl(
                     name: item_fn.sig.ident.to_string(),
                     range: range_from_span(item_fn.sig.ident.span()),
                     kind,
+                    type_display: return_type_display(&item_fn.sig.output),
                 });
             }
             _ => {}
@@ -70,6 +74,13 @@ fn impl_self_type_name(item_impl: &ItemImpl) -> Option<String> {
         .segments
         .last()
         .map(|segment| segment.ident.to_string())
+}
+
+fn return_type_display(output: &syn::ReturnType) -> Option<String> {
+    let syn::ReturnType::Type(_, ty) = output else {
+        return None;
+    };
+    Some(ty.to_token_stream().to_string())
 }
 
 fn derives_named(attrs: &[Attribute], name: &str) -> bool {

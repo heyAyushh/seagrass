@@ -33,6 +33,14 @@ pub(super) fn method_return_type_name(
         &method_call.method.to_string(),
         ReturnMode::Direct,
     )
+    .or_else(|| {
+        workspace_method_return_type_name(
+            workspace_index,
+            &receiver_type,
+            &method_call.method.to_string(),
+            ReturnMode::Direct,
+        )
+    })
 }
 
 pub(super) fn try_method_return_type_name(
@@ -58,6 +66,14 @@ pub(super) fn try_method_return_type_name(
         &method_call.method.to_string(),
         ReturnMode::TryUnwrap,
     )
+    .or_else(|| {
+        workspace_method_return_type_name(
+            workspace_index,
+            &receiver_type,
+            &method_call.method.to_string(),
+            ReturnMode::TryUnwrap,
+        )
+    })
 }
 
 fn local_method_return_type_name(
@@ -74,6 +90,28 @@ fn local_method_return_type_name(
     };
     visitor.visit_file(document.syntax());
     visitor.unique_return_type_name()
+}
+
+fn workspace_method_return_type_name(
+    workspace_index: Option<&WorkspaceIndex>,
+    receiver_type: &str,
+    method_name: &str,
+    mode: ReturnMode,
+) -> Option<String> {
+    let mut return_type_names = workspace_index?
+        .associated_values_in_container(receiver_type)
+        .into_iter()
+        .filter(|value| value.kind == tower_lsp::lsp_types::SymbolKind::METHOD)
+        .filter(|value| value.name == method_name)
+        .filter_map(|value| value.type_display)
+        .filter_map(|display| match mode {
+            ReturnMode::Direct => type_names::return_type_name_from_text(&display),
+            ReturnMode::TryUnwrap => type_names::try_return_type_name_from_text(&display),
+        })
+        .collect::<Vec<_>>();
+    return_type_names.sort();
+    return_type_names.dedup();
+    (return_type_names.len() == 1).then(|| return_type_names.remove(0))
 }
 
 struct LocalMethodReturnVisitor<'a> {

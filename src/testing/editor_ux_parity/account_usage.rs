@@ -479,6 +479,62 @@ pub struct BundleMetadata {
 }
 
 #[test]
+fn editor_ux_completes_members_from_split_method_return() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+    let metadata = bundle.metadata()?;
+    metadata.position_
+}
+"#,
+    );
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/bundle.rs").unwrap(),
+                r#"
+use anchor_lang::prelude::*;
+
+pub struct PositionBundle {
+    pub value: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn metadata(&self) -> Result<BundleMetadata> {
+        unreachable!()
+    }
+}
+"#
+                .to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/metadata.rs").unwrap(),
+                r#"
+pub struct BundleMetadata {
+    pub position_bundle_mint: Pubkey,
+}
+"#
+                .to_string(),
+            ),
+        ],
+    );
+
+    let items = completions::completions_with_workspace(
+        &document,
+        position_after(document.source(), "metadata.position_"),
+        Some(&workspace_index),
+    )
+    .expect("editor-visible split method return completions");
+
+    assert!(items
+        .iter()
+        .any(|item| item.label == "position_bundle_mint"));
+}
+
+#[test]
 fn editor_ux_flags_unknown_context_bump_member() {
     let document = ParsedDocument::parse_or_empty(
         r#"

@@ -2,9 +2,10 @@ use {
     super::collect_with_workspace,
     crate::{
         diagnostics::registry::ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE, document::ParsedDocument,
+        workspace::WorkspaceIndex,
     },
     proptest::prelude::*,
-    tower_lsp::lsp_types::NumberOrString,
+    tower_lsp::lsp_types::{NumberOrString, Url},
 };
 
 #[test]
@@ -96,6 +97,67 @@ pub struct BundleMetadata {
         }),
         "Result<T> method returns should not be flattened into T: {diagnostics:#?}"
     );
+}
+
+#[test]
+fn reports_unknown_member_from_workspace_method_return() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+        let metadata = bundle.metadata()?;
+        metadata.s;
+        Ok(())
+    }
+}
+"#,
+    );
+    let index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/bundle.rs").unwrap(),
+                r#"
+use anchor_lang::prelude::*;
+
+pub struct PositionBundle {
+    pub value: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn metadata(&self) -> Result<BundleMetadata> {
+        unreachable!()
+    }
+}
+"#
+                .to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/metadata.rs").unwrap(),
+                r#"
+pub struct BundleMetadata {
+    pub asset_mint: Pubkey,
+}
+"#
+                .to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&document, Some(&index));
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("`metadata.s` does not resolve"))
+        .unwrap_or_else(|| {
+            panic!("missing workspace method-return member diagnostic: {diagnostics:#?}")
+        });
+
+    assert!(diagnostic
+        .message
+        .contains("`BundleMetadata` has no field `s`"));
 }
 
 proptest! {
