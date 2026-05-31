@@ -12,7 +12,7 @@ use {
     std::collections::{BTreeSet, HashSet},
     syn::{
         visit::{self, Visit},
-        ExprCall, ExprPath, FnArg, ItemFn, ItemMod, Pat, PathArguments,
+        Expr, ExprCall, ExprPath, FnArg, ItemFn, ItemMod, Pat, PathArguments,
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
@@ -107,6 +107,18 @@ impl HandlerScopeVisitor {
             ));
     }
 
+    fn report_unresolved_path_identifier(&mut self, path: &ExprPath) {
+        let Some(identifier) = bare_value_identifier(path) else {
+            return;
+        };
+        if identifier_should_be_resolved(&identifier) && !self.identifier_resolves(&identifier) {
+            self.report_unresolved_identifier(
+                &identifier,
+                range_from_span(path.path.segments[0].ident.span()),
+            );
+        }
+    }
+
     fn identifier_resolves(&self, identifier: &str) -> bool {
         self.scopes.contains(identifier)
             || self.global_values.contains(identifier)
@@ -185,23 +197,18 @@ impl<'ast> Visit<'ast> for HandlerScopeVisitor {
     }
 
     fn visit_expr_call(&mut self, node: &'ast ExprCall) {
-        // Function resolution needs imports, traits, and module graphs. This rule is
-        // intentionally limited to value expressions so it stays low-noise.
+        if let Expr::Path(path) = node.func.as_ref() {
+            self.report_unresolved_path_identifier(path);
+        } else {
+            self.visit_expr(&node.func);
+        }
         for arg in &node.args {
             self.visit_expr(arg);
         }
     }
 
     fn visit_expr_path(&mut self, node: &'ast ExprPath) {
-        let Some(identifier) = bare_value_identifier(node) else {
-            return;
-        };
-        if identifier_should_be_resolved(&identifier) && !self.identifier_resolves(&identifier) {
-            self.report_unresolved_identifier(
-                &identifier,
-                range_from_span(node.path.segments[0].ident.span()),
-            );
-        }
+        self.report_unresolved_path_identifier(node);
     }
 }
 
@@ -533,6 +540,62 @@ pub fn close(ctx: Context<Close>) -> Result<()> {
     }
 
     #[test]
+    fn reports_unresolved_handler_call_identifier() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let copied_index = bundle_index;
+        verify_bundel(copied_index);
+        Ok(())
+    }
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("`verify_bundel` does not resolve")),
+            "missing unresolved handler call diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn accepts_imported_and_local_handler_call_identifiers() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+use crate::util::verify_position_bundle_authority;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let local_helper = |value| value;
+        let copied_index = local_helper(bundle_index);
+        verify_position_bundle_authority(copied_index)?;
+        Ok(())
+    }
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "resolved handler calls should stay quiet: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn ignores_non_anchor_rust_functions() {
         let diagnostics = collect(
             &ParsedDocument::parse(
@@ -586,6 +649,46 @@ pub mod demo {{
                     .iter()
                     .any(|diagnostic| diagnostic.message.contains(&format!("`{missing}` does not resolve"))),
                 "expected generated unresolved handler identifier diagnostic, got {diagnostics:#?}"
+            );
+            prop_assert!(
+                diagnostics
+                    .iter()
+                    .all(|diagnostic| !diagnostic.message.contains(&format!("`{local}` does not resolve"))
+                        && !diagnostic.message.contains(&format!("`{argument}` does not resolve"))),
+                "bound generated identifiers should stay quiet: {diagnostics:#?}"
+            );
+        }
+
+        #[test]
+        fn reports_generated_unresolved_handler_call_identifiers(
+            missing in generated_ident(),
+            local in generated_ident(),
+            argument in generated_ident(),
+        ) {
+            prop_assume!(missing != local && missing != argument);
+            prop_assume!(local != "ctx" && argument != "ctx" && missing != "ctx");
+            let source = format!(
+                r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {{
+    pub fn close(ctx: Context<Close>, {argument}: u16) -> Result<()> {{
+        let {local} = {argument};
+        {missing}({local});
+        Ok(())
+    }}
+}}
+"#
+            );
+
+            let diagnostics = collect(&ParsedDocument::parse(source).unwrap());
+
+            prop_assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains(&format!("`{missing}` does not resolve"))),
+                "expected generated unresolved handler call diagnostic, got {diagnostics:#?}"
             );
             prop_assert!(
                 diagnostics

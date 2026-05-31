@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: flag unresolved lower-case handler call identifiers using the same
+  parsed scope as bare handler values, with typo quick fixes.
 - lsp: diagnose unknown handler method calls on resolved account-data values
   and reuse candidate methods for typo quick fixes.
 - lsp: infer associated function return types such as `Type::new()?` for

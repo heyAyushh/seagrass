@@ -12,6 +12,7 @@ use {
 
 mod account_usage;
 mod handler_return_usage;
+mod handler_scope;
 mod proactive_assists;
 
 struct EditorCase<'a> {

@@ -505,3 +505,54 @@ pub mod demo {
         Some("replace-handler-identifier")
     );
 }
+
+#[test]
+fn offers_unresolved_handler_call_replacement_from_scope() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        verify_bundel(bundle_index);
+        Ok(())
+    }
+}
+
+fn verify_bundle(bundle_index: u16) -> Result<()> {
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = crate::diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-account-usage")
+                && diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("reason"))
+                    .and_then(|value| value.as_str())
+                    == Some("unresolved-handler-identifier")
+        })
+        .unwrap_or_else(|| panic!("missing unresolved handler call: {diagnostics:#?}"));
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        diagnostic.range,
+        std::slice::from_ref(diagnostic),
+    );
+
+    let action = actions
+        .iter()
+        .find(|action| action.title == "Replace `verify_bundel` with `verify_bundle`")
+        .unwrap_or_else(|| panic!("missing handler call replacement action: {actions:#?}"));
+
+    assert_eq!(
+        action
+            .data
+            .as_ref()
+            .and_then(|data| data.get("anchorAction"))
+            .and_then(|value| value.as_str()),
+        Some("replace-handler-identifier")
+    );
+}
