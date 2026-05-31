@@ -168,6 +168,139 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn reports_unknown_member_after_match_return_arm() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    let selected = match maybe_record {
+        Some(record) => record.metadata(),
+        None => return Ok(()),
+    };
+    selected.real_fake;
+    Ok(())
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("`selected.real_fake` does not resolve")),
+        "missing match return arm diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_unknown_member_after_match_panic_arm() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    let selected = match maybe_record {
+        Some(record) => record.metadata(),
+        None => panic!("missing record"),
+    };
+    selected.real_fake;
+    Ok(())
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("`selected.real_fake` does not resolve")),
+        "missing match panic arm diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_unknown_member_after_if_let_return_else() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    let selected = if let Some(record) = maybe_record {
+        record.metadata()
+    } else {
+        return Ok(());
+    };
+    selected.real_fake;
+    Ok(())
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("`selected.real_fake` does not resolve")),
+        "missing if-let return else diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn reports_unknown_member_after_block_expression_infers_type() {
     let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
         r#"
@@ -289,6 +422,56 @@ pub struct Run<'info> {{
                 .iter()
                 .any(|diagnostic| diagnostic.message.contains(&format!("`selected.{missing}` does not resolve"))),
             "expected generated match-pattern output diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn reports_generated_unknown_members_after_match_return_arm(
+        known in generated_ident(),
+        missing in generated_ident(),
+    ) {
+        prop_assume!(known != missing);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {{
+    let selected = match maybe_record {{
+        Some(record) => record.metadata(),
+        None => return Ok(()),
+    }};
+    selected.{missing};
+    Ok(())
+}}
+
+pub struct SampleRecord {{
+    pub source: Pubkey,
+}}
+
+impl SampleRecord {{
+    pub fn metadata(&self) -> SampleMetadata {{
+        SampleMetadata {{ {known}: Pubkey::default() }}
+    }}
+}}
+
+pub struct SampleMetadata {{
+    pub {known}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+
+        let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(&source));
+
+        prop_assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains(&format!("`selected.{missing}` does not resolve"))),
+            "expected generated match return arm diagnostic: {diagnostics:#?}"
         );
     }
 }
