@@ -129,6 +129,63 @@ pub fn handler(ctx: Context<Close>) -> Result<()> {
     );
 }
 
+#[test]
+fn completes_if_let_pattern_binding_inside_then_block() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>) -> Result<()> {
+    let maybe_receiver = Some(ctx.accounts.receiver.key());
+    if let Some(position_bundle) = maybe_receiver {
+        let selected = pos
+    }
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "let selected = pos"))
+        .expect("expected if-let pattern value completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "position_bundle"),
+        "if-let pattern binding should complete inside then block: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_match_arm_pattern_binding_inside_arm_body() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>) -> Result<()> {
+    let maybe_receiver = Some(ctx.accounts.receiver.key());
+    match maybe_receiver {
+        Some(position_bundle) => {
+            let selected = pos
+        }
+        _ => {}
+    }
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "let selected = pos"))
+        .expect("expected match arm pattern value completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "position_bundle"),
+        "match arm pattern binding should complete inside arm body: {items:#?}"
+    );
+}
+
 proptest! {
     #[test]
     fn completes_generated_handler_locals_without_hardcoded_names(
@@ -171,6 +228,41 @@ pub fn handler(ctx: Context<Close>, {argument}: u64) -> Result<()> {{
         prop_assert!(
             items.iter().any(|item| item.label == account),
             "generated account field should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_if_let_pattern_bindings_without_hardcoded_names(
+        pattern_tail in rust_identifier(),
+        account_tail in rust_identifier(),
+    ) {
+        let pattern = format!("pattern_value_{pattern_tail}");
+        let account = format!("account_value_{account_tail}");
+        prop_assume!(pattern != account);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {{
+    pub {account}: AccountInfo<'info>,
+}}
+
+pub fn handler(ctx: Context<Close>) -> Result<()> {{
+    let maybe_value = Some(ctx.accounts.{account}.key());
+    if let Some({pattern}) = maybe_value {{
+        let selected = pattern_
+    }}
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "let selected = pattern_"))
+            .expect("expected generated if-let pattern completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == pattern),
+            "generated if-let pattern should complete; items: {items:#?}"
         );
     }
 }

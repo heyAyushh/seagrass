@@ -2,7 +2,10 @@ use {
     super::{cursor_context, ResolvedCursorContext},
     crate::{
         document::{ParsedDocument, SymbolRange},
-        lsp::scope::{collect_pattern_bindings, TextHandlerBinding, TextHandlerScope},
+        lsp::scope::{
+            collect_condition_pattern_bindings, collect_pattern_bindings, TextHandlerBinding,
+            TextHandlerScope,
+        },
         workspace::{WorkspaceContextField, WorkspaceIndex},
     },
     std::collections::BTreeMap,
@@ -360,6 +363,7 @@ impl VisibleBindingCollector<'_> {
             }
             Expr::If(if_expr) => {
                 if self.span_contains_cursor(if_expr.then_branch.span()) {
+                    self.add_condition_pattern_candidates(&if_expr.cond);
                     return self.collect_block_bindings(&if_expr.then_branch);
                 }
                 if let Some((_, else_branch)) = &if_expr.else_branch {
@@ -371,10 +375,19 @@ impl VisibleBindingCollector<'_> {
                 self.collect_block_bindings(&loop_expr.body)
             }
             Expr::While(while_expr) if self.span_contains_cursor(while_expr.body.span()) => {
+                self.add_condition_pattern_candidates(&while_expr.cond);
                 self.collect_block_bindings(&while_expr.body)
             }
             Expr::Match(match_expr) => {
                 for arm in &match_expr.arms {
+                    if arm
+                        .guard
+                        .as_ref()
+                        .is_some_and(|(_, guard)| self.span_contains_cursor(guard.span()))
+                    {
+                        self.add_pattern_candidates(&arm.pat, None);
+                        return true;
+                    }
                     if self.span_contains_cursor(arm.body.span()) {
                         self.add_pattern_candidates(&arm.pat, None);
                         return self.collect_bindings_inside_expr(&arm.body);
@@ -402,6 +415,14 @@ impl VisibleBindingCollector<'_> {
         collect_pattern_bindings(pat, &mut names);
         for name in names {
             self.add_candidate(name, type_display.clone());
+        }
+    }
+
+    fn add_condition_pattern_candidates(&mut self, expr: &Expr) {
+        let mut names = Vec::new();
+        collect_condition_pattern_bindings(expr, &mut names);
+        for name in names {
+            self.add_candidate(name, None);
         }
     }
 

@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: resolve Rust pattern bindings from `if let`, `while let`, and `match`
+  arms in Anchor handler diagnostics and value completions.
 - lsp: flag unresolved lower-case handler call identifiers using the same
   parsed scope as bare handler values, with typo quick fixes.
 - lsp: diagnose unknown handler method calls on resolved account-data values

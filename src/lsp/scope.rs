@@ -1,6 +1,7 @@
 use {
     crate::range::byte_offset_at,
-    syn::{GenericArgument, Pat, PathArguments, Type},
+    syn::parse::Parser,
+    syn::{BinOp, Expr, GenericArgument, Pat, PathArguments, Type},
     tower_lsp::lsp_types::Position,
 };
 
@@ -37,6 +38,19 @@ pub(crate) fn collect_pattern_bindings(pat: &Pat, names: &mut Vec<String>) {
             }
         }
         Pat::Paren(paren) => collect_pattern_bindings(&paren.pat, names),
+        _ => {}
+    }
+}
+
+pub(crate) fn collect_condition_pattern_bindings(expr: &Expr, names: &mut Vec<String>) {
+    match expr {
+        Expr::Let(expr_let) => collect_pattern_bindings(&expr_let.pat, names),
+        Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
+            collect_condition_pattern_bindings(&binary.left, names);
+            collect_condition_pattern_bindings(&binary.right, names);
+        }
+        Expr::Group(group) => collect_condition_pattern_bindings(&group.expr, names),
+        Expr::Paren(paren) => collect_condition_pattern_bindings(&paren.expr, names),
         _ => {}
     }
 }
@@ -90,6 +104,9 @@ impl TextHandlerScope {
         let (signature, body_prefix) = function_prefix.split_once('{')?;
         let has_anchor_context = signature.contains(FUNCTION_CONTEXT_NEEDLE);
         let mut bindings = text_function_input_bindings(signature);
+        bindings.extend(text_active_pattern_bindings(completed_body_lines(
+            body_prefix,
+        )));
         bindings.extend(text_local_binding_bindings(completed_body_lines(
             body_prefix,
         )));
@@ -199,6 +216,78 @@ fn text_local_binding_binding(line: &str) -> Option<TextHandlerBinding> {
         type_display: ty.filter(|ty| !ty.is_empty()).map(str::to_string),
         initializer_text: trimmed_initializer_text(right),
     })
+}
+
+fn text_active_pattern_bindings(body_prefix: &str) -> Vec<TextHandlerBinding> {
+    let mut depth = 0usize;
+    let mut frames = Vec::<TextPatternFrame>::new();
+    for line in body_prefix.lines() {
+        let pattern_bindings = text_line_pattern_bindings(line);
+        let mut pending_bindings = (!pattern_bindings.is_empty()).then_some(pattern_bindings);
+
+        for ch in line.chars() {
+            match ch {
+                '{' => {
+                    depth += 1;
+                    if let Some(bindings) = pending_bindings.take() {
+                        frames.push(TextPatternFrame { depth, bindings });
+                    }
+                }
+                '}' => {
+                    depth = depth.saturating_sub(1);
+                    frames.retain(|frame| frame.depth <= depth);
+                }
+                _ => {}
+            }
+        }
+    }
+
+    frames
+        .into_iter()
+        .flat_map(|frame| frame.bindings)
+        .collect()
+}
+
+struct TextPatternFrame {
+    depth: usize,
+    bindings: Vec<TextHandlerBinding>,
+}
+
+fn text_line_pattern_bindings(line: &str) -> Vec<TextHandlerBinding> {
+    text_if_or_while_let_pattern(line)
+        .or_else(|| text_match_arm_pattern(line))
+        .and_then(text_pattern_bindings)
+        .unwrap_or_default()
+}
+
+fn text_if_or_while_let_pattern(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let pattern = trimmed
+        .strip_prefix("if let ")
+        .or_else(|| trimmed.strip_prefix("while let "))?;
+    pattern.split_once('=').map(|(pattern, _)| pattern.trim())
+}
+
+fn text_match_arm_pattern(line: &str) -> Option<&str> {
+    let trimmed = line.trim_start();
+    let (pattern, _) = trimmed.split_once("=>")?;
+    Some(pattern.trim())
+}
+
+fn text_pattern_bindings(pattern: &str) -> Option<Vec<TextHandlerBinding>> {
+    let pattern = Pat::parse_single.parse_str(pattern).ok()?;
+    let mut names = Vec::new();
+    collect_pattern_bindings(&pattern, &mut names);
+    Some(
+        names
+            .into_iter()
+            .map(|name| TextHandlerBinding {
+                name,
+                type_display: None,
+                initializer_text: None,
+            })
+            .collect(),
+    )
 }
 
 fn trimmed_initializer_text(text: &str) -> Option<String> {

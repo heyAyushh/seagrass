@@ -1,4 +1,4 @@
-use crate::{diagnostics, document::ParsedDocument};
+use crate::{completions, diagnostics, document::ParsedDocument};
 
 #[test]
 fn editor_ux_flags_unresolved_anchor_handler_call_identifier() {
@@ -51,4 +51,45 @@ pub struct Close<'info> {
         .is_some_and(|candidates| candidates
             .iter()
             .any(|candidate| candidate.as_str() == Some("verify_bundle"))));
+}
+
+#[test]
+fn editor_ux_resolves_if_let_pattern_values_in_anchor_handlers() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let maybe_receiver = Some(ctx.accounts.receiver.key());
+    if let Some(position_bundle) = maybe_receiver {
+        let selected = pos
+    }
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = diagnostics::collect(&document);
+
+    assert!(
+        diagnostics.iter().all(|diagnostic| {
+            !diagnostic
+                .message
+                .contains("`position_bundle` does not resolve")
+        }),
+        "if-let pattern value should stay resolved in editor diagnostics: {diagnostics:#?}"
+    );
+
+    let items = completions::completions(
+        &document,
+        super::position_after(source, "let selected = pos"),
+    )
+    .expect("editor-visible if-let pattern completions");
+    assert_eq!(
+        items.first().map(|item| item.label.as_str()),
+        Some("position_bundle")
+    );
 }

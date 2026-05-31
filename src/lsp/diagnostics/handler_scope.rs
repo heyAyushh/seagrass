@@ -12,7 +12,7 @@ use {
     std::collections::{BTreeSet, HashSet},
     syn::{
         visit::{self, Visit},
-        Expr, ExprCall, ExprPath, FnArg, ItemFn, ItemMod, Pat, PathArguments,
+        BinOp, Expr, ExprCall, ExprPath, FnArg, ItemFn, ItemMod, Pat, PathArguments,
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
@@ -119,6 +119,22 @@ impl HandlerScopeVisitor {
         }
     }
 
+    fn visit_condition_with_pattern_scope(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Let(expr_let) => {
+                self.visit_expr(&expr_let.expr);
+                self.scopes.declare_pat(&expr_let.pat);
+            }
+            Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
+                self.visit_condition_with_pattern_scope(&binary.left);
+                self.visit_condition_with_pattern_scope(&binary.right);
+            }
+            Expr::Group(group) => self.visit_condition_with_pattern_scope(&group.expr),
+            Expr::Paren(paren) => self.visit_condition_with_pattern_scope(&paren.expr),
+            _ => self.visit_expr(expr),
+        }
+    }
+
     fn identifier_resolves(&self, identifier: &str) -> bool {
         self.scopes.contains(identifier)
             || self.global_values.contains(identifier)
@@ -185,6 +201,36 @@ impl<'ast> Visit<'ast> for HandlerScopeVisitor {
         self.scopes.declare_pat(&node.pat);
         self.visit_block(&node.body);
         self.scopes.pop();
+    }
+
+    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
+        self.scopes.push();
+        self.visit_condition_with_pattern_scope(&node.cond);
+        self.visit_block(&node.then_branch);
+        self.scopes.pop();
+        if let Some((_, else_branch)) = &node.else_branch {
+            self.visit_expr(else_branch);
+        }
+    }
+
+    fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
+        self.scopes.push();
+        self.visit_condition_with_pattern_scope(&node.cond);
+        self.visit_block(&node.body);
+        self.scopes.pop();
+    }
+
+    fn visit_expr_match(&mut self, node: &'ast syn::ExprMatch) {
+        self.visit_expr(&node.expr);
+        for arm in &node.arms {
+            self.scopes.push();
+            self.scopes.declare_pat(&arm.pat);
+            if let Some((_, guard)) = &arm.guard {
+                self.visit_expr(guard);
+            }
+            self.visit_expr(&arm.body);
+            self.scopes.pop();
+        }
     }
 
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
@@ -422,6 +468,10 @@ fn is_identifier_char(ch: char) -> bool {
 fn is_identifier_byte(byte: u8) -> bool {
     byte == b'_' || byte.is_ascii_alphanumeric()
 }
+
+#[cfg(test)]
+#[path = "handler_scope/pattern_tests.rs"]
+mod pattern_tests;
 
 #[cfg(test)]
 mod tests {
