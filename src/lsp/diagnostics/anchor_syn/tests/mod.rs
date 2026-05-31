@@ -646,6 +646,60 @@ pub struct CollectFeesV2<'info> {
 }
 
 #[test]
+fn accepts_final_expression_constraint_without_trailing_comma() {
+    let document = ParsedDocument::parse(
+        r#"
+#[derive(Accounts)]
+#[instruction(bundle_index: u16)]
+pub struct CloseBundledPosition<'info> {
+    /// !no-warn
+    #[account(
+        mut,
+        close = receiver,
+        seeds = [
+            b"bundled_position".as_ref(),
+            position_bundle.position_bundle_mint.key().as_ref(),
+            bundle_index.to_string().as_bytes()
+        ],
+        bump,
+    )]
+    pub bundled_position: Account<'info, Position>,
+    #[account(mut)]
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+    #[account(
+        constraint = position_bundle_token_account.mint == bundled_position.position_mint,
+        constraint = position_bundle_token_account.mint == position_bundle.position_bundle_mint,
+        constraint = position_bundle_token_account.amount == 1
+    )]
+    pub position_bundle_token_account: Box<Account<'info, TokenAccount>>,
+    pub receiver: UncheckedAccount<'info>,
+}
+
+#[account]
+pub struct Position {
+    pub position_mint: Pubkey,
+}
+
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect(&document);
+
+    assert!(
+        !diagnostics.iter().any(|diagnostic| {
+            diagnostic.message.contains("unexpected token")
+                || diagnostic.message.contains("expected `;`")
+        }),
+        "final expression constraint should parse without a trailing comma: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn does_not_report_unresolved_generic_when_type_param_is_declared() {
     let document = ParsedDocument::parse(
         r#"

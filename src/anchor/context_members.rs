@@ -107,9 +107,7 @@ pub(crate) fn missing_context_member_in_chain(
     }
 
     let bump_members = generated_bump_members(document, workspace_index, context_type)?;
-    let Some((bump_field, bump_tail)) = tail.split_first() else {
-        return None;
-    };
+    let (bump_field, bump_tail) = tail.split_first()?;
     let Some(resolved_bump) = bump_members
         .members
         .iter()

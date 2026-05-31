@@ -44,7 +44,7 @@ pub(super) fn completions(
     ) {
         return completion_items(position, &access.member_prefix, members);
     }
-    let members = account_members::resolved_struct_chain_members(
+    let members = account_members::resolved_struct_chain_completion_members(
         document,
         workspace_index,
         &receiver_type,

@@ -360,6 +360,38 @@ impl State {
 }
 
 #[test]
+fn filters_inherent_methods_from_associated_value_completions() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = payer, space = State::)]
+    pub state: Account<'info, State>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+
+#[account]
+pub struct State {
+    pub value: u64,
+}
+
+impl State {
+    const SPACE: usize = 8 + 8;
+
+    fn validate(&self) -> bool {
+        true
+    }
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let completions = completions(&document, position_after(source, "space = State::"))
+        .expect("associated value completions");
+
+    assert!(completions.iter().any(|item| item.label == "SPACE"));
+    assert!(!completions.iter().any(|item| item.label == "validate()"));
+}
+
+#[test]
 fn completes_workspace_associated_space_values() {
     let source = r#"
 #[derive(Accounts)]

@@ -6,6 +6,7 @@ use {
 
 mod account_alias_tests;
 mod handler_member_tests;
+mod handler_method_tests;
 mod handler_value_tests;
 mod mint_decimals_tests;
 mod ranking_tests;

@@ -47,6 +47,48 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn reports_field_called_as_handler_method() {
+    let document = ParsedDocument::parse(
+        r#"
+#[program]
+pub mod demo {
+    pub fn run(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+        bundle.position_bundle_mint();
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .message
+                .contains("calls `position_bundle_mint` as a method")
+        })
+        .unwrap_or_else(|| panic!("missing field-as-method diagnostic: {diagnostics:#?}"));
+
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|value| value.as_str()),
+        Some("field-called-as-method")
+    );
+    assert!(diagnostic
+        .message
+        .contains("use `bundle.position_bundle_mint`"));
+}
+
+#[test]
 fn reports_text_recovered_unknown_member_when_rhs_is_missing() {
     let source = r#"
 use anchor_lang::prelude::*;

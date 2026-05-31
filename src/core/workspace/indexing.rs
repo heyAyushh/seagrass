@@ -401,7 +401,8 @@ fn indexed_symbols(document: &ParsedDocument) -> Vec<IndexedSymbol> {
 fn associated_value_symbol_kind(kind: AssociatedValueKind) -> SymbolKind {
     match kind {
         AssociatedValueKind::Constant => SymbolKind::CONSTANT,
-        AssociatedValueKind::Function => SymbolKind::METHOD,
+        AssociatedValueKind::Function => SymbolKind::FUNCTION,
+        AssociatedValueKind::Method => SymbolKind::METHOD,
     }
 }
 

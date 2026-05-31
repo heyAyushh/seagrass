@@ -400,7 +400,7 @@ pub(crate) fn expression_type_name_with_scope(
     )
 }
 
-fn expression_type_name_with_context_scope(
+pub(crate) fn expression_type_name_with_context_scope(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
     expr: &Expr,

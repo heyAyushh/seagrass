@@ -124,6 +124,44 @@ pub struct Position {
 }
 
 #[test]
+fn editor_ux_completes_typed_handler_methods() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+    bundle.ver
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn verify_bundle(&self) -> bool {
+        true
+    }
+
+    pub fn static_helper() -> bool {
+        true
+    }
+}
+"#,
+    );
+
+    let items =
+        completions::completions(&document, position_after(document.source(), "bundle.ver"))
+            .expect("editor-visible typed handler method completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"verify_bundle()"));
+    assert!(!labels.contains(&"static_helper()"));
+}
+
+#[test]
 fn editor_ux_flags_unknown_member_on_boxed_account_alias() {
     let document = ParsedDocument::parse_or_empty(
         r#"
@@ -170,6 +208,44 @@ pub struct PositionBundle {
     assert!(diagnostic
         .message
         .contains("`PositionBundle` has no field `s`"));
+}
+
+#[test]
+fn editor_ux_flags_field_called_as_handler_method() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+        bundle.position_bundle_mint();
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    );
+
+    let diagnostics = diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .message
+                .contains("calls `position_bundle_mint` as a method")
+        })
+        .unwrap_or_else(|| panic!("missing field-as-method diagnostic: {diagnostics:#?}"));
+
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|value| value.as_str()),
+        Some("field-called-as-method")
+    );
 }
 
 #[test]

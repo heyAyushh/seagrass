@@ -49,6 +49,44 @@ pub struct {owner} {{
     }
 
     #[test]
+    fn reports_generated_field_called_as_method(
+        local in generated_ident(),
+        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        field in generated_ident(),
+    ) {
+        let source = format!(
+            r#"
+#[program]
+pub mod demo {{
+    pub fn run(ctx: Context<Run>, {local}: {owner}) -> Result<()> {{
+        {local}.{field}();
+        Ok(())
+    }}
+}}
+
+pub struct {owner} {{
+    pub {field}: Pubkey,
+}}
+"#
+        );
+        let document = ParsedDocument::parse(&source).unwrap();
+
+        let diagnostics = collect_with_workspace(&document, None);
+
+        prop_assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .message
+                    .contains(&format!("calls `{field}` as a method"))
+                    && diagnostic
+                        .message
+                        .contains(&format!("use `{local}.{field}`"))
+            }),
+            "expected generated field-as-method diagnostic, got {diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn reports_generated_text_recovered_unknown_typed_handler_member(
         local in generated_ident(),
         owner in "[A-Z][A-Za-z0-9_]{1,10}",

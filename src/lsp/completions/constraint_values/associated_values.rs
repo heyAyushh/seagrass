@@ -64,11 +64,14 @@ fn local_associated_value_items(
         .get(owner_type)
         .into_iter()
         .flat_map(|items| items.iter())
-        .map(|item| match item.kind {
-            AssociatedValueKind::Constant => associated_const_item(&item.name, "Associated const"),
-            AssociatedValueKind::Function => {
-                associated_function_item(&item.name, "Associated function")
+        .filter_map(|item| match item.kind {
+            AssociatedValueKind::Constant => {
+                Some(associated_const_item(&item.name, "Associated const"))
             }
+            AssociatedValueKind::Function => {
+                Some(associated_function_item(&item.name, "Associated function"))
+            }
+            AssociatedValueKind::Method => None,
         })
         .collect()
 }
@@ -90,7 +93,7 @@ fn workspace_associated_value_item(value: WorkspaceAssociatedValue) -> Option<Co
             &value.name,
             "Workspace associated const",
         )),
-        SymbolKind::METHOD | SymbolKind::FUNCTION => Some(associated_function_item(
+        SymbolKind::FUNCTION => Some(associated_function_item(
             &value.name,
             "Workspace associated function",
         )),

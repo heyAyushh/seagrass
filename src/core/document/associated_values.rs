@@ -18,6 +18,7 @@ pub struct AssociatedValueRange {
 pub enum AssociatedValueKind {
     Constant,
     Function,
+    Method,
 }
 
 pub fn collect_from_impl(
@@ -35,11 +36,18 @@ pub fn collect_from_impl(
                 range: range_from_span(item_const.ident.span()),
                 kind: AssociatedValueKind::Constant,
             }),
-            ImplItem::Fn(item_fn) => items.push(AssociatedValueRange {
-                name: item_fn.sig.ident.to_string(),
-                range: range_from_span(item_fn.sig.ident.span()),
-                kind: AssociatedValueKind::Function,
-            }),
+            ImplItem::Fn(item_fn) => {
+                let kind = if item_fn.sig.receiver().is_some() {
+                    AssociatedValueKind::Method
+                } else {
+                    AssociatedValueKind::Function
+                };
+                items.push(AssociatedValueRange {
+                    name: item_fn.sig.ident.to_string(),
+                    range: range_from_span(item_fn.sig.ident.span()),
+                    kind,
+                });
+            }
             _ => {}
         }
     }

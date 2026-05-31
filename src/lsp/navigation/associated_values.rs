@@ -158,6 +158,7 @@ fn associated_kind_to_symbol(kind: AssociatedValueKind) -> SymbolKind {
     match kind {
         AssociatedValueKind::Constant => SymbolKind::CONSTANT,
         AssociatedValueKind::Function => SymbolKind::FUNCTION,
+        AssociatedValueKind::Method => SymbolKind::METHOD,
     }
 }
 

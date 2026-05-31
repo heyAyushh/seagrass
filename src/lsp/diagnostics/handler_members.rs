@@ -19,7 +19,7 @@ use {
     std::collections::{HashMap, HashSet},
     syn::{
         visit::{self, Visit},
-        Expr, ExprField, FnArg, ItemFn, ItemMod, Member,
+        Expr, ExprField, ExprMethodCall, FnArg, ItemFn, ItemMod, Member,
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
@@ -121,6 +121,41 @@ impl<'a> HandlerMemberVisitor<'a> {
         self.push_diagnostic_once(diagnostic);
     }
 
+    fn report_field_called_as_method(&mut self, node: &ExprMethodCall) {
+        let Some(receiver_type) = local_types::expression_type_name_with_context_scope(
+            self.document,
+            self.workspace_index,
+            &node.receiver,
+            &|name| self.scopes.get(name),
+            &|name| self.scopes.get_context(name),
+        ) else {
+            return;
+        };
+        let method_name = node.method.to_string();
+        let Some(members) = account_members::resolved_struct_members(
+            self.document,
+            self.workspace_index,
+            &receiver_type,
+        ) else {
+            return;
+        };
+        if !members
+            .members
+            .iter()
+            .any(|member| member.name == method_name)
+        {
+            return;
+        }
+        let receiver_path = expression_access_path(&node.receiver)
+            .unwrap_or_else(|| format!("value: {receiver_type}"));
+        self.push_diagnostic_once(field_called_as_method_diagnostic(
+            range_from_span(node.method.span()),
+            &receiver_path,
+            &receiver_type,
+            &method_name,
+        ));
+    }
+
     fn push_diagnostic_once(&mut self, diagnostic: Diagnostic) {
         let key = (
             diagnostic.range.start.line,
@@ -187,6 +222,11 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         self.report_unknown_member(node);
         visit::visit_expr_field(self, node);
     }
+
+    fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
+        self.report_field_called_as_method(node);
+        visit::visit_expr_method_call(self, node);
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -248,6 +288,27 @@ fn collect_field_access(node: &ExprField, members: &mut Vec<FieldMember>) -> Opt
     Some(receiver)
 }
 
+fn expression_access_path(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+            Some(path.path.segments[0].ident.to_string())
+        }
+        Expr::Field(field) => {
+            let access = FieldAccess::from_expr_field(field)?;
+            let mut path = access.receiver;
+            for member in access.members {
+                path.push('.');
+                path.push_str(&member.name);
+            }
+            Some(path)
+        }
+        Expr::Paren(paren) => expression_access_path(&paren.expr),
+        Expr::Group(group) => expression_access_path(&group.expr),
+        Expr::Reference(reference) => expression_access_path(&reference.expr),
+        _ => None,
+    }
+}
+
 fn unknown_member_diagnostic(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
@@ -305,9 +366,7 @@ fn unknown_member_diagnostic(
 
         receiver_path.push('.');
         receiver_path.push_str(&member.name);
-        if resolved.type_name.is_none() {
-            return None;
-        }
+        resolved.type_name.as_ref()?;
         members = account_members::resolved_struct_member_members(
             document,
             workspace_index,
@@ -368,6 +427,31 @@ fn handler_member_diagnostic(
             "field": missing.member,
             "ownerType": missing.owner_type,
             "candidates": missing.candidates,
+            "evidenceSource": EVIDENCE_SOURCE,
+            "confidence": Confidence::Derived.as_str(),
+            "applicability": Applicability::Unspecified.as_str(),
+        })),
+    )
+}
+
+fn field_called_as_method_diagnostic(
+    range: Range,
+    receiver_path: &str,
+    receiver_type: &str,
+    field: &str,
+) -> Diagnostic {
+    diagnostic_from_range(
+        range,
+        AnchorDiagnosticKind::AnchorMissingAccountReference,
+        format!(
+            "`{receiver_path}.{field}()` calls `{field}` as a method, but `{receiver_type}` exposes `{field}` as a field; use `{receiver_path}.{field}`."
+        ),
+        Some(serde_json::json!({
+            "topic": TOPIC,
+            "reason": "field-called-as-method",
+            "receiver": receiver_path,
+            "receiverType": receiver_type,
+            "field": field,
             "evidenceSource": EVIDENCE_SOURCE,
             "confidence": Confidence::Derived.as_str(),
             "applicability": Applicability::Unspecified.as_str(),

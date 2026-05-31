@@ -1,10 +1,12 @@
 use {
     crate::{
         account_semantics,
-        document::{summarize_account_field_type, ParsedDocument, SymbolRange},
+        document::{
+            summarize_account_field_type, AssociatedValueKind, ParsedDocument, SymbolRange,
+        },
         workspace::{WorkspaceAccountField, WorkspaceAccountsStruct, WorkspaceIndex},
     },
-    tower_lsp::lsp_types::{CompletionItemKind, Range},
+    tower_lsp::lsp_types::{CompletionItemKind, Range, SymbolKind},
 };
 
 pub(crate) const ACCOUNT_LOADER_LOADED_METHODS: &[&str] = &["load", "load_mut"];
@@ -78,6 +80,18 @@ pub(crate) fn resolved_struct_chain_members(
             member_name,
         )?;
     }
+    Some(members)
+}
+
+pub(crate) fn resolved_struct_chain_completion_members(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    receiver_type: &str,
+    member_chain: &[String],
+) -> Option<ResolvedAccountMembers> {
+    let mut members =
+        resolved_struct_chain_members(document, workspace_index, receiver_type, member_chain)?;
+    extend_with_inherent_methods(document, workspace_index, &mut members);
     Some(members)
 }
 
@@ -465,6 +479,61 @@ fn tree_sitter_struct_members(
         owner_type: container_type.to_string(),
         members,
     })
+}
+
+fn extend_with_inherent_methods(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    members: &mut ResolvedAccountMembers,
+) {
+    let mut method_names = local_inherent_method_names(document, &members.owner_type);
+    method_names.extend(workspace_inherent_method_names(
+        workspace_index,
+        &members.owner_type,
+    ));
+    method_names.sort();
+    method_names.dedup();
+
+    for method_name in method_names {
+        let completion_name = format!("{method_name}()");
+        if members
+            .members
+            .iter()
+            .any(|member| member.name == completion_name)
+        {
+            continue;
+        }
+        members.members.push(ResolvedAccountMember {
+            name: completion_name,
+            detail: "Account data method".to_string(),
+            completion_kind: CompletionItemKind::METHOD,
+            type_name: None,
+        });
+    }
+}
+
+fn local_inherent_method_names(document: &ParsedDocument, owner_type: &str) -> Vec<String> {
+    document
+        .symbols()
+        .associated_value_items
+        .get(owner_type)
+        .into_iter()
+        .flat_map(|items| items.iter())
+        .filter(|item| item.kind == AssociatedValueKind::Method)
+        .map(|item| item.name.clone())
+        .collect()
+}
+
+fn workspace_inherent_method_names(
+    workspace_index: Option<&WorkspaceIndex>,
+    owner_type: &str,
+) -> Vec<String> {
+    workspace_index
+        .into_iter()
+        .flat_map(|index| index.associated_values_in_container(owner_type))
+        .filter(|value| value.kind == SymbolKind::METHOD)
+        .map(|value| value.name)
+        .collect()
 }
 
 fn field_type_name_from_text(type_text: &str) -> Option<String> {
