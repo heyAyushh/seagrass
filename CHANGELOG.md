@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer field member types from resolved Rust struct-pattern
+  destructuring in Anchor handlers.
 - lsp: infer account-data member types from typed `let` patterns, including
   `let Some(account) = ... else` handler flows.
 - lsp: infer shallow types for pattern-bound Anchor account values so `if let`

@@ -432,14 +432,15 @@ fn transparent_deref_type_name(
     scope_type_name: &impl Fn(&str) -> Option<String>,
     context_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    context_account_access(&unary.expr)?;
-    expression_type_name_with_context_scope(
+    let receiver_type = expression_type_name_with_context_scope(
         document,
         workspace_index,
         &unary.expr,
         scope_type_name,
         context_type_name,
-    )
+    )?;
+    account_members::resolved_struct_members(document, workspace_index, &receiver_type)
+        .map(|_| receiver_type)
 }
 
 fn context_account_field_type_name_from_expr(
@@ -654,8 +655,12 @@ impl VisibleTypedValueCollector<'_> {
     }
 
     fn add_typed_pattern_candidates(&mut self, pat: &Pat, type_name: &str) {
-        self.values
-            .extend(patterns::typed_pattern_bindings(pat, type_name));
+        self.values.extend(patterns::typed_pattern_bindings(
+            self.document,
+            self.workspace_index,
+            pat,
+            type_name,
+        ));
     }
 
     fn add_pattern_candidate(&mut self, pat: &Pat, type_name: String) {

@@ -73,6 +73,42 @@ pub struct PositionBundle {
     assert!(labels.contains(&"asset_owner"));
 }
 
+#[test]
+fn completes_members_on_struct_pattern_field_binding() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let PositionBundle { inner, .. } = bundle;
+    inner.real_
+}
+
+pub struct PositionBundle {
+    pub inner: InnerBundle,
+}
+
+pub struct InnerBundle {
+    pub real_mint: Pubkey,
+    pub real_owner: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "inner.real_"))
+        .expect("struct pattern member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"real_mint"));
+    assert!(labels.contains(&"real_owner"));
+}
+
 proptest! {
     #[test]
     fn completes_generated_if_let_account_pattern_members(
@@ -110,6 +146,49 @@ pub struct PositionBundle {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated if-let member should complete; items: {items:#?}"
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn completes_generated_struct_pattern_members(
+        field_tail in rust_identifier(),
+        binding_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let binding = format!("inner_{binding_tail}");
+        prop_assume!(field != binding);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {{
+    let PositionBundle {{ {binding}, .. }} = bundle;
+    {binding}.real_
+}}
+
+pub struct PositionBundle {{
+    pub {binding}: InnerBundle,
+}}
+
+pub struct InnerBundle {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, &format!("{binding}.real_")))
+            .expect("generated struct pattern member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated struct pattern member should complete; items: {items:#?}"
         );
     }
 }

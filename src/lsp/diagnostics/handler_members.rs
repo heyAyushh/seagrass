@@ -155,7 +155,12 @@ impl<'a> HandlerMemberVisitor<'a> {
             Expr::Let(expr_let) => {
                 self.visit_expr(&expr_let.expr);
                 if let Some(type_name) = self.expression_type_name(&expr_let.expr) {
-                    self.scopes.declare_typed_pattern(&expr_let.pat, &type_name);
+                    self.scopes.declare_typed_pattern(
+                        self.document,
+                        self.workspace_index,
+                        &expr_let.pat,
+                        &type_name,
+                    );
                 }
             }
             Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
@@ -236,7 +241,12 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
             &|name| self.scopes.get(name),
             &|name| self.scopes.get_context(name),
         ) {
-            self.scopes.declare_typed_pattern(&node.pat, &type_name);
+            self.scopes.declare_typed_pattern(
+                self.document,
+                self.workspace_index,
+                &node.pat,
+                &type_name,
+            );
         }
     }
 
@@ -263,7 +273,12 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         for arm in &node.arms {
             self.scopes.push();
             if let Some(type_name) = scrutinee_type.as_deref() {
-                self.scopes.declare_typed_pattern(&arm.pat, type_name);
+                self.scopes.declare_typed_pattern(
+                    self.document,
+                    self.workspace_index,
+                    &arm.pat,
+                    type_name,
+                );
             }
             if let Some((_, guard)) = &arm.guard {
                 self.visit_expr(guard);
@@ -733,11 +748,18 @@ impl TypedScopeStack {
         }
     }
 
-    fn declare_typed_pattern(&mut self, pat: &syn::Pat, type_name: &str) {
+    fn declare_typed_pattern(
+        &mut self,
+        document: &ParsedDocument,
+        workspace_index: Option<&WorkspaceIndex>,
+        pat: &syn::Pat,
+        type_name: &str,
+    ) {
         let Some(scope) = self.scopes.last_mut() else {
             return;
         };
-        for value in local_types::typed_pattern_bindings(pat, type_name) {
+        for value in local_types::typed_pattern_bindings(document, workspace_index, pat, type_name)
+        {
             scope.insert(value.name, value.type_name);
         }
     }

@@ -97,6 +97,122 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn reports_unknown_member_on_struct_pattern_field_binding() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let PositionBundle { inner, .. } = bundle;
+    inner.real_fake;
+    Ok(())
+}
+
+pub struct PositionBundle {
+    pub inner: InnerBundle,
+}
+
+pub struct InnerBundle {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .message
+                .contains("`inner.real_fake` does not resolve")
+        })
+        .unwrap_or_else(|| panic!("missing struct pattern member diagnostic: {diagnostics:#?}"));
+
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("ownerType"))
+            .and_then(|value| value.as_str()),
+        Some("InnerBundle")
+    );
+}
+
+#[test]
+fn accepts_known_member_on_struct_pattern_field_binding() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let PositionBundle { inner, .. } = bundle;
+    inner.real_mint;
+    Ok(())
+}
+
+pub struct PositionBundle {
+    pub inner: InnerBundle,
+}
+
+pub struct InnerBundle {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("real_mint")),
+        "known struct pattern member should stay quiet: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_unknown_member_on_deref_struct_pattern_field_binding() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: &PositionBundle) -> Result<()> {
+    let PositionBundle { inner, .. } = *bundle;
+    inner.real_fake;
+    Ok(())
+}
+
+pub struct PositionBundle {
+    pub inner: InnerBundle,
+}
+
+pub struct InnerBundle {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("`inner.real_fake` does not resolve")),
+        "missing deref struct pattern member diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn reports_unknown_member_on_let_else_account_pattern_binding() {
     let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
         r#"
@@ -197,6 +313,50 @@ pub struct PositionBundle {{
                 .iter()
                 .any(|diagnostic| diagnostic.message.contains(&format!("`{binding}.{missing}` does not resolve"))),
             "expected generated if-let member diagnostic: {diagnostics:#?}"
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn reports_generated_unknown_members_on_struct_pattern_bindings(
+        binding in generated_ident(),
+        known in generated_ident(),
+        missing in generated_ident(),
+    ) {
+        prop_assume!(binding != known && binding != missing && known != missing);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {{
+    let PositionBundle {{ {binding}, .. }} = bundle;
+    {binding}.{missing};
+    Ok(())
+}}
+
+pub struct PositionBundle {{
+    pub {binding}: InnerBundle,
+}}
+
+pub struct InnerBundle {{
+    pub {known}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+
+        let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(&source));
+
+        prop_assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains(&format!("`{binding}.{missing}` does not resolve"))),
+            "expected generated struct-pattern member diagnostic: {diagnostics:#?}"
         );
     }
 }
