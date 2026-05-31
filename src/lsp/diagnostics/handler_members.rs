@@ -751,4 +751,8 @@ mod iterable_expression_tests;
 mod assignment_tests;
 
 #[cfg(test)]
+#[path = "handler_members/control_flow_tests.rs"]
+mod control_flow_tests;
+
+#[cfg(test)]
 mod tests;

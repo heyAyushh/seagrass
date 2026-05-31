@@ -5,7 +5,7 @@ use {
         lsp::scope::{TextHandlerBinding, TextHandlerScope},
         workspace::WorkspaceIndex,
     },
-    syn::{Expr, ExprField, Member, Pat, Type},
+    syn::{Expr, ExprField, Member, Pat, Stmt, Type},
     tower_lsp::lsp_types::Position,
 };
 
@@ -321,6 +321,30 @@ pub(crate) fn expression_type_name_with_item_scope(
             }),
         Expr::Call(call) => call_returns::call_return_type_name(document, workspace_index, call)
             .or_else(|| constructed_type_name(expr)),
+        Expr::Block(block) => block_type_name(
+            document,
+            workspace_index,
+            &block.block,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::If(expr_if) => if_expression_type_name(
+            document,
+            workspace_index,
+            expr_if,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Match(expr_match) => match_expression_type_name(
+            document,
+            workspace_index,
+            expr_match,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
         Expr::MethodCall(method_call) => {
             iterables::accessed_item_type_name(expr, scope_item_type_name)
                 .or_else(|| {
@@ -390,6 +414,82 @@ pub(crate) fn expression_type_name_with_item_scope(
         ),
         _ => constructed_type_name(expr),
     }
+}
+
+fn block_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    block: &syn::Block,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let Some(Stmt::Expr(expr, None)) = block.stmts.last() else {
+        return None;
+    };
+    expression_type_name_with_item_scope(
+        document,
+        workspace_index,
+        expr,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )
+}
+
+fn if_expression_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr_if: &syn::ExprIf,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let then_type = block_type_name(
+        document,
+        workspace_index,
+        &expr_if.then_branch,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )?;
+    let (_, else_branch) = expr_if.else_branch.as_ref()?;
+    let else_type = expression_type_name_with_item_scope(
+        document,
+        workspace_index,
+        else_branch,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )?;
+    (then_type == else_type).then_some(then_type)
+}
+
+fn match_expression_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr_match: &syn::ExprMatch,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    same_type_name(expr_match.arms.iter().map(|arm| {
+        expression_type_name_with_item_scope(
+            document,
+            workspace_index,
+            &arm.body,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+    }))
+}
+
+fn same_type_name(types: impl IntoIterator<Item = Option<String>>) -> Option<String> {
+    let mut iter = types.into_iter();
+    let first = iter.next()??;
+    iter.all(|type_name| type_name.as_deref() == Some(first.as_str()))
+        .then_some(first)
 }
 
 fn account_loader_loaded_method_type_name(
