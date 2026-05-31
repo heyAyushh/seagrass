@@ -7,6 +7,8 @@ use {
     syn::{Expr, ExprClosure, ExprMethodCall, ReturnType},
 };
 
+mod wrapper_branches;
+
 type TypeLookup<'a> = dyn Fn(&str) -> Option<String> + 'a;
 
 const WRAPPER_AND_THEN_METHOD: &str = "and_then";
@@ -114,6 +116,34 @@ pub(super) fn optional_item_type_name_with_scope(
             scope_item_type_name,
         )
         .map(|value| value.type_name),
+        Expr::If(expr_if) => wrapper_branches::if_value_type_name(
+            document,
+            workspace_index,
+            expr_if,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .map(|value| value.type_name),
+        Expr::Match(expr_match) => wrapper_branches::match_value_type_name(
+            document,
+            workspace_index,
+            expr_match,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .map(|value| value.type_name),
+        Expr::Block(block) => wrapper_branches::block_tail_expr(&block.block).and_then(|expr| {
+            optional_item_type_name_with_scope(
+                document,
+                workspace_index,
+                expr,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+        }),
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             wrapper_value_type_name_with_scope(
                 document,
@@ -211,6 +241,34 @@ pub(crate) fn expression_iterable_item_type_name_with_item_scope(
             scope_item_type_name,
         )
         .map(|value| value.type_name),
+        Expr::If(expr_if) => wrapper_branches::if_value_type_name(
+            document,
+            workspace_index,
+            expr_if,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .map(|value| value.type_name),
+        Expr::Match(expr_match) => wrapper_branches::match_value_type_name(
+            document,
+            workspace_index,
+            expr_match,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .map(|value| value.type_name),
+        Expr::Block(block) => wrapper_branches::block_tail_expr(&block.block).and_then(|expr| {
+            expression_iterable_item_type_name_with_item_scope(
+                document,
+                workspace_index,
+                expr,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+        }),
         Expr::MethodCall(method_call)
             if iterables::item_transforming_iterator_method_matches(
                 &method_call.method.to_string(),
@@ -309,6 +367,32 @@ fn wrapper_value_type_name_with_scope(
             context_type_name,
             scope_item_type_name,
         ),
+        Expr::If(expr_if) => wrapper_branches::if_value_type_name(
+            document,
+            workspace_index,
+            expr_if,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Match(expr_match) => wrapper_branches::match_value_type_name(
+            document,
+            workspace_index,
+            expr_match,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Block(block) => wrapper_branches::block_tail_expr(&block.block).and_then(|expr| {
+            wrapper_value_type_name_with_scope(
+                document,
+                workspace_index,
+                expr,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+        }),
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             let name = path.path.segments[0].ident.to_string();
             let kind = scope_type_name(&name)

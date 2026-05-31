@@ -282,6 +282,7 @@ pub(crate) fn expression_type_name_with_item_scope(
     match expr {
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             scope_type_name(&path.path.segments[0].ident.to_string())
+                .or_else(|| type_names::wrapper_non_value_path_type_name(path))
         }
         Expr::Index(_) => iterator_chains::accessed_item_type_name_with_scope(
             document,
@@ -339,6 +340,7 @@ pub(crate) fn expression_type_name_with_item_scope(
             )
         }),
         Expr::Call(call) => type_names::wrapper_constructor_type_name(call)
+            .or_else(|| type_names::wrapper_non_value_constructor_type_name(call))
             .or_else(|| call_returns::call_return_type_name(document, workspace_index, call))
             .or_else(|| constructed_type_name(expr)),
         Expr::Block(block) => block_type_name(

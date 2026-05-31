@@ -173,6 +173,108 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn reports_unknown_member_after_option_if_else_some_none_pattern() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {
+    let maybe_record = if use_record {
+        Some(SampleRecord { real_mint: Pubkey::default() })
+    } else {
+        None
+    };
+    if let Some(record) = maybe_record {
+        record.real_fake;
+    }
+    Ok(())
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        has_unresolved_member(&diagnostics, "record.real_fake"),
+        "missing Option Some/None if-expression member diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_unknown_member_after_option_match_some_none_pattern() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {
+    let maybe_record = match use_record {
+        true => Some(SampleRecord { real_mint: Pubkey::default() }),
+        false => None,
+    };
+    if let Some(record) = maybe_record {
+        record.real_fake;
+    }
+    Ok(())
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        has_unresolved_member(&diagnostics, "record.real_fake"),
+        "missing Option Some/None match-expression member diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_unknown_member_after_result_if_else_ok_err_unwrap() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {
+    let selected = (if use_record {
+        Ok(SampleRecord { real_mint: Pubkey::default() })
+    } else {
+        Err(())
+    }).unwrap();
+    selected.real_fake;
+    Ok(())
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        has_unresolved_member(&diagnostics, "selected.real_fake"),
+        "missing Result Ok/Err if-expression unwrap member diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn reports_unknown_member_on_option_let_else_pattern_binding() {
     let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
         r#"
@@ -335,6 +437,45 @@ pub struct Run<'info> {
     );
 }
 
+#[test]
+fn does_not_report_member_for_mismatched_some_branch_types() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {
+    let maybe_record = if use_record {
+        Some(SampleRecord { real_mint: Pubkey::default() })
+    } else {
+        Some(OtherRecord { other_mint: Pubkey::default() })
+    };
+    if let Some(record) = maybe_record {
+        record.real_fake;
+    }
+    Ok(())
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+pub struct OtherRecord {
+    pub other_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        !has_unresolved_member(&diagnostics, "record.real_fake"),
+        "mismatched Some branch types should not create a false member diagnostic: {diagnostics:#?}"
+    );
+}
+
 proptest! {
     #[test]
     fn reports_generated_unknown_members_on_option_if_let_patterns(
@@ -410,6 +551,48 @@ pub struct Run<'info> {{
         prop_assert!(
             has_unresolved_member(&diagnostics, &format!("{binding}.{missing}")),
             "expected generated constructor-pattern member diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn reports_generated_unknown_members_on_some_none_branch_patterns(
+        binding in generated_ident(),
+        known in generated_ident(),
+        missing in generated_ident(),
+    ) {
+        prop_assume!(binding != known && binding != missing && known != missing);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {{
+    let maybe_record = if use_record {{
+        Some(SampleRecord {{ {known}: Pubkey::default() }})
+    }} else {{
+        None
+    }};
+    if let Some({binding}) = maybe_record {{
+        {binding}.{missing};
+    }}
+    Ok(())
+}}
+
+pub struct SampleRecord {{
+    pub {known}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+
+        let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(&source));
+
+        prop_assert!(
+            has_unresolved_member(&diagnostics, &format!("{binding}.{missing}")),
+            "expected generated Some/None branch member diagnostic: {diagnostics:#?}"
         );
     }
 }

@@ -6,7 +6,9 @@ use {
 const TRANSPARENT_LOCAL_TYPE_WRAPPERS: &[&str] = &["Box"];
 const OPTION_TYPE_NAME: &str = "Option";
 const RESULT_TYPE_NAME: &str = "Result";
+const OPTION_NONE_CONSTRUCTOR: &str = "None";
 const OPTION_SOME_CONSTRUCTOR: &str = "Some";
+const RESULT_ERR_CONSTRUCTOR: &str = "Err";
 const RESULT_OK_CONSTRUCTOR: &str = "Ok";
 const TRY_UNWRAP_RETURN_TYPE_WRAPPERS: &[&str] = &["Result"];
 const ACCOUNT_DATA_TYPE_WRAPPERS: &[&str] = &[
@@ -46,6 +48,17 @@ impl ValueWrapperKind {
         match (constructor.as_str(), parent.as_deref()) {
             (OPTION_SOME_CONSTRUCTOR, None | Some(OPTION_TYPE_NAME)) => Some(Self::Option),
             (RESULT_OK_CONSTRUCTOR, None | Some(RESULT_TYPE_NAME)) => Some(Self::Result),
+            _ => None,
+        }
+    }
+
+    pub(super) fn from_non_value_constructor_path(path: &syn::Path) -> Option<Self> {
+        let mut segments = path.segments.iter().rev();
+        let constructor = segments.next()?.ident.to_string();
+        let parent = segments.next().map(|segment| segment.ident.to_string());
+        match (constructor.as_str(), parent.as_deref()) {
+            (OPTION_NONE_CONSTRUCTOR, None | Some(OPTION_TYPE_NAME)) => Some(Self::Option),
+            (RESULT_ERR_CONSTRUCTOR, None | Some(RESULT_TYPE_NAME)) => Some(Self::Result),
             _ => None,
         }
     }
@@ -193,6 +206,31 @@ pub(super) fn wrapper_constructor_kind(call: &syn::ExprCall) -> Option<ValueWrap
 
 pub(super) fn wrapper_constructor_type_name(call: &syn::ExprCall) -> Option<String> {
     wrapper_constructor_kind(call).map(|kind| kind.type_name().to_string())
+}
+
+pub(super) fn wrapper_non_value_constructor_kind(call: &syn::ExprCall) -> Option<ValueWrapperKind> {
+    let Expr::Path(path) = call.func.as_ref() else {
+        return None;
+    };
+    if path.qself.is_some() {
+        return None;
+    }
+    ValueWrapperKind::from_non_value_constructor_path(&path.path)
+}
+
+pub(super) fn wrapper_non_value_constructor_type_name(call: &syn::ExprCall) -> Option<String> {
+    wrapper_non_value_constructor_kind(call).map(|kind| kind.type_name().to_string())
+}
+
+pub(super) fn wrapper_non_value_path_kind(path: &syn::ExprPath) -> Option<ValueWrapperKind> {
+    if path.qself.is_some() {
+        return None;
+    }
+    ValueWrapperKind::from_non_value_constructor_path(&path.path)
+}
+
+pub(super) fn wrapper_non_value_path_type_name(path: &syn::ExprPath) -> Option<String> {
+    wrapper_non_value_path_kind(path).map(|kind| kind.type_name().to_string())
 }
 
 pub(super) fn wrapped_value_type_name_for_kind(

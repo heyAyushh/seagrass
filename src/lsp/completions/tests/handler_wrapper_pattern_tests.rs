@@ -190,6 +190,108 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn completes_members_after_option_if_else_some_none_pattern() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {
+    let maybe_record = if use_record {
+        Some(SampleRecord { real_mint: Pubkey::default() })
+    } else {
+        None
+    };
+    if let Some(record) = maybe_record {
+        record.real_
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_"))
+        .expect("Option Some/None if-expression pattern member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "Option Some/None if-expression should complete inner members: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_option_match_some_none_pattern() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {
+    let maybe_record = match use_record {
+        true => Some(SampleRecord { real_mint: Pubkey::default() }),
+        false => None,
+    };
+    if let Some(record) = maybe_record {
+        record.real_
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_"))
+        .expect("Option Some/None match-expression pattern member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "Option Some/None match-expression should complete inner members: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_result_if_else_ok_err_unwrap() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {
+    let selected = (if use_record {
+        Ok(SampleRecord { real_mint: Pubkey::default() })
+    } else {
+        Err(())
+    }).unwrap();
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "selected.real_"))
+        .expect("Result Ok/Err if-expression unwrap member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "Result Ok/Err if-expression unwrap should complete inner members: {items:#?}"
+    );
+}
+
+#[test]
 fn completes_members_on_option_let_else_pattern_binding() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -343,6 +445,44 @@ pub struct Run<'info> {
     );
 }
 
+#[test]
+fn does_not_infer_members_for_mismatched_some_branch_types() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {
+    let maybe_record = if use_record {
+        Some(SampleRecord { real_mint: Pubkey::default() })
+    } else {
+        Some(OtherRecord { other_mint: Pubkey::default() })
+    };
+    if let Some(record) = maybe_record {
+        record.real_
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+pub struct OtherRecord {
+    pub other_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "record.real_")).unwrap_or_default();
+
+    assert!(
+        items.iter().all(|item| item.label != "real_mint"),
+        "mismatched Some branch types should not infer a single inner type: {items:#?}"
+    );
+}
+
 proptest! {
     #[test]
     fn completes_generated_option_if_let_pattern_members(
@@ -418,6 +558,49 @@ pub struct Run<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated Option constructor local member should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_option_some_none_branch_members(
+        field_tail in rust_identifier(),
+        binding_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let binding = format!("record_{binding_tail}");
+        prop_assume!(field != binding);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, use_record: bool) -> Result<()> {{
+    let maybe_record = if use_record {{
+        Some(SampleRecord {{ {field}: Pubkey::default() }})
+    }} else {{
+        None
+    }};
+    if let Some({binding}) = maybe_record {{
+        {binding}.real_
+    }}
+}}
+
+pub struct SampleRecord {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, &format!("{binding}.real_")))
+            .expect("generated Option Some/None branch member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated Option Some/None branch member should complete; items: {items:#?}"
         );
     }
 }
