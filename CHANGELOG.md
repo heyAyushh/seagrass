@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer typed member access from destructured Rust function-parameter
+  patterns in Anchor handlers.
 - lsp: infer field member types from resolved Rust struct-pattern
   destructuring in Anchor handlers.
 - lsp: infer account-data member types from typed `let` patterns, including

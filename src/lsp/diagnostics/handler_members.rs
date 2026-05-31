@@ -1,6 +1,8 @@
 mod method_calls;
+mod scope;
 
 use {
+    self::scope::TypedScopeStack,
     super::{
         diagnostic_from_range,
         lint::{run_lint_visitor, Applicability, Confidence, LintVisitor, Region},
@@ -11,14 +13,12 @@ use {
         document::ParsedDocument,
         lsp::{
             local_types,
-            scope::{
-                has_attr, item_fn_has_anchor_context_arg, pattern_binding_name, TextHandlerScope,
-            },
+            scope::{has_attr, item_fn_has_anchor_context_arg, TextHandlerScope},
         },
         range::range_from_span,
         workspace::WorkspaceIndex,
     },
-    std::collections::{HashMap, HashSet},
+    std::collections::HashSet,
     syn::{
         visit::{self, Visit},
         BinOp, Expr, ExprField, ExprMethodCall, FnArg, ItemFn, ItemMod, Member,
@@ -83,7 +83,12 @@ impl<'a> HandlerMemberVisitor<'a> {
             let Some(type_name) = local_types::local_value_type_name_from_type(&pat_type.ty) else {
                 continue;
             };
-            self.scopes.declare_pat(&pat_type.pat, type_name);
+            self.scopes.declare_typed_pattern(
+                self.document,
+                self.workspace_index,
+                &pat_type.pat,
+                &type_name,
+            );
         }
     }
 
@@ -711,72 +716,6 @@ fn is_identifier_start(ch: char) -> bool {
 
 fn is_identifier_char(ch: char) -> bool {
     ch == '_' || ch.is_ascii_alphanumeric()
-}
-
-#[derive(Default)]
-struct TypedScopeStack {
-    scopes: Vec<HashMap<String, String>>,
-    context_scopes: Vec<HashMap<String, String>>,
-}
-
-impl TypedScopeStack {
-    fn push(&mut self) {
-        self.scopes.push(HashMap::new());
-        self.context_scopes.push(HashMap::new());
-    }
-
-    fn pop(&mut self) {
-        self.scopes.pop();
-        self.context_scopes.pop();
-    }
-
-    fn declare_pat(&mut self, pat: &syn::Pat, type_name: String) {
-        let Some(name) = pattern_binding_name(pat) else {
-            return;
-        };
-        if let Some(scope) = self.scopes.last_mut() {
-            scope.insert(name, type_name);
-        }
-    }
-
-    fn declare_context_pat(&mut self, pat: &syn::Pat, type_name: String) {
-        let Some(name) = pattern_binding_name(pat) else {
-            return;
-        };
-        if let Some(scope) = self.context_scopes.last_mut() {
-            scope.insert(name, type_name);
-        }
-    }
-
-    fn declare_typed_pattern(
-        &mut self,
-        document: &ParsedDocument,
-        workspace_index: Option<&WorkspaceIndex>,
-        pat: &syn::Pat,
-        type_name: &str,
-    ) {
-        let Some(scope) = self.scopes.last_mut() else {
-            return;
-        };
-        for value in local_types::typed_pattern_bindings(document, workspace_index, pat, type_name)
-        {
-            scope.insert(value.name, value.type_name);
-        }
-    }
-
-    fn get(&self, name: &str) -> Option<String> {
-        self.scopes
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(name).cloned())
-    }
-
-    fn get_context(&self, name: &str) -> Option<String> {
-        self.context_scopes
-            .iter()
-            .rev()
-            .find_map(|scope| scope.get(name).cloned())
-    }
 }
 
 #[cfg(test)]

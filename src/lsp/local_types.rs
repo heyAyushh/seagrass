@@ -530,7 +530,7 @@ impl VisibleTypedValueCollector<'_> {
             let Some(type_name) = local_value_type_name_from_type(&pat_type.ty) else {
                 continue;
             };
-            self.add_pattern_candidate(&pat_type.pat, type_name);
+            self.add_typed_pattern_candidates(&pat_type.pat, &type_name);
         }
     }
 
@@ -661,13 +661,6 @@ impl VisibleTypedValueCollector<'_> {
             pat,
             type_name,
         ));
-    }
-
-    fn add_pattern_candidate(&mut self, pat: &Pat, type_name: String) {
-        let Some(name) = crate::lsp::scope::pattern_binding_name(pat) else {
-            return;
-        };
-        self.values.push(TypedLocalValue { name, type_name });
     }
 
     fn add_context_pattern_candidate(&mut self, pat: &Pat, type_name: String) {
