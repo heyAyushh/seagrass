@@ -14,8 +14,11 @@ use {
 
 mod associated_values;
 mod files;
+mod function_returns;
 mod indexing;
 mod instruction_arguments;
+mod sorting;
+mod type_names;
 
 pub use associated_values::WorkspaceAssociatedValue;
 
@@ -31,6 +34,7 @@ use {
         instruction_argument_names_match, instruction_argument_ranges_in_constraint,
         push_unique_location,
     },
+    type_names::primary_type_name,
 };
 
 #[cfg(test)]
@@ -46,6 +50,7 @@ pub struct WorkspaceIndex {
     documents: HashMap<Url, IndexedDocument>,
     symbols_by_name: HashMap<SymbolName, Vec<IndexedSymbolEntry>>,
     references_by_name: HashMap<SymbolName, Vec<IndexedReferenceEntry>>,
+    functions_by_name: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
     functions_by_context: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
     accounts_by_name: HashMap<SymbolName, Vec<IndexedAccountsStruct>>,
 }
@@ -691,6 +696,7 @@ impl WorkspaceIndex {
         self.documents.remove(uri);
         prune_uri_entries!(self, symbols_by_name, location, uri);
         prune_uri_entries!(self, references_by_name, location, uri);
+        prune_uri_entries!(self, functions_by_name, direct, uri);
         prune_uri_entries!(self, functions_by_context, direct, uri);
         prune_uri_entries!(self, accounts_by_name, direct, uri);
     }
@@ -707,6 +713,7 @@ impl WorkspaceIndex {
         // Pre-allocate based on typical sizes for better performance (Pass 4)
         self.symbols_by_name.reserve(symbols.len());
         self.references_by_name.reserve(references.len());
+        self.functions_by_name.reserve(functions.len());
         self.functions_by_context.reserve(functions.len());
         self.accounts_by_name.reserve(accounts_structs.len());
 
@@ -726,13 +733,18 @@ impl WorkspaceIndex {
                 ));
         }
         for function in &functions {
+            let entry = IndexedFunctionEntry::from_function(uri, is_open, function);
+            self.functions_by_name
+                .entry(Arc::from(function.name.as_str()))
+                .or_default()
+                .push(entry.clone());
             let Some(context_name) = function.context_name.clone() else {
                 continue;
             };
             self.functions_by_context
                 .entry(Arc::from(context_name.as_str()))
                 .or_default()
-                .push(IndexedFunctionEntry::from_function(uri, is_open, function));
+                .push(entry);
         }
         for accounts in &accounts_structs {
             self.accounts_by_name
@@ -754,21 +766,6 @@ impl WorkspaceIndex {
         self.sort_open_entries_first();
     }
 
-    fn sort_open_entries_first(&mut self) {
-        self.symbols_by_name
-            .values_mut()
-            .for_each(|entries| entries.sort_by_key(|entry| !entry.is_open));
-        self.references_by_name
-            .values_mut()
-            .for_each(|entries| entries.sort_by_key(|entry| !entry.is_open));
-        self.functions_by_context
-            .values_mut()
-            .for_each(|entries| entries.sort_by_key(|entry| !entry.is_open));
-        self.accounts_by_name
-            .values_mut()
-            .for_each(|entries| entries.sort_by_key(|entry| !entry.is_open));
-    }
-
     fn symbol_entries_in_container<'a>(
         &'a self,
         name: &str,
@@ -784,14 +781,6 @@ impl WorkspaceIndex {
                     && entry.container_name.as_deref() == Some(container_name)
             })
     }
-}
-
-fn primary_type_name(type_display: &str) -> Option<&str> {
-    let trimmed = type_display.trim();
-    let end = trimmed
-        .find(|ch: char| !matches!(ch, '_' | 'a'..='z' | 'A'..='Z' | '0'..='9'))
-        .unwrap_or(trimmed.len());
-    (end > 0).then(|| &trimmed[..end])
 }
 
 #[cfg(test)]

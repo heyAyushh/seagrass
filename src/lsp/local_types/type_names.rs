@@ -138,11 +138,21 @@ pub(super) fn return_type_name(output: &ReturnType) -> Option<String> {
     local_value_type_name(ty)
 }
 
+pub(super) fn return_type_name_from_text(text: &str) -> Option<String> {
+    let ty = syn::parse_str::<Type>(text).ok()?;
+    local_value_type_name(&ty)
+}
+
 pub(super) fn try_return_type_name(output: &ReturnType) -> Option<String> {
     let ReturnType::Type(_, ty) = output else {
         return None;
     };
     try_unwrapped_return_type_name(ty)
+}
+
+pub(super) fn try_return_type_name_from_text(text: &str) -> Option<String> {
+    let ty = syn::parse_str::<Type>(text).ok()?;
+    try_unwrapped_return_type_name(&ty)
 }
 
 fn try_unwrapped_return_type_name(ty: &Type) -> Option<String> {

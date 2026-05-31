@@ -2,9 +2,10 @@ use {
     super::collect_with_workspace,
     crate::{
         diagnostics::registry::ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE, document::ParsedDocument,
+        workspace::WorkspaceIndex,
     },
     proptest::prelude::*,
-    tower_lsp::lsp_types::NumberOrString,
+    tower_lsp::lsp_types::{NumberOrString, Url},
 };
 
 #[test]
@@ -84,6 +85,61 @@ pub struct PositionBundle {
         }),
         "Result<T> without `?` should not be flattened into T: {diagnostics:#?}"
     );
+}
+
+#[test]
+fn reports_unknown_member_from_workspace_helper_return() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>) -> Result<()> {
+        let bundle = load_bundle()?;
+        bundle.s;
+        Ok(())
+    }
+}
+"#,
+    );
+    let index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/helpers.rs").unwrap(),
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn load_bundle() -> Result<PositionBundle> {
+    unreachable!()
+}
+"#
+                .to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/state.rs").unwrap(),
+                r#"
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#
+                .to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&document, Some(&index));
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("`bundle.s` does not resolve"))
+        .unwrap_or_else(|| {
+            panic!("missing workspace helper-return member diagnostic: {diagnostics:#?}")
+        });
+
+    assert!(diagnostic
+        .message
+        .contains("`PositionBundle` has no field `s`"));
 }
 
 proptest! {

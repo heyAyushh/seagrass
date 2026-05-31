@@ -1,7 +1,11 @@
 use {
     super::{completions, position_after},
-    crate::{document::ParsedDocument, lsp::completions::proptest_support::rust_identifier},
+    crate::{
+        document::ParsedDocument, lsp::completions::proptest_support::rust_identifier,
+        workspace::WorkspaceIndex,
+    },
     proptest::prelude::*,
+    tower_lsp::lsp_types::Url,
 };
 
 #[test]
@@ -144,6 +148,53 @@ pub struct OtherBundle {
 
     assert!(labels.contains(&"position_bundle_mint"));
     assert!(!labels.contains(&"position_owner"));
+}
+
+#[test]
+fn completes_members_from_workspace_helper_return() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let bundle = load_bundle()?;
+    bundle.position_
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/helpers.rs").unwrap(),
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn load_bundle() -> Result<PositionBundle> {
+    unreachable!()
+}
+"#
+                .to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/state.rs").unwrap(),
+                r#"
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#
+                .to_string(),
+            ),
+        ],
+    );
+
+    let items = crate::lsp::completions::completions_with_workspace(
+        &document,
+        position_after(source, "bundle.position_"),
+        Some(&index),
+    )
+    .expect("workspace helper return member completions");
+
+    assert_eq!(items[0].label, "position_bundle_mint");
 }
 
 proptest! {

@@ -305,7 +305,9 @@ pub(crate) fn expression_type_name_with_context_scope(
             scope_type_name,
             context_type_name,
         )
-        .or_else(|| call_returns::try_call_return_type_name(document, &expr_try.expr))
+        .or_else(|| {
+            call_returns::try_call_return_type_name(document, workspace_index, &expr_try.expr)
+        })
         .or_else(|| {
             expression_type_name_with_context_scope(
                 document,
@@ -315,7 +317,7 @@ pub(crate) fn expression_type_name_with_context_scope(
                 context_type_name,
             )
         }),
-        Expr::Call(call) => call_returns::call_return_type_name(document, call)
+        Expr::Call(call) => call_returns::call_return_type_name(document, workspace_index, call)
             .or_else(|| constructed_type_name(expr)),
         Expr::MethodCall(method_call) => account_loader_loaded_method_type_name(
             document,

@@ -391,6 +391,56 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn editor_ux_completes_members_from_split_helper_return() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let position_bundle = load_position_bundle()?;
+    position_bundle.position_
+}
+"#,
+    );
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/helpers.rs").unwrap(),
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn load_position_bundle() -> Result<PositionBundle> {
+    unreachable!()
+}
+"#
+                .to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/state.rs").unwrap(),
+                r#"
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#
+                .to_string(),
+            ),
+        ],
+    );
+
+    let items = completions::completions_with_workspace(
+        &document,
+        position_after(document.source(), "position_bundle.position_"),
+        Some(&workspace_index),
+    )
+    .expect("editor-visible split helper return completions");
+
+    assert!(items
+        .iter()
+        .any(|item| item.label == "position_bundle_mint"));
+}
+
+#[test]
 fn editor_ux_completes_members_from_result_method_return() {
     let document = ParsedDocument::parse_or_empty(
         r#"

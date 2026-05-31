@@ -1,6 +1,6 @@
 use {
     super::type_names,
-    crate::document::ParsedDocument,
+    crate::{document::ParsedDocument, workspace::WorkspaceIndex},
     syn::{
         visit::{self, Visit},
         Expr, ExprCall, ExprPath, ItemFn, ItemMod, ReturnType,
@@ -13,17 +13,40 @@ enum ReturnMode {
     TryUnwrap,
 }
 
-pub(super) fn call_return_type_name(document: &ParsedDocument, call: &ExprCall) -> Option<String> {
+pub(super) fn call_return_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    call: &ExprCall,
+) -> Option<String> {
     let function_path = called_function_path(&call.func)?;
-    local_function_return_type_name(document, function_path, ReturnMode::Direct)
+    local_function_return_type_name(document, function_path.as_slice(), ReturnMode::Direct).or_else(
+        || {
+            workspace_function_return_type_name(
+                workspace_index,
+                function_path.as_slice(),
+                ReturnMode::Direct,
+            )
+        },
+    )
 }
 
-pub(super) fn try_call_return_type_name(document: &ParsedDocument, expr: &Expr) -> Option<String> {
+pub(super) fn try_call_return_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr: &Expr,
+) -> Option<String> {
     let Expr::Call(call) = expr else {
         return None;
     };
     let function_path = called_function_path(&call.func)?;
-    local_function_return_type_name(document, function_path, ReturnMode::TryUnwrap)
+    local_function_return_type_name(document, function_path.as_slice(), ReturnMode::TryUnwrap)
+        .or_else(|| {
+            workspace_function_return_type_name(
+                workspace_index,
+                function_path.as_slice(),
+                ReturnMode::TryUnwrap,
+            )
+        })
 }
 
 fn called_function_path(expr: &Expr) -> Option<Vec<String>> {
@@ -52,17 +75,36 @@ fn path_function_path(path: &ExprPath) -> Option<Vec<String>> {
 
 fn local_function_return_type_name(
     document: &ParsedDocument,
-    function_path: Vec<String>,
+    function_path: &[String],
     mode: ReturnMode,
 ) -> Option<String> {
     let mut visitor = LocalFunctionReturnVisitor {
-        function_path,
+        function_path: function_path.to_vec(),
         mode,
         module_path: Vec::new(),
         return_type_names: Vec::new(),
     };
     visitor.visit_file(document.syntax());
     visitor.unique_return_type_name()
+}
+
+fn workspace_function_return_type_name(
+    workspace_index: Option<&WorkspaceIndex>,
+    function_path: &[String],
+    mode: ReturnMode,
+) -> Option<String> {
+    let function_name = function_path.last()?;
+    let mut return_type_names = workspace_index?
+        .function_return_type_displays(function_name)
+        .into_iter()
+        .filter_map(|display| match mode {
+            ReturnMode::Direct => type_names::return_type_name_from_text(&display),
+            ReturnMode::TryUnwrap => type_names::try_return_type_name_from_text(&display),
+        })
+        .collect::<Vec<_>>();
+    return_type_names.sort();
+    return_type_names.dedup();
+    (return_type_names.len() == 1).then(|| return_type_names.remove(0))
 }
 
 struct LocalFunctionReturnVisitor {

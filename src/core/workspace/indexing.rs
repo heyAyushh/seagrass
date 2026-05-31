@@ -9,8 +9,9 @@ use {
         navigation::{account_field_path_definition_target_for_position, AccountPathPosition},
         range::range_from_span,
     },
+    quote::ToTokens,
     std::collections::HashSet,
-    syn::visit::Visit,
+    syn::{visit::Visit, ItemFn},
     tower_lsp::lsp_types::{DocumentSymbol, Location, Range, SymbolKind, Url},
 };
 
@@ -124,6 +125,7 @@ impl IndexedReferenceEntry {
 pub(super) struct IndexedFunction {
     pub(super) name: String,
     pub(super) context_name: Option<String>,
+    pub(super) return_type_display: Option<String>,
     pub(super) selection_range: Range,
     pub(super) is_program_instruction: bool,
     pub(super) calls: Vec<String>,
@@ -145,6 +147,7 @@ pub(super) struct IndexedFunctionEntry {
     pub(super) uri: Url,
     pub(super) is_open: bool,
     pub(super) name: String,
+    pub(super) return_type_display: Option<String>,
     pub(super) location: Location,
     pub(super) is_program_instruction: bool,
     pub(super) calls: Vec<String>,
@@ -160,6 +163,7 @@ impl IndexedFunctionEntry {
             uri: uri.clone(),
             is_open,
             name: function.name.clone(),
+            return_type_display: function.return_type_display.clone(),
             location: Location {
                 uri: uri.clone(),
                 range: function.selection_range,
@@ -179,24 +183,29 @@ pub(super) fn indexed_functions(document: &ParsedDocument) -> Vec<IndexedFunctio
         .symbols()
         .instructions
         .iter()
-        .map(|instruction| indexed_function(instruction, true))
+        .map(|instruction| indexed_function(document, instruction, true))
         .chain(
             document
                 .symbols()
                 .functions
                 .iter()
-                .map(|function| indexed_function(function, false)),
+                .map(|function| indexed_function(document, function, false)),
         )
         .collect()
 }
 
-fn indexed_function(function: &InstructionSymbol, is_program_instruction: bool) -> IndexedFunction {
+fn indexed_function(
+    document: &ParsedDocument,
+    function: &InstructionSymbol,
+    is_program_instruction: bool,
+) -> IndexedFunction {
     IndexedFunction {
         name: function.name.clone(),
         context_name: function
             .context
             .as_ref()
             .map(|context| context.name.clone()),
+        return_type_display: function_return_type_display(document, function.name.as_str()),
         selection_range: function.selection_range,
         is_program_instruction,
         calls: function
@@ -216,6 +225,40 @@ fn indexed_function(function: &InstructionSymbol, is_program_instruction: bool) 
                 type_name: argument.type_name.clone(),
             })
             .collect(),
+    }
+}
+
+fn function_return_type_display(document: &ParsedDocument, function_name: &str) -> Option<String> {
+    let mut visitor = FunctionReturnTypeVisitor {
+        function_name,
+        return_type_displays: Vec::new(),
+    };
+    visitor.visit_file(document.syntax());
+    visitor.unique_return_type_display()
+}
+
+struct FunctionReturnTypeVisitor<'a> {
+    function_name: &'a str,
+    return_type_displays: Vec<String>,
+}
+
+impl FunctionReturnTypeVisitor<'_> {
+    fn unique_return_type_display(mut self) -> Option<String> {
+        self.return_type_displays.sort();
+        self.return_type_displays.dedup();
+        (self.return_type_displays.len() == 1).then(|| self.return_type_displays.remove(0))
+    }
+}
+
+impl<'ast> Visit<'ast> for FunctionReturnTypeVisitor<'_> {
+    fn visit_item_fn(&mut self, node: &'ast ItemFn) {
+        if node.sig.ident == self.function_name {
+            if let syn::ReturnType::Type(_, ty) = &node.sig.output {
+                self.return_type_displays
+                    .push(ty.to_token_stream().to_string());
+            }
+        }
+        syn::visit::visit_item_fn(self, node);
     }
 }
 
