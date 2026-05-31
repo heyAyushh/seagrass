@@ -157,7 +157,7 @@ means the diagnostic currently has no code action.
 | `anchor-context-accounts` | covered | `lsp/actions/accounts/context_structs.rs` | `derive-accounts`, `create-accounts-struct`, `fill-context-type` | none |
 | `anchor-idl-artifact` | gap | n/a | none | Add build/IDL-generation command action from `buildCommand`. |
 | `anchor-init-constraints` | covered | `lsp/actions/init_constraints.rs` | `init-placeholders` | none |
-| `anchor-missing-account-reference` | covered | `lsp/actions/accounts/mod.rs`, `lsp/actions/accounts/field_edits.rs` | `code-routed`, `replace-handler-member` | none |
+| `anchor-missing-account-reference` | covered | `lsp/actions/accounts/mod.rs`, `lsp/actions/accounts/field_edits.rs` | `code-routed`, `replace-handler-member`, `remove-handler-field-call` | none |
 | `anchor-missing-init-constraint` | covered | `lsp/actions/missing_init.rs` | `code-routed` | none |
 | `anchor-missing-instruction-argument` | covered | `lsp/actions/instructions.rs` | `add-instruction-argument`, `replace-instruction-argument`, `remove-instruction-argument` | none |
 | `anchor-pda-seed-resolution` | covered | `lsp/actions/pda.rs` | `code-routed` | none |

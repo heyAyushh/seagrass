@@ -341,6 +341,67 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn offers_remove_handler_field_call_quickfix() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+        bundle.position_bundle_mint();
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = crate::diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-missing-account-reference")
+                && diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("reason"))
+                    .and_then(|value| value.as_str())
+                    == Some("field-called-as-method")
+        })
+        .unwrap_or_else(|| panic!("missing field-called-as-method diagnostic: {diagnostics:#?}"));
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        diagnostic.range,
+        std::slice::from_ref(diagnostic),
+    );
+
+    let action = actions
+        .iter()
+        .find(|action| action.title == "Use `position_bundle_mint` as a field")
+        .unwrap_or_else(|| panic!("missing remove field-call action: {actions:#?}"));
+    let edit = action
+        .edit
+        .as_ref()
+        .and_then(|edit| edit.changes.as_ref())
+        .and_then(|changes| changes.values().next())
+        .and_then(|edits| edits.first())
+        .expect("expected remove call edit");
+
+    assert_eq!(
+        action
+            .data
+            .as_ref()
+            .and_then(|data| data.get("anchorAction"))
+            .and_then(|value| value.as_str()),
+        Some("remove-handler-field-call")
+    );
+    let updated = apply_text_edit(source, edit);
+    assert!(!updated.contains("position_bundle_mint();"));
+    assert!(updated.contains("bundle.position_bundle_mint;"));
+}
+
+#[test]
 fn offers_unresolved_handler_identifier_replacement_from_scope() {
     let source = r#"
 #[program]

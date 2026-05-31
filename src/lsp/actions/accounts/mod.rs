@@ -11,7 +11,10 @@ use {
         diagnostic_code, edit_distance, field_indent, single_document_edit, single_text_edit,
         snippet_text_edit,
     },
-    crate::document::{ParsedDocument, SymbolRange},
+    crate::{
+        document::{ParsedDocument, SymbolRange},
+        range::line_at,
+    },
     std::collections::HashMap,
     tower_lsp::lsp_types::{
         CodeAction, CodeActionKind, Diagnostic, Position, Range, TextEdit, Url, WorkspaceEdit,
@@ -28,6 +31,11 @@ pub fn code_actions(
 ) -> Vec<CodeAction> {
     let mut actions = context_structs::code_actions(document, uri.clone(), range, diagnostics);
     actions.extend(replace_handler_member_actions(uri.clone(), diagnostics));
+    actions.extend(remove_handler_field_call_actions(
+        document,
+        uri.clone(),
+        diagnostics,
+    ));
     actions.extend(replace_missing_account_actions(
         document,
         uri.clone(),
@@ -98,6 +106,62 @@ fn replace_handler_member_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<C
             })
         })
         .collect()
+}
+
+fn remove_handler_field_call_actions(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostics: &[Diagnostic],
+) -> Vec<CodeAction> {
+    diagnostics
+        .iter()
+        .filter(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-missing-account-reference")
+        })
+        .filter(|diagnostic| {
+            diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfix"))
+                .and_then(|value| value.as_str())
+                == Some("remove-handler-field-call")
+        })
+        .filter_map(|diagnostic| {
+            let data = diagnostic.data.as_ref()?;
+            let field = data.get("field").and_then(|value| value.as_str())?;
+            let edit_range = field_call_suffix_range(document, diagnostic.range)?;
+            let edit = single_text_edit(edit_range, String::new());
+
+            Some(CodeAction {
+                title: format!("Use `{field}` as a field"),
+                kind: Some(CodeActionKind::QUICKFIX),
+                diagnostics: Some(vec![diagnostic.clone()]),
+                edit: Some(single_document_edit(uri.clone(), edit)),
+                command: None,
+                is_preferred: Some(true),
+                disabled: None,
+                data: Some(serde_json::json!({
+                    "anchorAction": "remove-handler-field-call",
+                    "field": field,
+                })),
+            })
+        })
+        .collect()
+}
+
+fn field_call_suffix_range(document: &ParsedDocument, field_range: Range) -> Option<Range> {
+    let line = line_at(document.source(), field_range.end.line)?;
+    let suffix_start = usize::try_from(field_range.end.character).ok()?;
+    if line.get(suffix_start..suffix_start.checked_add(2)?)? != "()" {
+        return None;
+    }
+    Some(Range {
+        start: field_range.end,
+        end: Position {
+            line: field_range.end.line,
+            character: field_range.end.character.saturating_add(2),
+        },
+    })
 }
 
 fn replace_missing_account_actions(

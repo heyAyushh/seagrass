@@ -153,6 +153,7 @@ impl<'a> HandlerMemberVisitor<'a> {
             &receiver_path,
             &receiver_type,
             &method_name,
+            node.args.is_empty(),
         ));
     }
 
@@ -439,23 +440,29 @@ fn field_called_as_method_diagnostic(
     receiver_path: &str,
     receiver_type: &str,
     field: &str,
+    can_remove_call: bool,
 ) -> Diagnostic {
+    let mut data = serde_json::json!({
+        "topic": TOPIC,
+        "reason": "field-called-as-method",
+        "receiver": receiver_path,
+        "receiverType": receiver_type,
+        "field": field,
+        "evidenceSource": EVIDENCE_SOURCE,
+        "confidence": Confidence::Derived.as_str(),
+        "applicability": Applicability::Unspecified.as_str(),
+    });
+    if can_remove_call {
+        data["quickfix"] = serde_json::json!("remove-handler-field-call");
+    }
+
     diagnostic_from_range(
         range,
         AnchorDiagnosticKind::AnchorMissingAccountReference,
         format!(
             "`{receiver_path}.{field}()` calls `{field}` as a method, but `{receiver_type}` exposes `{field}` as a field; use `{receiver_path}.{field}`."
         ),
-        Some(serde_json::json!({
-            "topic": TOPIC,
-            "reason": "field-called-as-method",
-            "receiver": receiver_path,
-            "receiverType": receiver_type,
-            "field": field,
-            "evidenceSource": EVIDENCE_SOURCE,
-            "confidence": Confidence::Derived.as_str(),
-            "applicability": Applicability::Unspecified.as_str(),
-        })),
+        Some(data),
     )
 }
 

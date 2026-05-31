@@ -7,7 +7,7 @@ keep future entries aligned with release-plz output.
 
 - lsp: complete inherent account-data methods in handler member access from
   parsed `impl` blocks and flag known fields that are accidentally called as
-  methods.
+  methods, with a quick fix to remove the call suffix.
 - lsp: resolve account-data member access through intermediate
   `ctx.accounts` aliases such as `let accounts = &mut ctx.accounts`.
 - lsp: complete and validate `ctx.bumps.*` from generated Anchor `Bumps`
