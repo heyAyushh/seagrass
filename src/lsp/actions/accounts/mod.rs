@@ -83,11 +83,16 @@ fn replace_handler_member_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<C
                 .as_ref()
                 .and_then(|data| data.get("reason"))
                 .and_then(|value| value.as_str())
-                == Some("unknown-handler-member")
+                .is_some_and(|reason| {
+                    matches!(reason, "unknown-handler-member" | "unknown-handler-method")
+                })
         })
         .filter_map(|diagnostic| {
             let data = diagnostic.data.as_ref()?;
-            let missing = data.get("field").and_then(|value| value.as_str())?;
+            let missing = data
+                .get("field")
+                .or_else(|| data.get("method"))
+                .and_then(|value| value.as_str())?;
             let replacement = closest_candidate(data, missing)?;
             let edit = single_text_edit(diagnostic.range, replacement.to_string());
 

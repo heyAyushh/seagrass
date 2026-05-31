@@ -1,3 +1,5 @@
+mod method_calls;
+
 use {
     super::{
         diagnostic_from_range,
@@ -121,7 +123,7 @@ impl<'a> HandlerMemberVisitor<'a> {
         self.push_diagnostic_once(diagnostic);
     }
 
-    fn report_field_called_as_method(&mut self, node: &ExprMethodCall) {
+    fn report_method_call(&mut self, node: &ExprMethodCall) {
         let Some(receiver_type) = local_types::expression_type_name_with_context_scope(
             self.document,
             self.workspace_index,
@@ -132,29 +134,20 @@ impl<'a> HandlerMemberVisitor<'a> {
             return;
         };
         let method_name = node.method.to_string();
-        let Some(members) = account_members::resolved_struct_members(
-            self.document,
-            self.workspace_index,
-            &receiver_type,
-        ) else {
-            return;
-        };
-        if !members
-            .members
-            .iter()
-            .any(|member| member.name == method_name)
-        {
-            return;
-        }
         let receiver_path = expression_access_path(&node.receiver)
             .unwrap_or_else(|| format!("value: {receiver_type}"));
-        self.push_diagnostic_once(field_called_as_method_diagnostic(
+        let Some(diagnostic) = method_calls::method_call_diagnostic(
+            self.document,
+            self.workspace_index,
             range_from_span(node.method.span()),
             &receiver_path,
             &receiver_type,
             &method_name,
             node.args.is_empty(),
-        ));
+        ) else {
+            return;
+        };
+        self.push_diagnostic_once(diagnostic);
     }
 
     fn push_diagnostic_once(&mut self, diagnostic: Diagnostic) {
@@ -225,7 +218,7 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
-        self.report_field_called_as_method(node);
+        self.report_method_call(node);
         visit::visit_expr_method_call(self, node);
     }
 }
@@ -432,37 +425,6 @@ fn handler_member_diagnostic(
             "confidence": Confidence::Derived.as_str(),
             "applicability": Applicability::Unspecified.as_str(),
         })),
-    )
-}
-
-fn field_called_as_method_diagnostic(
-    range: Range,
-    receiver_path: &str,
-    receiver_type: &str,
-    field: &str,
-    can_remove_call: bool,
-) -> Diagnostic {
-    let mut data = serde_json::json!({
-        "topic": TOPIC,
-        "reason": "field-called-as-method",
-        "receiver": receiver_path,
-        "receiverType": receiver_type,
-        "field": field,
-        "evidenceSource": EVIDENCE_SOURCE,
-        "confidence": Confidence::Derived.as_str(),
-        "applicability": Applicability::Unspecified.as_str(),
-    });
-    if can_remove_call {
-        data["quickfix"] = serde_json::json!("remove-handler-field-call");
-    }
-
-    diagnostic_from_range(
-        range,
-        AnchorDiagnosticKind::AnchorMissingAccountReference,
-        format!(
-            "`{receiver_path}.{field}()` calls `{field}` as a method, but `{receiver_type}` exposes `{field}` as a field; use `{receiver_path}.{field}`."
-        ),
-        Some(data),
     )
 }
 
@@ -732,6 +694,10 @@ mod call_return_tests;
 #[cfg(test)]
 #[path = "handler_members/method_return_tests.rs"]
 mod method_return_tests;
+
+#[cfg(test)]
+#[path = "handler_members/method_call_tests.rs"]
+mod method_call_tests;
 
 #[cfg(test)]
 mod tests;

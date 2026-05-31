@@ -1,7 +1,7 @@
 use {
     super::position_after,
-    crate::{completions, document::ParsedDocument, workspace::WorkspaceIndex},
-    tower_lsp::lsp_types::Url,
+    crate::{completions, diagnostics, document::ParsedDocument, workspace::WorkspaceIndex},
+    tower_lsp::lsp_types::{NumberOrString, Url},
 };
 
 #[test]
@@ -47,4 +47,53 @@ impl BundleMetadata {
     assert!(items
         .iter()
         .any(|item| item.label == "position_bundle_mint"));
+}
+
+#[test]
+fn editor_ux_flags_unknown_handler_method() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+        bundle.verify_bundel();
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn verify_bundle(&self) -> bool {
+        true
+    }
+}
+"#,
+    );
+
+    let diagnostics = diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            matches!(
+                diagnostic.code.as_ref(),
+                Some(NumberOrString::String(code)) if code == "anchor-missing-account-reference"
+            ) && diagnostic
+                .message
+                .contains("`bundle.verify_bundel()` does not resolve")
+        })
+        .unwrap_or_else(|| panic!("missing editor-visible method diagnostic: {diagnostics:#?}"));
+
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|value| value.as_str()),
+        Some("unknown-handler-method")
+    );
 }

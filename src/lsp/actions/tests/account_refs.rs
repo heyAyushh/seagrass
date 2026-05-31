@@ -341,6 +341,63 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn offers_typed_handler_method_replacement_from_candidates() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+        bundle.verify_bundel();
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn verify_bundle(&self) -> bool {
+        true
+    }
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = crate::diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-missing-account-reference")
+                && diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("reason"))
+                    .and_then(|value| value.as_str())
+                    == Some("unknown-handler-method")
+        })
+        .unwrap_or_else(|| panic!("missing typed handler method diagnostic: {diagnostics:#?}"));
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        diagnostic.range,
+        std::slice::from_ref(diagnostic),
+    );
+
+    let action = actions
+        .iter()
+        .find(|action| action.title == "Replace `verify_bundel` with `verify_bundle`")
+        .unwrap_or_else(|| panic!("missing handler method replacement action: {actions:#?}"));
+
+    assert_eq!(
+        action
+            .data
+            .as_ref()
+            .and_then(|data| data.get("anchorAction"))
+            .and_then(|value| value.as_str()),
+        Some("replace-handler-member")
+    );
+}
+
+#[test]
 fn offers_remove_handler_field_call_quickfix() {
     let source = r#"
 #[program]

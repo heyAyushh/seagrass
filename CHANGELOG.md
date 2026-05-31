@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: diagnose unknown handler method calls on resolved account-data values
+  and reuse candidate methods for typo quick fixes.
 - lsp: infer associated function return types such as `Type::new()?` for
   handler member completions and diagnostics, including split-file impls.
 - lsp: carry inherent method return types through workspace associated-value
