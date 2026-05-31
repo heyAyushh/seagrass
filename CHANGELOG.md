@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: keep missing-semicolon parser range recovery near the parse error so
+  malformed handler statements do not get reported on previous account attrs.
 - lsp: propagate shallow handler types through local aliases and resolved
   field aliases for member diagnostics and completions.
 - lsp: offer quick fixes for misspelled in-scope handler values.

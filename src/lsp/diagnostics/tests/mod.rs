@@ -331,6 +331,63 @@ pub fn handler(ctx: Context<CloseBundledPosition>) -> Result<()> {
 }
 
 #[test]
+fn parse_error_expected_semicolon_does_not_jump_to_previous_account_attribute() {
+    let source = r#"use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+#[derive(Accounts)]
+#[instruction(bundle_index: u16)]
+pub struct CloseBundledPosition<'info> {
+    #[account(mut)]
+    pub bundled_position: Account<'info, Position>,
+
+    #[account(mut)]
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+
+    #[account(
+        constraint = position_bundle_token_account.mint == bundled_position.position_mint,
+        constraint = position_bundle_token_account.mint == position_bundle.position_bundle_mint,
+        constraint = position_bundle_token_account.amount == 1
+    )]
+    pub position_bundle_token_account: Box<Account<'info, TokenAccount>>,
+
+    pub position_bundle_authority: Signer<'info>,
+
+    #[account(mut)]
+    pub receiver: UncheckedAccount<'info>,
+}
+
+pub fn handler() -> Result<()> {
+    position_bundle = position_bundle  sd ;
+    Ok(())
+}
+"#;
+
+    let err = syn::parse_file(source).unwrap_err();
+    let diagnostic = diagnostic_from_parse_error_with_source(err, source);
+    let target_line = source
+        .lines()
+        .position(|line| line.contains("position_bundle = position_bundle"))
+        .expect("fixture contains a malformed handler line");
+    let line = source.lines().nth(target_line).expect("target line exists");
+
+    assert_eq!(diagnostic.message, "unexpected token, expected `;`");
+    assert_eq!(
+        diagnostic.range,
+        Range {
+            start: Position {
+                line: target_line as u32,
+                character: line.find("sd").expect("bad token start") as u32,
+            },
+            end: Position {
+                line: target_line as u32,
+                character: (line.find("sd").expect("bad token start") + "sd".len()) as u32,
+            },
+        }
+    );
+}
+
+#[test]
 fn parser_ordering_and_conflict_diagnostics_are_actionable() {
     let ordering_source = r#"
 #[derive(Accounts)]

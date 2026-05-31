@@ -240,6 +240,8 @@ const INIT_PAYER_REQUIRED_MESSAGE: &str = "payer must be provided";
 const INIT_SPACE_REQUIRED_MESSAGE: &str = "space must be provided";
 const EXPECTED_SEMICOLON_PARSE_MESSAGE: &str = "unexpected token, expected `;`";
 const STATEMENT_TERMINATOR_CHARS: &[char] = &[';', '{', '}', ',', '(', '['];
+const MAX_PREVIOUS_UNTERMINATED_STATEMENT_SCAN_LINES: u32 = 3;
+const ATTRIBUTE_CLOSE_LINE_PREFIX: &str = ")]";
 
 fn parser_message_has(parser_message: &str, expected: &str) -> bool {
     parser_message.contains(expected)
@@ -257,7 +259,8 @@ fn parse_error_range_in_source(
 }
 
 fn previous_unterminated_statement_range(source: &str, error_line: u32) -> Option<Range> {
-    let candidate_line = (0..error_line).rev().find(|line_number| {
+    let earliest_line = error_line.saturating_sub(MAX_PREVIOUS_UNTERMINATED_STATEMENT_SCAN_LINES);
+    let candidate_line = (earliest_line..error_line).rev().find(|line_number| {
         line_at(source, *line_number).is_some_and(line_is_unterminated_statement_candidate)
     })?;
     let line = line_at(source, candidate_line)?;
@@ -277,7 +280,11 @@ fn previous_unterminated_statement_range(source: &str, error_line: u32) -> Optio
 
 fn line_is_unterminated_statement_candidate(line: &str) -> bool {
     let trimmed = line.trim();
-    if trimmed.is_empty() || trimmed.starts_with("//") || trimmed.starts_with("#[") {
+    if trimmed.is_empty()
+        || trimmed.starts_with("//")
+        || trimmed.starts_with("#[")
+        || trimmed.starts_with(ATTRIBUTE_CLOSE_LINE_PREFIX)
+    {
         return false;
     }
     trimmed
