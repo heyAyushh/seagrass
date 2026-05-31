@@ -9,11 +9,19 @@ use {
         spanned::Spanned,
         visit::{self, Visit},
         Expr, ExprField, FnArg, GenericArgument, ItemFn, Member, Pat, PathArguments, Stmt, Type,
+        TypePath,
     },
     tower_lsp::lsp_types::Position,
 };
 
 const TRANSPARENT_LOCAL_TYPE_WRAPPERS: &[&str] = &["Box"];
+const ACCOUNT_DATA_TYPE_WRAPPERS: &[&str] = &[
+    "Account",
+    "InterfaceAccount",
+    "LazyAccount",
+    "AccountLoader",
+];
+const TRANSPARENT_ACCOUNT_FIELD_WRAPPERS: &[&str] = &["Box", "Option"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypedLocalValue {
@@ -50,14 +58,219 @@ pub(crate) fn text_visible_typed_values_at_with_workspace(
         return Vec::new();
     };
     let mut values = Vec::new();
-    for binding in scope.bindings() {
-        if let Some(value) =
-            text_typed_value_from_binding(document, workspace_index, &values, binding)
-        {
+    for (idx, binding) in scope.bindings().iter().enumerate() {
+        if let Some(value) = text_typed_value_from_binding(
+            document,
+            workspace_index,
+            &values,
+            &scope.bindings()[..idx],
+            binding,
+        ) {
             values.push(value);
         }
     }
     values
+}
+
+pub(crate) fn context_type_name_from_text(text: &str) -> Option<String> {
+    let ty = syn::parse_str::<syn::Type>(text).ok()?;
+    context_type_name(&ty)
+}
+
+pub(crate) fn account_data_type_name_from_text(type_text: &str) -> Option<String> {
+    let ty = syn::parse_str::<syn::Type>(type_text).ok()?;
+    account_data_type_name(&ty)
+}
+
+pub(crate) fn account_data_type_name_from_parts(
+    type_name: Option<&str>,
+    generic_type_names: &[String],
+) -> Option<String> {
+    generic_type_names
+        .last()
+        .cloned()
+        .or_else(|| type_name.map(str::to_string))
+}
+
+pub(crate) fn text_context_account_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    bindings: &[TextHandlerBinding],
+    expr: &Expr,
+) -> Option<String> {
+    let access = context_account_access(expr)?;
+    let context_name = bindings.iter().rev().find_map(|binding| {
+        (binding.name == access.context_binding)
+            .then(|| {
+                binding
+                    .type_display
+                    .as_deref()
+                    .and_then(context_type_name_from_text)
+            })
+            .flatten()
+    })?;
+    context_account_field_type_name(
+        document,
+        workspace_index,
+        &context_name,
+        &access.account_field,
+    )
+}
+
+fn context_account_field_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    context_name: &str,
+    field_name: &str,
+) -> Option<String> {
+    document
+        .symbols()
+        .accounts_structs
+        .get(context_name)
+        .and_then(|accounts| {
+            accounts
+                .fields
+                .iter()
+                .find(|field| field.name == field_name)
+                .and_then(|field| {
+                    account_data_type_name_from_parts(
+                        field.type_name.as_deref(),
+                        &field.generic_type_names,
+                    )
+                })
+        })
+        .or_else(|| {
+            workspace_index.and_then(|index| {
+                index.accounts_struct(context_name).and_then(|accounts| {
+                    accounts
+                        .fields
+                        .iter()
+                        .find(|field| field.name == field_name)
+                        .and_then(|field| {
+                            account_data_type_name_from_parts(
+                                field.type_name.as_deref(),
+                                &field.generic_type_names,
+                            )
+                        })
+                })
+            })
+        })
+        .or_else(|| {
+            document.tree_sitter().and_then(|syntax| {
+                syntax
+                    .struct_fields_named(document.source(), context_name)
+                    .into_iter()
+                    .find(|field| field.name.as_deref() == Some(field_name))
+                    .and_then(|field| {
+                        field
+                            .type_text
+                            .as_deref()
+                            .and_then(account_data_type_name_from_text)
+                    })
+            })
+        })
+}
+
+struct ContextAccountAccess {
+    context_binding: String,
+    account_field: String,
+}
+
+fn context_account_access(expr: &Expr) -> Option<ContextAccountAccess> {
+    let segments = expression_field_segments(expr)?;
+    if segments.len() != 3 || segments.get(1).map(String::as_str) != Some("accounts") {
+        return None;
+    }
+    Some(ContextAccountAccess {
+        context_binding: segments[0].clone(),
+        account_field: segments[2].clone(),
+    })
+}
+
+fn expression_field_segments(expr: &Expr) -> Option<Vec<String>> {
+    match expr {
+        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+            Some(vec![path.path.segments[0].ident.to_string()])
+        }
+        Expr::Field(field) => {
+            let mut segments = expression_field_segments(&field.base)?;
+            let Member::Named(member) = &field.member else {
+                return None;
+            };
+            segments.push(member.to_string());
+            Some(segments)
+        }
+        Expr::Reference(reference) => expression_field_segments(&reference.expr),
+        Expr::Paren(paren) => expression_field_segments(&paren.expr),
+        Expr::Group(group) => expression_field_segments(&group.expr),
+        _ => None,
+    }
+}
+
+fn context_type_name(ty: &Type) -> Option<String> {
+    let Type::Path(type_path) = transparent_type_path(ty) else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    (segment.ident == "Context").then(|| first_type_argument(&segment.arguments))?
+}
+
+fn account_data_type_name(ty: &Type) -> Option<String> {
+    let Type::Path(type_path) = transparent_type_path(ty) else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    let wrapper = segment.ident.to_string();
+    if TRANSPARENT_ACCOUNT_FIELD_WRAPPERS.contains(&wrapper.as_str()) {
+        return first_type_argument_type(&segment.arguments).and_then(account_data_type_name);
+    }
+    if ACCOUNT_DATA_TYPE_WRAPPERS.contains(&wrapper.as_str()) {
+        return last_type_argument(&segment.arguments);
+    }
+    Some(wrapper)
+}
+
+fn transparent_type_path(ty: &Type) -> &Type {
+    match ty {
+        Type::Reference(reference) => transparent_type_path(&reference.elem),
+        Type::Ptr(pointer) => transparent_type_path(&pointer.elem),
+        Type::Paren(paren) => transparent_type_path(&paren.elem),
+        Type::Group(group) => transparent_type_path(&group.elem),
+        _ => ty,
+    }
+}
+
+fn first_type_argument(arguments: &PathArguments) -> Option<String> {
+    first_type_argument_type(arguments).and_then(type_path_name)
+}
+
+fn last_type_argument(arguments: &PathArguments) -> Option<String> {
+    let PathArguments::AngleBracketed(args) = arguments else {
+        return None;
+    };
+    args.args.iter().rev().find_map(|arg| match arg {
+        GenericArgument::Type(ty) => type_path_name(ty),
+        _ => None,
+    })
+}
+
+fn first_type_argument_type(arguments: &PathArguments) -> Option<&Type> {
+    let PathArguments::AngleBracketed(args) = arguments else {
+        return None;
+    };
+    args.args.iter().find_map(|arg| match arg {
+        GenericArgument::Type(ty) => Some(ty),
+        _ => None,
+    })
+}
+
+fn type_path_name(ty: &Type) -> Option<String> {
+    let Type::Path(TypePath { path, .. }) = transparent_type_path(ty) else {
+        return None;
+    };
+    path.segments
+        .last()
+        .map(|segment| segment.ident.to_string())
 }
 
 pub(crate) fn shallow_type_name(ty: &Type) -> Option<String> {
@@ -152,12 +365,19 @@ fn text_typed_value_from_binding(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
     visible_values: &[TypedLocalValue],
+    visible_bindings: &[TextHandlerBinding],
     binding: &TextHandlerBinding,
 ) -> Option<TypedLocalValue> {
     let type_name = binding
         .type_display
         .as_deref()
         .and_then(type_name_from_text)
+        .or_else(|| {
+            binding.initializer_text.as_deref().and_then(|initializer| {
+                let expr = syn::parse_str::<syn::Expr>(initializer).ok()?;
+                text_context_account_type_name(document, workspace_index, visible_bindings, &expr)
+            })
+        })
         .or_else(|| {
             binding
                 .initializer_text

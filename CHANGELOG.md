@@ -5,6 +5,9 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: recover typed handler member diagnostics from syntax-broken Anchor
+  handlers using shared text scope, `Context<T>` account aliases, and
+  tree-sitter struct fields.
 - lsp: recover unresolved handler identifiers from syntax-error spans so
   malformed Anchor handlers still flag random bare values semantically.
 - lsp: keep missing-semicolon parser range recovery near the parse error so

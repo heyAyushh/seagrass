@@ -9,7 +9,9 @@ use {
         document::ParsedDocument,
         lsp::{
             local_types,
-            scope::{has_attr, item_fn_has_anchor_context_arg, pattern_binding_name},
+            scope::{
+                has_attr, item_fn_has_anchor_context_arg, pattern_binding_name, TextHandlerScope,
+            },
         },
         range::range_from_span,
         workspace::WorkspaceIndex,
@@ -19,7 +21,7 @@ use {
         visit::{self, Visit},
         Expr, ExprField, FnArg, ItemFn, ItemMod, Member,
     },
-    tower_lsp::lsp_types::{Diagnostic, Range},
+    tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
 
 const TOPIC: &str = "seagrass/anchor.account.usage";
@@ -30,10 +32,14 @@ pub fn collect_with_workspace(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Vec<Diagnostic> {
-    run_lint_visitor(
+    let mut diagnostics = run_lint_visitor(
         document,
         HandlerMemberVisitor::new(document, workspace_index),
-    )
+    );
+    if document.syntax().items.is_empty() {
+        diagnostics.extend(collect_text_recovered_members(document, workspace_index));
+    }
+    diagnostics
 }
 
 struct HandlerMemberVisitor<'a> {
@@ -80,7 +86,14 @@ impl<'a> HandlerMemberVisitor<'a> {
         let Some(access) = FieldAccess::from_expr_field(node) else {
             return;
         };
-        let Some(receiver_type) = self.scopes.get(&access.receiver) else {
+        let Some(receiver_type) = self.scopes.get(&access.receiver).or_else(|| {
+            text_receiver_type(
+                self.document,
+                self.workspace_index,
+                access.end_position()?,
+                &access.receiver,
+            )
+        }) else {
             return;
         };
         let Some(diagnostic) =
@@ -171,6 +184,10 @@ impl FieldAccess {
         let mut members = Vec::new();
         collect_field_access(node, &mut members).map(|receiver| Self { receiver, members })
     }
+
+    fn end_position(&self) -> Option<Position> {
+        self.members.last().map(|member| member.range.end)
+    }
 }
 
 fn collect_field_access(node: &ExprField, members: &mut Vec<FieldMember>) -> Option<String> {
@@ -260,6 +277,184 @@ fn unknown_member_diagnostic(
     None
 }
 
+fn collect_text_recovered_members(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<Diagnostic> {
+    let mut diagnostics = Vec::new();
+    let mut emitted = HashSet::new();
+    for (line_idx, line) in document.source().lines().enumerate() {
+        let Ok(line_number) = u32::try_from(line_idx) else {
+            continue;
+        };
+        let code = line_code_before_comment(line);
+        for access in text_member_accesses(code, line_number) {
+            let position = access.end_position;
+            let Some(scope) = TextHandlerScope::at_position(document.source(), position) else {
+                continue;
+            };
+            if !scope.has_anchor_context() {
+                continue;
+            }
+            let Some(receiver_type) =
+                text_receiver_type(document, workspace_index, position, &access.receiver)
+            else {
+                continue;
+            };
+            let Some(diagnostic) = unknown_member_diagnostic(
+                document,
+                workspace_index,
+                &receiver_type,
+                &access.into(),
+            ) else {
+                continue;
+            };
+            let key = (
+                diagnostic.range.start.line,
+                diagnostic.range.start.character,
+            );
+            if emitted.insert(key) {
+                diagnostics.push(diagnostic);
+            }
+        }
+    }
+    diagnostics
+}
+
+fn text_receiver_type(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    position: Position,
+    receiver: &str,
+) -> Option<String> {
+    local_types::text_visible_typed_values_at_with_workspace(document, position, workspace_index)
+        .into_iter()
+        .rev()
+        .find(|value| value.name == receiver)
+        .map(|value| value.type_name)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct TextMemberAccess {
+    receiver: String,
+    members: Vec<FieldMember>,
+    end_position: Position,
+}
+
+impl From<TextMemberAccess> for FieldAccess {
+    fn from(access: TextMemberAccess) -> Self {
+        Self {
+            receiver: access.receiver,
+            members: access.members,
+        }
+    }
+}
+
+fn text_member_accesses(line: &str, line_number: u32) -> Vec<TextMemberAccess> {
+    let mut accesses = Vec::new();
+    let mut idx = 0usize;
+    while idx < line.len() {
+        let Some((receiver, receiver_end)) = parse_identifier_at(line, idx) else {
+            idx = next_char_boundary(line, idx);
+            continue;
+        };
+        let mut cursor = receiver_end;
+        let mut members = Vec::new();
+        while line.as_bytes().get(cursor) == Some(&b'.') {
+            let member_start = cursor + '.'.len_utf8();
+            let Some((member, member_end)) = parse_identifier_at(line, member_start) else {
+                break;
+            };
+            members.push(FieldMember {
+                name: member,
+                range: Range {
+                    start: position_for_line_byte(line, line_number, member_start),
+                    end: position_for_line_byte(line, line_number, member_end),
+                },
+            });
+            cursor = member_end;
+        }
+        if !members.is_empty() && is_member_access_boundary(line, idx, cursor) {
+            accesses.push(TextMemberAccess {
+                receiver,
+                members,
+                end_position: position_for_line_byte(line, line_number, cursor),
+            });
+        }
+        idx = next_char_boundary(line, cursor.max(idx + 1));
+    }
+    accesses
+}
+
+fn parse_identifier_at(line: &str, start: usize) -> Option<(String, usize)> {
+    let tail = line.get(start..)?;
+    let mut chars = tail.char_indices();
+    let (_, first) = chars.next()?;
+    if !is_identifier_start(first) {
+        return None;
+    }
+    let mut end = start + first.len_utf8();
+    for (relative_idx, ch) in chars {
+        if !is_identifier_char(ch) {
+            break;
+        }
+        end = start + relative_idx + ch.len_utf8();
+    }
+    Some((line[start..end].to_string(), end))
+}
+
+fn is_member_access_boundary(line: &str, start: usize, end: usize) -> bool {
+    let before = line[..start].chars().next_back();
+    let after = line[end..].chars().next();
+    before.is_none_or(|ch| !is_identifier_char(ch) && ch != '.')
+        && after.is_none_or(|ch| !is_identifier_char(ch) && ch != '.')
+}
+
+fn line_code_before_comment(line: &str) -> &str {
+    let mut escaped = false;
+    let mut in_string = false;
+    let mut previous = '\0';
+    for (idx, ch) in line.char_indices() {
+        if ch == '"' && previous != '\'' && !escaped {
+            in_string = !in_string;
+        }
+        if !in_string && previous == '/' && ch == '/' {
+            return &line[..idx - '/'.len_utf8()];
+        }
+        escaped = ch == '\\' && !escaped;
+        if ch != '\\' {
+            escaped = false;
+        }
+        previous = ch;
+    }
+    line
+}
+
+fn position_for_line_byte(line: &str, line_number: u32, byte: usize) -> Position {
+    Position {
+        line: line_number,
+        character: u32::try_from(line[..byte.min(line.len())].chars().count()).unwrap_or_default(),
+    }
+}
+
+fn next_char_boundary(line: &str, idx: usize) -> usize {
+    if idx >= line.len() {
+        return line.len();
+    }
+    line[idx..]
+        .chars()
+        .next()
+        .map_or(line.len(), |ch| idx + ch.len_utf8())
+}
+
+fn is_identifier_start(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphabetic()
+}
+
+fn is_identifier_char(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphanumeric()
+}
+
 #[derive(Default)]
 struct TypedScopeStack {
     scopes: Vec<HashMap<String, String>>,
@@ -343,6 +538,75 @@ pub struct PositionBundle {
         assert!(diagnostic
             .message
             .contains("`PositionBundle` has no field `s`"));
+    }
+
+    #[test]
+    fn reports_text_recovered_unknown_member_when_rhs_is_missing() {
+        let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn run(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    bundle.missing = ;
+    Ok(())
+}
+
+pub struct PositionBundle {
+    pub known: Pubkey,
+}
+"#;
+        let document = ParsedDocument::parse_or_empty(source);
+
+        let diagnostics = collect_with_workspace(&document, None);
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .message
+                    .contains("`bundle.missing` does not resolve")
+                    && diagnostic
+                        .message
+                        .contains("`PositionBundle` has no field `missing`")
+            }),
+            "missing text-recovered handler member diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn reports_text_recovered_unknown_member_through_context_account_alias() {
+        let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle.missing = ;
+    Ok(())
+}
+
+#[account]
+pub struct PositionBundle {
+    pub known: Pubkey,
+}
+"#;
+        let document = ParsedDocument::parse_or_empty(source);
+
+        let diagnostics = collect_with_workspace(&document, None);
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .message
+                    .contains("`position_bundle.missing` does not resolve")
+                    && diagnostic
+                        .message
+                        .contains("`PositionBundle` has no field `missing`")
+            }),
+            "missing context-account alias member diagnostic: {diagnostics:#?}"
+        );
     }
 
     #[test]
@@ -484,6 +748,46 @@ pub struct InnerBundle {
     }
 
     #[test]
+    fn reports_unknown_member_through_context_account_alias() {
+        let document = ParsedDocument::parse(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle.fake;
+    Ok(())
+}
+
+#[account]
+pub struct PositionBundle {
+    pub real: Pubkey,
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect_with_workspace(&document, None);
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .message
+                    .contains("`position_bundle.fake` does not resolve")
+                    && diagnostic
+                        .message
+                        .contains("`PositionBundle` has no field `fake`")
+            }),
+            "missing context-account alias handler member diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn ignores_unknown_handler_alias_type() {
         let document = ParsedDocument::parse(
             r#"
@@ -573,6 +877,93 @@ pub struct {owner} {{
                             .contains(&format!("`{owner}` has no field `{missing_field}`"))
                 }),
                 "expected generated handler member diagnostic, got {diagnostics:#?}"
+            );
+        }
+
+        #[test]
+        fn reports_generated_text_recovered_unknown_typed_handler_member(
+            local in generated_ident(),
+            owner in "[A-Z][A-Za-z0-9_]{1,10}",
+            known_field in generated_ident(),
+            missing_field in generated_ident(),
+        ) {
+            prop_assume!(known_field != missing_field);
+            let source = format!(
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn run(ctx: Context<Run>, {local}: {owner}) -> Result<()> {{
+    {local}.{missing_field} = ;
+    Ok(())
+}}
+
+pub struct {owner} {{
+    pub {known_field}: Pubkey,
+}}
+"#
+            );
+            let document = ParsedDocument::parse_or_empty(&source);
+
+            let diagnostics = collect_with_workspace(&document, None);
+
+            prop_assert!(
+                diagnostics.iter().any(|diagnostic| {
+                    diagnostic
+                        .message
+                        .contains(&format!("`{local}.{missing_field}` does not resolve"))
+                        && diagnostic
+                            .message
+                            .contains(&format!("`{owner}` has no field `{missing_field}`"))
+                }),
+                "expected generated text-recovered handler member diagnostic, got {diagnostics:#?}"
+            );
+        }
+
+        #[test]
+        fn reports_generated_unknown_member_through_context_account_alias(
+            account_field in generated_ident(),
+            alias in generated_ident(),
+            owner in "[A-Z][A-Za-z0-9_]{1,10}",
+            known_field in generated_ident(),
+            missing_field in generated_ident(),
+        ) {
+            prop_assume!(account_field != alias);
+            prop_assume!(known_field != missing_field);
+            let source = format!(
+                r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub {account_field}: Box<Account<'info, {owner}>>,
+}}
+
+pub fn run(ctx: Context<Run>) -> Result<()> {{
+    let {alias} = &mut ctx.accounts.{account_field};
+    {alias}.{missing_field};
+    Ok(())
+}}
+
+#[account]
+pub struct {owner} {{
+    pub {known_field}: Pubkey,
+}}
+"#
+            );
+            let document = ParsedDocument::parse(&source).unwrap();
+
+            let diagnostics = collect_with_workspace(&document, None);
+
+            prop_assert!(
+                diagnostics.iter().any(|diagnostic| {
+                    diagnostic
+                        .message
+                        .contains(&format!("`{alias}.{missing_field}` does not resolve"))
+                        && diagnostic
+                            .message
+                            .contains(&format!("`{owner}` has no field `{missing_field}`"))
+                }),
+                "expected generated context alias member diagnostic, got {diagnostics:#?}"
             );
         }
 

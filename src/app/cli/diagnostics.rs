@@ -171,14 +171,37 @@ fn diagnostics_for_source(
 ) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
     let diagnostics = match ParsedDocument::parse(source.clone()) {
         Ok(document) => diagnostic_engine::collect_with_workspace(&document, workspace_index),
-        Err(error) => vec![diagnostic_engine::diagnostic_from_parse_error_with_source(
-            error, &source,
-        )],
+        Err(error) => diagnostics_for_parse_error(error, &source, workspace_index),
     };
     Ok(diagnostics
         .into_iter()
         .map(|diagnostic| CliDiagnostic::from_lsp(file.clone(), diagnostic))
         .collect())
+}
+
+fn diagnostics_for_parse_error(
+    error: syn::Error,
+    source: &str,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<Diagnostic> {
+    let document = ParsedDocument::parse_or_empty(source.to_string());
+    let mut diagnostics = vec![diagnostic_engine::diagnostic_from_parse_error_with_source(
+        error, source,
+    )];
+    diagnostics.extend(diagnostic_engine::collect_hot_with_input(
+        diagnostic_engine::DiagnosticInput {
+            document: &document,
+            uri: None,
+            workspace_index,
+            framework: crate::solana::frameworks::FrameworkContext::from_document(&document),
+            manifest: None,
+            anchor_toml: None,
+            seagrass_toml: None,
+            solana_program: None,
+            settings: diagnostic_engine::DiagnosticSettings::default(),
+        },
+    ));
+    diagnostic_engine::dedupe(diagnostics)
 }
 
 fn workspace_index_for_path(path: &Path) -> Option<WorkspaceIndex> {

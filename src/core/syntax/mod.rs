@@ -249,6 +249,18 @@ impl RustSyntax {
         })
     }
 
+    pub fn struct_fields_named(&self, source: &str, struct_name: &str) -> Vec<AnchorFieldSyntax> {
+        struct_item_nodes(self.tree.root_node())
+            .into_iter()
+            .find(|node| {
+                node.child_by_field_name("name")
+                    .and_then(|name| node_text(source, name))
+                    .is_some_and(|name| name == struct_name)
+            })
+            .map(|node| struct_field_syntax(source, node))
+            .unwrap_or_default()
+    }
+
     pub fn anchor_document_symbols(&self, source: &str) -> Vec<DocumentSymbol> {
         let mut symbols = Vec::new();
         let root = self.tree.root_node();
@@ -674,6 +686,33 @@ fn field_children(source: &str, node: Node<'_>) -> Vec<DocumentSymbol> {
     symbols
 }
 
+fn struct_field_syntax(source: &str, node: Node<'_>) -> Vec<AnchorFieldSyntax> {
+    let mut cursor = node.walk();
+    let mut stack = node.children(&mut cursor).collect::<Vec<_>>();
+    let mut fields = Vec::new();
+
+    while let Some(child) = stack.pop() {
+        if child.kind() == "field_declaration" {
+            fields.push(AnchorFieldSyntax {
+                name: child
+                    .child_by_field_name("name")
+                    .and_then(|name| node_text(source, name))
+                    .map(str::to_string),
+                range: node_range(child),
+                type_text: field_type_text(source, child),
+            });
+            continue;
+        }
+
+        for grandchild in child.children(&mut cursor) {
+            stack.push(grandchild);
+        }
+    }
+
+    fields.sort_by_key(|field| (field.range.start.line, field.range.start.character));
+    fields
+}
+
 fn field_type_text(source: &str, node: Node<'_>) -> Option<String> {
     node.child_by_field_name("type")
         .and_then(|ty| node_text(source, ty))
@@ -687,6 +726,26 @@ fn type_identifier_nodes(root: Node<'_>) -> Vec<Node<'_>> {
 
     while let Some(node) = stack.pop() {
         if node.kind() == "type_identifier" {
+            nodes.push(node);
+            continue;
+        }
+
+        for child in node.children(&mut cursor) {
+            stack.push(child);
+        }
+    }
+
+    nodes.sort_by_key(Node::start_byte);
+    nodes
+}
+
+fn struct_item_nodes(root: Node<'_>) -> Vec<Node<'_>> {
+    let mut cursor = root.walk();
+    let mut stack = vec![root];
+    let mut nodes = Vec::new();
+
+    while let Some(node) = stack.pop() {
+        if node.kind() == "struct_item" {
             nodes.push(node);
             continue;
         }

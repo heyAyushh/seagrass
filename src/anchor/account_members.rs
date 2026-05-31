@@ -1,7 +1,7 @@
 use {
     crate::{
         account_semantics,
-        document::{ParsedDocument, SymbolRange},
+        document::{summarize_account_field_type, ParsedDocument, SymbolRange},
         workspace::WorkspaceIndex,
     },
     tower_lsp::lsp_types::CompletionItemKind,
@@ -255,6 +255,9 @@ fn struct_members(
             members: container.fields.iter().map(symbol_member).collect(),
         });
     }
+    if let Some(members) = tree_sitter_struct_members(document, container_type) {
+        return Some(members);
+    }
 
     workspace_index.and_then(|index| {
         let members = index
@@ -272,6 +275,40 @@ fn struct_members(
             members,
         })
     })
+}
+
+fn tree_sitter_struct_members(
+    document: &ParsedDocument,
+    container_type: &str,
+) -> Option<ResolvedAccountMembers> {
+    let members = document
+        .tree_sitter()?
+        .struct_fields_named(document.source(), container_type)
+        .into_iter()
+        .filter_map(|field| {
+            let name = field.name?;
+            let type_name = field
+                .type_text
+                .as_deref()
+                .and_then(field_type_name_from_text);
+            Some(ResolvedAccountMember {
+                name,
+                detail: member_detail(field.type_text.as_deref()),
+                completion_kind: CompletionItemKind::FIELD,
+                type_name,
+            })
+        })
+        .collect::<Vec<_>>();
+    (!members.is_empty()).then(|| ResolvedAccountMembers {
+        owner_type: container_type.to_string(),
+        members,
+    })
+}
+
+fn field_type_name_from_text(type_text: &str) -> Option<String> {
+    syn::parse_str::<syn::Type>(type_text)
+        .ok()
+        .and_then(|ty| summarize_account_field_type(&ty).type_name)
 }
 
 fn symbol_member(field: &SymbolRange) -> ResolvedAccountMember {

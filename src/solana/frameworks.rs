@@ -261,6 +261,9 @@ fn framework_from_document(document: &ParsedDocument) -> FrameworkId {
         id: FrameworkId::Unknown,
     };
     visitor.visit_file(document.syntax());
+    if visitor.id == FrameworkId::Unknown && source_has_anchor_framework_hint(document.source()) {
+        return FrameworkId::AnchorV1;
+    }
     visitor.id
 }
 
@@ -422,6 +425,25 @@ solana-program-error = "3"
     #[test]
     fn unknown_framework_keeps_rules_eligible_for_partial_sources() {
         assert!(FrameworkSet::ANCHOR.contains(FrameworkId::Unknown));
+    }
+
+    #[test]
+    fn detects_anchor_from_source_hint_when_syn_ast_is_empty() {
+        let document = ParsedDocument::parse_or_empty(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    broken =
+}
+"#,
+        );
+
+        assert!(document.syntax().items.is_empty());
+        assert_eq!(
+            FrameworkContext::from_document(&document).id(),
+            FrameworkId::AnchorV1
+        );
     }
 
     #[test]
