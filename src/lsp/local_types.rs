@@ -43,6 +43,7 @@ pub(crate) fn visible_typed_values_at_with_workspace(
         source: document.source(),
         cursor_offset,
         values: Vec::new(),
+        context_values: Vec::new(),
         found_cursor_function: false,
     };
     collector.visit_file(document.syntax());
@@ -74,7 +75,11 @@ pub(crate) fn text_visible_typed_values_at_with_workspace(
 
 pub(crate) fn context_type_name_from_text(text: &str) -> Option<String> {
     let ty = syn::parse_str::<syn::Type>(text).ok()?;
-    context_type_name(&ty)
+    context_type_name_from_type(&ty)
+}
+
+pub(crate) fn context_type_name_from_type(ty: &Type) -> Option<String> {
+    context_type_name(ty)
 }
 
 pub(crate) fn account_data_type_name_from_text(type_text: &str) -> Option<String> {
@@ -178,6 +183,15 @@ struct ContextAccountAccess {
 
 fn context_account_access(expr: &Expr) -> Option<ContextAccountAccess> {
     let segments = expression_field_segments(expr)?;
+    context_account_access_from_segments(segments)
+}
+
+fn context_account_access_from_field(field: &ExprField) -> Option<ContextAccountAccess> {
+    let segments = field_expression_segments(field)?;
+    context_account_access_from_segments(segments)
+}
+
+fn context_account_access_from_segments(segments: Vec<String>) -> Option<ContextAccountAccess> {
     if segments.len() != 3 || segments.get(1).map(String::as_str) != Some("accounts") {
         return None;
     }
@@ -192,19 +206,21 @@ fn expression_field_segments(expr: &Expr) -> Option<Vec<String>> {
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             Some(vec![path.path.segments[0].ident.to_string()])
         }
-        Expr::Field(field) => {
-            let mut segments = expression_field_segments(&field.base)?;
-            let Member::Named(member) = &field.member else {
-                return None;
-            };
-            segments.push(member.to_string());
-            Some(segments)
-        }
+        Expr::Field(field) => field_expression_segments(field),
         Expr::Reference(reference) => expression_field_segments(&reference.expr),
         Expr::Paren(paren) => expression_field_segments(&paren.expr),
         Expr::Group(group) => expression_field_segments(&group.expr),
         _ => None,
     }
+}
+
+fn field_expression_segments(field: &ExprField) -> Option<Vec<String>> {
+    let mut segments = expression_field_segments(&field.base)?;
+    let Member::Named(member) = &field.member else {
+        return None;
+    };
+    segments.push(member.to_string());
+    Some(segments)
 }
 
 fn context_type_name(ty: &Type) -> Option<String> {
@@ -319,27 +335,80 @@ pub(crate) fn expression_type_name_with_scope(
     expr: &Expr,
     scope_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
+    expression_type_name_with_context_scope(
+        document,
+        workspace_index,
+        expr,
+        scope_type_name,
+        &|_| None,
+    )
+}
+
+fn expression_type_name_with_context_scope(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr: &Expr,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
     match expr {
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             scope_type_name(&path.path.segments[0].ident.to_string())
         }
-        Expr::Field(field) => {
-            field_expression_type_name(document, workspace_index, field, scope_type_name)
-        }
-        Expr::Reference(reference) => expression_type_name_with_scope(
+        Expr::Field(field) => context_account_field_type_name_from_expr(
+            document,
+            workspace_index,
+            field,
+            context_type_name,
+        )
+        .or_else(|| {
+            field_expression_type_name(
+                document,
+                workspace_index,
+                field,
+                scope_type_name,
+                context_type_name,
+            )
+        }),
+        Expr::Reference(reference) => expression_type_name_with_context_scope(
             document,
             workspace_index,
             &reference.expr,
             scope_type_name,
+            context_type_name,
         ),
-        Expr::Paren(paren) => {
-            expression_type_name_with_scope(document, workspace_index, &paren.expr, scope_type_name)
-        }
-        Expr::Group(group) => {
-            expression_type_name_with_scope(document, workspace_index, &group.expr, scope_type_name)
-        }
+        Expr::Paren(paren) => expression_type_name_with_context_scope(
+            document,
+            workspace_index,
+            &paren.expr,
+            scope_type_name,
+            context_type_name,
+        ),
+        Expr::Group(group) => expression_type_name_with_context_scope(
+            document,
+            workspace_index,
+            &group.expr,
+            scope_type_name,
+            context_type_name,
+        ),
         _ => constructed_type_name(expr),
     }
+}
+
+fn context_account_field_type_name_from_expr(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    field: &ExprField,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let access = context_account_access_from_field(field)?;
+    let context_name = context_type_name(&access.context_binding)?;
+    context_account_field_type_name(
+        document,
+        workspace_index,
+        &context_name,
+        &access.account_field,
+    )
 }
 
 fn field_expression_type_name(
@@ -347,9 +416,15 @@ fn field_expression_type_name(
     workspace_index: Option<&WorkspaceIndex>,
     field: &ExprField,
     scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    let base_type =
-        expression_type_name_with_scope(document, workspace_index, &field.base, scope_type_name)?;
+    let base_type = expression_type_name_with_context_scope(
+        document,
+        workspace_index,
+        &field.base,
+        scope_type_name,
+        context_type_name,
+    )?;
     let Member::Named(member) = &field.member else {
         return None;
     };
@@ -445,6 +520,7 @@ struct VisibleTypedValueCollector<'a> {
     source: &'a str,
     cursor_offset: usize,
     values: Vec<TypedLocalValue>,
+    context_values: Vec<TypedLocalValue>,
     found_cursor_function: bool,
 }
 
@@ -460,6 +536,9 @@ impl VisibleTypedValueCollector<'_> {
             let FnArg::Typed(pat_type) = input else {
                 continue;
             };
+            if let Some(context_name) = context_type_name_from_type(&pat_type.ty) {
+                self.add_context_pattern_candidate(&pat_type.pat, context_name);
+            }
             let Some(type_name) = shallow_type_name(&pat_type.ty) else {
                 continue;
             };
@@ -532,11 +611,13 @@ impl VisibleTypedValueCollector<'_> {
     }
 
     fn collect_local(&mut self, local: &syn::Local) {
-        let Some(type_name) =
-            local_type_name_with_scope(self.document, self.workspace_index, local, &|name| {
-                self.visible_type_name(name)
-            })
-        else {
+        let Some(type_name) = local_type_name_with_scope(
+            self.document,
+            self.workspace_index,
+            local,
+            &|name| self.visible_type_name(name),
+            &|name| self.visible_context_type_name(name),
+        ) else {
             return;
         };
         self.add_pattern_candidate(&local.pat, type_name);
@@ -547,6 +628,14 @@ impl VisibleTypedValueCollector<'_> {
             return;
         };
         self.values.push(TypedLocalValue { name, type_name });
+    }
+
+    fn add_context_pattern_candidate(&mut self, pat: &Pat, type_name: String) {
+        let Some(name) = crate::lsp::scope::pattern_binding_name(pat) else {
+            return;
+        };
+        self.context_values
+            .push(TypedLocalValue { name, type_name });
     }
 
     fn span_contains_cursor(&self, span: proc_macro2::Span) -> bool {
@@ -562,6 +651,14 @@ impl VisibleTypedValueCollector<'_> {
 
     fn visible_type_name(&self, name: &str) -> Option<String> {
         self.values
+            .iter()
+            .rev()
+            .find(|value| value.name == name)
+            .map(|value| value.type_name.clone())
+    }
+
+    fn visible_context_type_name(&self, name: &str) -> Option<String> {
+        self.context_values
             .iter()
             .rev()
             .find(|value| value.name == name)
@@ -589,10 +686,17 @@ pub(crate) fn local_type_name_with_scope(
     workspace_index: Option<&WorkspaceIndex>,
     local: &syn::Local,
     scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
     explicit_pattern_type_name(&local.pat).or_else(|| {
         local.init.as_ref().and_then(|init| {
-            expression_type_name_with_scope(document, workspace_index, &init.expr, scope_type_name)
+            expression_type_name_with_context_scope(
+                document,
+                workspace_index,
+                &init.expr,
+                scope_type_name,
+                context_type_name,
+            )
         })
     })
 }

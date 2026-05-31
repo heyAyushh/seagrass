@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: complete handler member access through `Context<T>` account aliases,
+  including boxed Anchor accounts such as `let account = &mut ctx.accounts.x`.
 - lsp: recover typed handler member diagnostics from syntax-broken Anchor
   handlers using shared text scope, `Context<T>` account aliases, and
   tree-sitter struct fields.

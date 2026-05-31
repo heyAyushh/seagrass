@@ -129,6 +129,43 @@ pub struct InnerBundle {
 }
 
 #[test]
+fn completes_typed_handler_member_after_context_account_alias() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle.position_
+}
+
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(
+        &document,
+        position_after(source, "position_bundle.position_"),
+    )
+    .expect("typed context account alias member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"position_bundle_mint"));
+    assert!(labels.contains(&"position_bitmap"));
+}
+
+#[test]
 fn completes_typed_handler_member_after_alias_while_dot_is_incomplete() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -357,6 +394,49 @@ pub struct {owner} {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "expected generated alias field completion, got {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_context_account_alias_members(
+        account_field in rust_identifier(),
+        alias in rust_identifier(),
+        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        field in rust_identifier(),
+    ) {
+        prop_assume!(account_field != alias);
+        prop_assume!(account_field != field);
+        prop_assume!(alias != field);
+        let prefix = field.chars().next().unwrap_or_default().to_string();
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub {account_field}: Box<Account<'info, {owner}>>,
+}}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {{
+    let {alias} = &mut ctx.accounts.{account_field};
+    {alias}.{prefix}
+}}
+
+#[account]
+pub struct {owner} {{
+    pub {field}: Pubkey,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let completion_line = format!("{alias}.{prefix}");
+
+        let items = completions(&document, position_after(&source, &completion_line))
+            .expect("generated context account alias member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "expected generated context alias field completion, got {items:#?}"
         );
     }
 }

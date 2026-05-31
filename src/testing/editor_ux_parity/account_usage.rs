@@ -1,11 +1,51 @@
 use {
+    super::position_after,
     crate::{
+        completions,
         diagnostics::{self, ANCHOR_SECURITY_SIGNER_CODE},
         document::ParsedDocument,
         workspace::WorkspaceIndex,
     },
     tower_lsp::lsp_types::{NumberOrString, Url},
 };
+
+#[test]
+fn editor_ux_completes_member_on_boxed_account_alias() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle.position_
+}
+
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#,
+    );
+
+    let items = completions::completions(
+        &document,
+        position_after(document.source(), "position_bundle.position_"),
+    )
+    .expect("editor-visible context account alias completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"position_bundle_mint"));
+    assert!(labels.contains(&"position_bitmap"));
+}
 
 #[test]
 fn editor_ux_flags_unknown_member_on_boxed_account_alias() {

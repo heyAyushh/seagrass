@@ -75,6 +75,9 @@ impl<'a> HandlerMemberVisitor<'a> {
             let FnArg::Typed(pat_type) = input else {
                 continue;
             };
+            if let Some(context_name) = local_types::context_type_name_from_type(&pat_type.ty) {
+                self.scopes.declare_context_pat(&pat_type.pat, context_name);
+            }
             let Some(type_name) = local_types::shallow_type_name(&pat_type.ty) else {
                 continue;
             };
@@ -156,6 +159,7 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
             self.workspace_index,
             node,
             &|name| self.scopes.get(name),
+            &|name| self.scopes.get_context(name),
         ) {
             self.scopes.declare_pat(&node.pat, type_name);
         }
@@ -458,15 +462,18 @@ fn is_identifier_char(ch: char) -> bool {
 #[derive(Default)]
 struct TypedScopeStack {
     scopes: Vec<HashMap<String, String>>,
+    context_scopes: Vec<HashMap<String, String>>,
 }
 
 impl TypedScopeStack {
     fn push(&mut self) {
         self.scopes.push(HashMap::new());
+        self.context_scopes.push(HashMap::new());
     }
 
     fn pop(&mut self) {
         self.scopes.pop();
+        self.context_scopes.pop();
     }
 
     fn declare_pat(&mut self, pat: &syn::Pat, type_name: String) {
@@ -478,8 +485,24 @@ impl TypedScopeStack {
         }
     }
 
+    fn declare_context_pat(&mut self, pat: &syn::Pat, type_name: String) {
+        let Some(name) = pattern_binding_name(pat) else {
+            return;
+        };
+        if let Some(scope) = self.context_scopes.last_mut() {
+            scope.insert(name, type_name);
+        }
+    }
+
     fn get(&self, name: &str) -> Option<String> {
         self.scopes
+            .iter()
+            .rev()
+            .find_map(|scope| scope.get(name).cloned())
+    }
+
+    fn get_context(&self, name: &str) -> Option<String> {
+        self.context_scopes
             .iter()
             .rev()
             .find_map(|scope| scope.get(name).cloned())
