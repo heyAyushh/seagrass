@@ -240,6 +240,7 @@ pub(super) fn indexed_accounts_structs(
                         name: field.name.clone(),
                         type_name: field.type_name.clone(),
                         generic_type_names: field.generic_type_names.clone(),
+                        is_optional: field.is_optional,
                         account_constraints: field.account_constraints.clone(),
                     })
                     .collect(),

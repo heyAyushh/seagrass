@@ -48,6 +48,44 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn editor_ux_completes_context_bump_members() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    #[account(seeds = [b"bundle"], bump)]
+    pub bundled_position: Account<'info, Position>,
+    pub receiver: Signer<'info>,
+}
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    ctx.bumps.bundled_
+}
+
+#[account]
+pub struct Position {
+    pub value: u64,
+}
+"#,
+    );
+
+    let items = completions::completions(
+        &document,
+        position_after(document.source(), "ctx.bumps.bundled_"),
+    )
+    .expect("editor-visible context bump completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"bundled_position"));
+    assert!(!labels.contains(&"receiver"));
+}
+
+#[test]
 fn editor_ux_flags_unknown_member_on_boxed_account_alias() {
     let document = ParsedDocument::parse_or_empty(
         r#"
@@ -94,6 +132,46 @@ pub struct PositionBundle {
     assert!(diagnostic
         .message
         .contains("`PositionBundle` has no field `s`"));
+}
+
+#[test]
+fn editor_ux_flags_unknown_context_bump_member() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    #[account(seeds = [b"bundle"], bump)]
+    pub bundled_position: Account<'info, Position>,
+    pub receiver: Signer<'info>,
+}
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    ctx.bumps.receiver;
+    Ok(())
+}
+
+#[account]
+pub struct Position {
+    pub value: u64,
+}
+"#,
+    );
+
+    let diagnostics = diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .message
+                .contains("`ctx.bumps.receiver` does not resolve")
+        })
+        .unwrap_or_else(|| panic!("missing context bump diagnostic: {diagnostics:#?}"));
+
+    assert!(diagnostic
+        .message
+        .contains("`CloseBumps` has no field `receiver`"));
 }
 
 #[test]

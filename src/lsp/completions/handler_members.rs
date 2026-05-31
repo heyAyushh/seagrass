@@ -1,6 +1,7 @@
 use {
     crate::{
         account_members::{self, ResolvedAccountMember},
+        context_members,
         document::ParsedDocument,
         lsp::local_types,
         workspace::WorkspaceIndex,
@@ -21,19 +22,47 @@ pub(super) fn completions(
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Option<Vec<CompletionItem>> {
     let access = handler_member_access(document.source(), position)?;
+    if let Some(context_type) = visible_receiver_context_type(document, position, &access.receiver)
+    {
+        if let Some(members) = context_members::resolved_context_chain_members(
+            document,
+            workspace_index,
+            &context_type,
+            &access.member_chain,
+        ) {
+            return completion_items(position, &access.member_prefix, members);
+        }
+    }
+
     let receiver_type =
         visible_receiver_type(document, position, workspace_index, &access.receiver)?;
+    if let Some(members) = context_members::resolved_generated_bumps_chain_members(
+        document,
+        workspace_index,
+        &receiver_type,
+        &access.member_chain,
+    ) {
+        return completion_items(position, &access.member_prefix, members);
+    }
     let members = account_members::resolved_struct_chain_members(
         document,
         workspace_index,
         &receiver_type,
         &access.member_chain,
     )?;
-    let replacement_range = prefix_replacement_range(position, &access.member_prefix);
+    completion_items(position, &access.member_prefix, members)
+}
+
+fn completion_items(
+    position: Position,
+    member_prefix: &str,
+    members: account_members::ResolvedAccountMembers,
+) -> Option<Vec<CompletionItem>> {
+    let replacement_range = prefix_replacement_range(position, member_prefix);
     let mut items = members
         .members
         .iter()
-        .filter(|member| matches_prefix(&member.name, &access.member_prefix))
+        .filter(|member| matches_prefix(&member.name, member_prefix))
         .map(|member| member_item(member, &members.owner_type, replacement_range))
         .collect::<Vec<_>>();
     items.sort_by(|left, right| left.label.cmp(&right.label));
@@ -56,6 +85,21 @@ fn visible_receiver_type(
         .rev()
         .find(|value| value.name == receiver)
         .map(|value| value.type_name)
+}
+
+fn visible_receiver_context_type(
+    document: &ParsedDocument,
+    position: Position,
+    receiver: &str,
+) -> Option<String> {
+    local_types::visible_context_values_at(document, position)
+        .into_iter()
+        .chain(local_types::text_visible_context_values_at(
+            document, position,
+        ))
+        .rev()
+        .find(|value| value.name == receiver)
+        .map(|value| value.accounts_type_name)
 }
 
 fn handler_member_access(source: &str, position: Position) -> Option<HandlerMemberAccess> {

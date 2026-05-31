@@ -4,6 +4,7 @@ pub(crate) mod analysis;
 pub(crate) mod constraint_catalog;
 pub(crate) mod constraint_ranges;
 pub(crate) mod constraint_text;
+pub(crate) mod context_members;
 pub mod errors;
 pub mod support;
 pub(crate) mod types;

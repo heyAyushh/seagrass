@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: complete and validate `ctx.bumps.*` from generated Anchor `Bumps`
+  fields using parsed PDA constraints instead of account-name guesses.
 - lsp: complete handler member access through `Context<T>` account aliases,
   including boxed Anchor accounts such as `let account = &mut ctx.accounts.x`.
 - lsp: recover typed handler member diagnostics from syntax-broken Anchor

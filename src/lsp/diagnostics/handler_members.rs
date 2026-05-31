@@ -5,7 +5,7 @@ use {
         registry::AnchorDiagnosticKind,
     },
     crate::{
-        account_members,
+        account_members, context_members,
         document::ParsedDocument,
         lsp::{
             local_types,
@@ -89,6 +89,20 @@ impl<'a> HandlerMemberVisitor<'a> {
         let Some(access) = FieldAccess::from_expr_field(node) else {
             return;
         };
+        if let Some(context_type) = self.scopes.get_context(&access.receiver).or_else(|| {
+            text_receiver_context_type(self.document, access.end_position()?, &access.receiver)
+        }) {
+            if let Some(diagnostic) = unknown_context_member_diagnostic(
+                self.document,
+                self.workspace_index,
+                &context_type,
+                &access,
+            ) {
+                self.push_diagnostic_once(diagnostic);
+                return;
+            }
+        }
+
         let Some(receiver_type) = self.scopes.get(&access.receiver).or_else(|| {
             text_receiver_type(
                 self.document,
@@ -104,6 +118,10 @@ impl<'a> HandlerMemberVisitor<'a> {
         else {
             return;
         };
+        self.push_diagnostic_once(diagnostic);
+    }
+
+    fn push_diagnostic_once(&mut self, diagnostic: Diagnostic) {
         let key = (
             diagnostic.range.start.line,
             diagnostic.range.start.character,
@@ -236,6 +254,27 @@ fn unknown_member_diagnostic(
     receiver_type: &str,
     access: &FieldAccess,
 ) -> Option<Diagnostic> {
+    let member_names = access
+        .members
+        .iter()
+        .map(|member| member.name.clone())
+        .collect::<Vec<_>>();
+    if let Some(missing) = context_members::missing_generated_bumps_member_in_chain(
+        document,
+        workspace_index,
+        receiver_type,
+        &access.receiver,
+        &member_names,
+    ) {
+        let member_range = access.members.get(missing.member_index)?.range;
+        return Some(handler_member_diagnostic(
+            member_range,
+            access,
+            receiver_type,
+            missing,
+        ));
+    }
+
     let mut owner_type = receiver_type.to_string();
     let mut members =
         account_members::resolved_struct_members(document, workspace_index, &owner_type)?;
@@ -247,25 +286,21 @@ fn unknown_member_diagnostic(
             .iter()
             .find(|candidate| candidate.name == member.name)
         else {
-            return Some(diagnostic_from_range(
+            return Some(handler_member_diagnostic(
                 member.range,
-                AnchorDiagnosticKind::AnchorMissingAccountReference,
-                format!(
-                    "`{receiver_path}.{}` does not resolve; `{}` has no field `{}`.",
-                    member.name, members.owner_type, member.name
-                ),
-                Some(serde_json::json!({
-                    "topic": TOPIC,
-                    "reason": REASON,
-                    "receiver": access.receiver,
-                    "receiverType": receiver_type,
-                    "field": member.name,
-                    "ownerType": members.owner_type,
-                    "candidates": members.members.iter().map(|member| member.name.clone()).collect::<Vec<_>>(),
-                    "evidenceSource": EVIDENCE_SOURCE,
-                    "confidence": Confidence::Derived.as_str(),
-                    "applicability": Applicability::Unspecified.as_str(),
-                })),
+                access,
+                receiver_type,
+                context_members::MissingContextMember {
+                    member_index: 0,
+                    receiver_path,
+                    member: member.name.clone(),
+                    owner_type: members.owner_type,
+                    candidates: members
+                        .members
+                        .iter()
+                        .map(|member| member.name.clone())
+                        .collect::<Vec<_>>(),
+                },
             ));
         };
 
@@ -279,6 +314,62 @@ fn unknown_member_diagnostic(
     }
 
     None
+}
+
+fn unknown_context_member_diagnostic(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    context_type: &str,
+    access: &FieldAccess,
+) -> Option<Diagnostic> {
+    let member_names = access
+        .members
+        .iter()
+        .map(|member| member.name.clone())
+        .collect::<Vec<_>>();
+    let missing = context_members::missing_context_member_in_chain(
+        document,
+        workspace_index,
+        context_type,
+        &access.receiver,
+        &member_names,
+    )?;
+    let member_range = access.members.get(missing.member_index)?.range;
+
+    Some(handler_member_diagnostic(
+        member_range,
+        access,
+        context_type,
+        missing,
+    ))
+}
+
+fn handler_member_diagnostic(
+    range: Range,
+    access: &FieldAccess,
+    receiver_type: &str,
+    missing: context_members::MissingContextMember,
+) -> Diagnostic {
+    diagnostic_from_range(
+        range,
+        AnchorDiagnosticKind::AnchorMissingAccountReference,
+        format!(
+            "`{}.{}` does not resolve; `{}` has no field `{}`.",
+            missing.receiver_path, missing.member, missing.owner_type, missing.member
+        ),
+        Some(serde_json::json!({
+            "topic": TOPIC,
+            "reason": REASON,
+            "receiver": access.receiver,
+            "receiverType": receiver_type,
+            "field": missing.member,
+            "ownerType": missing.owner_type,
+            "candidates": missing.candidates,
+            "evidenceSource": EVIDENCE_SOURCE,
+            "confidence": Confidence::Derived.as_str(),
+            "applicability": Applicability::Unspecified.as_str(),
+        })),
+    )
 }
 
 fn collect_text_recovered_members(
@@ -299,6 +390,25 @@ fn collect_text_recovered_members(
             };
             if !scope.has_anchor_context() {
                 continue;
+            }
+            if let Some(context_type) =
+                text_receiver_context_type(document, position, &access.receiver)
+            {
+                if let Some(diagnostic) = unknown_context_member_diagnostic(
+                    document,
+                    workspace_index,
+                    &context_type,
+                    &access.clone().into(),
+                ) {
+                    let key = (
+                        diagnostic.range.start.line,
+                        diagnostic.range.start.character,
+                    );
+                    if emitted.insert(key) {
+                        diagnostics.push(diagnostic);
+                    }
+                    continue;
+                }
             }
             let Some(receiver_type) =
                 text_receiver_type(document, workspace_index, position, &access.receiver)
@@ -336,6 +446,18 @@ fn text_receiver_type(
         .rev()
         .find(|value| value.name == receiver)
         .map(|value| value.type_name)
+}
+
+fn text_receiver_context_type(
+    document: &ParsedDocument,
+    position: Position,
+    receiver: &str,
+) -> Option<String> {
+    local_types::text_visible_context_values_at(document, position)
+        .into_iter()
+        .rev()
+        .find(|value| value.name == receiver)
+        .map(|value| value.accounts_type_name)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -510,527 +632,4 @@ impl TypedScopeStack {
 }
 
 #[cfg(test)]
-mod tests {
-    use {
-        super::collect_with_workspace,
-        crate::{
-            diagnostics::registry::ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE, document::ParsedDocument,
-        },
-        proptest::prelude::*,
-        tower_lsp::lsp_types::NumberOrString,
-    };
-
-    prop_compose! {
-        fn generated_ident()(tail in "[a-z0-9_]{1,10}") -> String {
-            format!("sg_{tail}")
-        }
-    }
-
-    #[test]
-    fn reports_unknown_explicit_handler_local_member() {
-        let document = ParsedDocument::parse(
-            r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>) -> Result<()> {
-        let bundle: PositionBundle = PositionBundle { position_bundle_mint: Pubkey::default() };
-        bundle.s;
-        Ok(())
-    }
-}
-
-pub struct PositionBundle {
-    pub position_bundle_mint: Pubkey,
-}
-"#,
-        )
-        .unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-        let diagnostic = diagnostics
-            .iter()
-            .find(|diagnostic| diagnostic.message.contains("`bundle.s` does not resolve"))
-            .unwrap_or_else(|| panic!("missing handler member diagnostic: {diagnostics:#?}"));
-
-        assert_eq!(
-            diagnostic.code.as_ref(),
-            Some(&NumberOrString::String(
-                ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE.to_string()
-            ))
-        );
-        assert!(diagnostic
-            .message
-            .contains("`PositionBundle` has no field `s`"));
-    }
-
-    #[test]
-    fn reports_text_recovered_unknown_member_when_rhs_is_missing() {
-        let source = r#"
-use anchor_lang::prelude::*;
-
-pub fn run(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
-    bundle.missing = ;
-    Ok(())
-}
-
-pub struct PositionBundle {
-    pub known: Pubkey,
-}
-"#;
-        let document = ParsedDocument::parse_or_empty(source);
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics.iter().any(|diagnostic| {
-                diagnostic
-                    .message
-                    .contains("`bundle.missing` does not resolve")
-                    && diagnostic
-                        .message
-                        .contains("`PositionBundle` has no field `missing`")
-            }),
-            "missing text-recovered handler member diagnostic: {diagnostics:#?}"
-        );
-    }
-
-    #[test]
-    fn reports_text_recovered_unknown_member_through_context_account_alias() {
-        let source = r#"
-use anchor_lang::prelude::*;
-
-#[derive(Accounts)]
-pub struct Run<'info> {
-    pub position_bundle: Box<Account<'info, PositionBundle>>,
-}
-
-pub fn run(ctx: Context<Run>) -> Result<()> {
-    let position_bundle = &mut ctx.accounts.position_bundle;
-    position_bundle.missing = ;
-    Ok(())
-}
-
-#[account]
-pub struct PositionBundle {
-    pub known: Pubkey,
-}
-"#;
-        let document = ParsedDocument::parse_or_empty(source);
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics.iter().any(|diagnostic| {
-                diagnostic
-                    .message
-                    .contains("`position_bundle.missing` does not resolve")
-                    && diagnostic
-                        .message
-                        .contains("`PositionBundle` has no field `missing`")
-            }),
-            "missing context-account alias member diagnostic: {diagnostics:#?}"
-        );
-    }
-
-    #[test]
-    fn accepts_known_explicit_handler_local_member() {
-        let document = ParsedDocument::parse(
-            r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>) -> Result<()> {
-        let bundle: PositionBundle = PositionBundle { position_bundle_mint: Pubkey::default() };
-        bundle.position_bundle_mint;
-        Ok(())
-    }
-}
-
-pub struct PositionBundle {
-    pub position_bundle_mint: Pubkey,
-}
-"#,
-        )
-        .unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics.iter().all(|diagnostic| !diagnostic
-                .message
-                .contains("position_bundle_mint` does not resolve")),
-            "known handler member should resolve, got {diagnostics:#?}"
-        );
-    }
-
-    #[test]
-    fn reports_nested_explicit_handler_local_member() {
-        let document = ParsedDocument::parse(
-            r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
-        bundle.inner.fake;
-        Ok(())
-    }
-}
-
-pub struct PositionBundle {
-    pub inner: InnerBundle,
-}
-
-pub struct InnerBundle {
-    pub real: Pubkey,
-}
-"#,
-        )
-        .unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics.iter().any(|diagnostic| {
-                diagnostic
-                    .message
-                    .contains("`bundle.inner.fake` does not resolve")
-                    && diagnostic
-                        .message
-                        .contains("`InnerBundle` has no field `fake`")
-            }),
-            "missing nested handler member diagnostic: {diagnostics:#?}"
-        );
-    }
-
-    #[test]
-    fn reports_unknown_member_through_typed_handler_alias() {
-        let document = ParsedDocument::parse(
-            r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
-        let alias = bundle;
-        alias.fake;
-        Ok(())
-    }
-}
-
-pub struct PositionBundle {
-    pub position_bundle_mint: Pubkey,
-}
-"#,
-        )
-        .unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics.iter().any(|diagnostic| {
-                diagnostic.message.contains("`alias.fake` does not resolve")
-                    && diagnostic
-                        .message
-                        .contains("`PositionBundle` has no field `fake`")
-            }),
-            "missing alias handler member diagnostic: {diagnostics:#?}"
-        );
-    }
-
-    #[test]
-    fn reports_unknown_member_through_typed_field_alias() {
-        let document = ParsedDocument::parse(
-            r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
-        let inner = bundle.inner;
-        inner.fake;
-        Ok(())
-    }
-}
-
-pub struct PositionBundle {
-    pub inner: InnerBundle,
-}
-
-pub struct InnerBundle {
-    pub real: Pubkey,
-}
-"#,
-        )
-        .unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics.iter().any(|diagnostic| {
-                diagnostic.message.contains("`inner.fake` does not resolve")
-                    && diagnostic
-                        .message
-                        .contains("`InnerBundle` has no field `fake`")
-            }),
-            "missing field alias handler member diagnostic: {diagnostics:#?}"
-        );
-    }
-
-    #[test]
-    fn reports_unknown_member_through_context_account_alias() {
-        let document = ParsedDocument::parse(
-            r#"
-use anchor_lang::prelude::*;
-
-#[derive(Accounts)]
-pub struct Run<'info> {
-    pub position_bundle: Box<Account<'info, PositionBundle>>,
-}
-
-pub fn run(ctx: Context<Run>) -> Result<()> {
-    let position_bundle = &mut ctx.accounts.position_bundle;
-    position_bundle.fake;
-    Ok(())
-}
-
-#[account]
-pub struct PositionBundle {
-    pub real: Pubkey,
-}
-"#,
-        )
-        .unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics.iter().any(|diagnostic| {
-                diagnostic
-                    .message
-                    .contains("`position_bundle.fake` does not resolve")
-                    && diagnostic
-                        .message
-                        .contains("`PositionBundle` has no field `fake`")
-            }),
-            "missing context-account alias handler member diagnostic: {diagnostics:#?}"
-        );
-    }
-
-    #[test]
-    fn ignores_unknown_handler_alias_type() {
-        let document = ParsedDocument::parse(
-            r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>) -> Result<()> {
-        let alias = unknown_value;
-        alias.fake;
-        Ok(())
-    }
-}
-"#,
-        )
-        .unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics
-                .iter()
-                .all(|diagnostic| !diagnostic.message.contains("alias.fake")),
-            "unknown alias type should stay outside shallow resolver, got {diagnostics:#?}"
-        );
-    }
-
-    #[test]
-    fn ignores_unknown_external_handler_local_type() {
-        let document = ParsedDocument::parse(
-            r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>, external: ExternalType) -> Result<()> {
-        external.fake;
-        Ok(())
-    }
-}
-"#,
-        )
-        .unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        assert!(
-            diagnostics
-                .iter()
-                .all(|diagnostic| !diagnostic.message.contains("external.fake")),
-            "external type should stay outside shallow resolver, got {diagnostics:#?}"
-        );
-    }
-
-    proptest! {
-        #[test]
-        fn reports_generated_unknown_typed_handler_member(
-            local in generated_ident(),
-            owner in "[A-Z][A-Za-z0-9_]{1,10}",
-            known_field in generated_ident(),
-            missing_field in generated_ident(),
-        ) {
-            prop_assume!(known_field != missing_field);
-            let source = format!(
-                r#"
-#[program]
-pub mod demo {{
-    pub fn run(ctx: Context<Run>) -> Result<()> {{
-        let {local}: {owner} = {owner} {{ {known_field}: Pubkey::default() }};
-        {local}.{missing_field};
-        Ok(())
-    }}
-}}
-
-pub struct {owner} {{
-    pub {known_field}: Pubkey,
-}}
-"#
-            );
-            let document = ParsedDocument::parse(&source).unwrap();
-
-            let diagnostics = collect_with_workspace(&document, None);
-
-            prop_assert!(
-                diagnostics.iter().any(|diagnostic| {
-                    diagnostic
-                        .message
-                        .contains(&format!("`{local}.{missing_field}` does not resolve"))
-                        && diagnostic
-                            .message
-                            .contains(&format!("`{owner}` has no field `{missing_field}`"))
-                }),
-                "expected generated handler member diagnostic, got {diagnostics:#?}"
-            );
-        }
-
-        #[test]
-        fn reports_generated_text_recovered_unknown_typed_handler_member(
-            local in generated_ident(),
-            owner in "[A-Z][A-Za-z0-9_]{1,10}",
-            known_field in generated_ident(),
-            missing_field in generated_ident(),
-        ) {
-            prop_assume!(known_field != missing_field);
-            let source = format!(
-                r#"
-use anchor_lang::prelude::*;
-
-pub fn run(ctx: Context<Run>, {local}: {owner}) -> Result<()> {{
-    {local}.{missing_field} = ;
-    Ok(())
-}}
-
-pub struct {owner} {{
-    pub {known_field}: Pubkey,
-}}
-"#
-            );
-            let document = ParsedDocument::parse_or_empty(&source);
-
-            let diagnostics = collect_with_workspace(&document, None);
-
-            prop_assert!(
-                diagnostics.iter().any(|diagnostic| {
-                    diagnostic
-                        .message
-                        .contains(&format!("`{local}.{missing_field}` does not resolve"))
-                        && diagnostic
-                            .message
-                            .contains(&format!("`{owner}` has no field `{missing_field}`"))
-                }),
-                "expected generated text-recovered handler member diagnostic, got {diagnostics:#?}"
-            );
-        }
-
-        #[test]
-        fn reports_generated_unknown_member_through_context_account_alias(
-            account_field in generated_ident(),
-            alias in generated_ident(),
-            owner in "[A-Z][A-Za-z0-9_]{1,10}",
-            known_field in generated_ident(),
-            missing_field in generated_ident(),
-        ) {
-            prop_assume!(account_field != alias);
-            prop_assume!(known_field != missing_field);
-            let source = format!(
-                r#"
-use anchor_lang::prelude::*;
-
-#[derive(Accounts)]
-pub struct Run<'info> {{
-    pub {account_field}: Box<Account<'info, {owner}>>,
-}}
-
-pub fn run(ctx: Context<Run>) -> Result<()> {{
-    let {alias} = &mut ctx.accounts.{account_field};
-    {alias}.{missing_field};
-    Ok(())
-}}
-
-#[account]
-pub struct {owner} {{
-    pub {known_field}: Pubkey,
-}}
-"#
-            );
-            let document = ParsedDocument::parse(&source).unwrap();
-
-            let diagnostics = collect_with_workspace(&document, None);
-
-            prop_assert!(
-                diagnostics.iter().any(|diagnostic| {
-                    diagnostic
-                        .message
-                        .contains(&format!("`{alias}.{missing_field}` does not resolve"))
-                        && diagnostic
-                            .message
-                            .contains(&format!("`{owner}` has no field `{missing_field}`"))
-                }),
-                "expected generated context alias member diagnostic, got {diagnostics:#?}"
-            );
-        }
-
-        #[test]
-        fn reports_generated_unknown_member_through_typed_alias(
-            local in generated_ident(),
-            alias in generated_ident(),
-            owner in "[A-Z][A-Za-z0-9_]{1,10}",
-            known_field in generated_ident(),
-            missing_field in generated_ident(),
-        ) {
-            prop_assume!(local != alias);
-            prop_assume!(known_field != missing_field);
-            let source = format!(
-                r#"
-#[program]
-pub mod demo {{
-    pub fn run(ctx: Context<Run>, {local}: {owner}) -> Result<()> {{
-        let {alias} = {local};
-        {alias}.{missing_field};
-        Ok(())
-    }}
-}}
-
-pub struct {owner} {{
-    pub {known_field}: Pubkey,
-}}
-"#
-            );
-            let document = ParsedDocument::parse(&source).unwrap();
-
-            let diagnostics = collect_with_workspace(&document, None);
-
-            prop_assert!(
-                diagnostics.iter().any(|diagnostic| {
-                    diagnostic
-                        .message
-                        .contains(&format!("`{alias}.{missing_field}` does not resolve"))
-                        && diagnostic
-                            .message
-                            .contains(&format!("`{owner}` has no field `{missing_field}`"))
-                }),
-                "expected generated alias member diagnostic, got {diagnostics:#?}"
-            );
-        }
-    }
-}
+mod tests;

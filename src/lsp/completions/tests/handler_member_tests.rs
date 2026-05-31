@@ -166,6 +166,116 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn completes_context_bump_members_from_pda_fields() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(seeds = [b"state"], bump)]
+    pub state: Account<'info, State>,
+    #[account(seeds = [b"vault"], bump = vault.bump)]
+    pub vault: Account<'info, Vault>,
+    pub payer: Signer<'info>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    ctx.bumps.st
+}
+
+#[account]
+pub struct State {
+    pub bump: u8,
+}
+
+#[account]
+pub struct Vault {
+    pub bump: u8,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(&document, position_after(source, "ctx.bumps.st"))
+        .expect("context bump member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"state"));
+    assert!(!labels.contains(&"vault"));
+    assert!(!labels.contains(&"payer"));
+    assert!(items[0]
+        .detail
+        .as_deref()
+        .is_some_and(|detail| detail.contains("RunBumps")));
+}
+
+#[test]
+fn completes_context_bump_members_after_alias() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(seeds = [b"state"], bump)]
+    pub state: Account<'info, State>,
+    pub payer: Signer<'info>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let bumps = ctx.bumps;
+    bumps.st
+}
+
+#[account]
+pub struct State {
+    pub value: u64,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(&document, position_after(source, "bumps.st"))
+        .expect("context bump alias member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"state"));
+    assert!(!labels.contains(&"payer"));
+}
+
+#[test]
+fn completes_context_root_members() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub payer: Signer<'info>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    ctx.
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(&document, position_after(source, "ctx."))
+        .expect("context root member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"accounts"));
+    assert!(labels.contains(&"bumps"));
+    assert!(labels.contains(&"program_id"));
+    assert!(labels.contains(&"remaining_accounts"));
+}
+
+#[test]
 fn completes_typed_handler_member_after_alias_while_dot_is_incomplete() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -408,6 +518,7 @@ pub struct {owner} {{
         prop_assume!(account_field != field);
         prop_assume!(alias != field);
         let prefix = field.chars().next().unwrap_or_default().to_string();
+        prop_assume!(!account_field.starts_with(&prefix));
         let source = format!(
             r#"
 use anchor_lang::prelude::*;
@@ -437,6 +548,50 @@ pub struct {owner} {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "expected generated context alias field completion, got {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_context_bump_members(
+        account_field in rust_identifier(),
+        non_pda_field in rust_identifier(),
+    ) {
+        prop_assume!(account_field != non_pda_field);
+        let prefix = account_field.chars().next().unwrap_or_default().to_string();
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    #[account(seeds = [b"generated"], bump)]
+    pub {account_field}: Account<'info, GeneratedState>,
+    pub {non_pda_field}: Signer<'info>,
+}}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {{
+    ctx.bumps.{prefix}
+}}
+
+#[account]
+pub struct GeneratedState {{
+    pub value: u64,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let completion_line = format!("ctx.bumps.{prefix}");
+
+        let items = completions(&document, position_after(&source, &completion_line))
+            .expect("generated context bump completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == account_field),
+            "expected generated bump field completion, got {items:#?}"
+        );
+        prop_assert!(
+            items.iter().all(|item| item.label != non_pda_field),
+            "non-PDA account field should not be offered as a bump, got {items:#?}"
         );
     }
 }

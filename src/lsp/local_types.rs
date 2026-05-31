@@ -1,6 +1,6 @@
 use {
     crate::{
-        account_members,
+        account_members, context_members,
         document::ParsedDocument,
         lsp::scope::{TextHandlerBinding, TextHandlerScope},
         workspace::WorkspaceIndex,
@@ -29,6 +29,12 @@ pub(crate) struct TypedLocalValue {
     pub(crate) type_name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ContextLocalValue {
+    pub(crate) name: String,
+    pub(crate) accounts_type_name: String,
+}
+
 pub(crate) fn visible_typed_values_at_with_workspace(
     document: &ParsedDocument,
     position: Position,
@@ -48,6 +54,33 @@ pub(crate) fn visible_typed_values_at_with_workspace(
     };
     collector.visit_file(document.syntax());
     collector.values
+}
+
+pub(crate) fn visible_context_values_at(
+    document: &ParsedDocument,
+    position: Position,
+) -> Vec<ContextLocalValue> {
+    let Some(cursor_offset) = crate::range::byte_offset_at(document.source(), position) else {
+        return Vec::new();
+    };
+    let mut collector = VisibleTypedValueCollector {
+        document,
+        workspace_index: None,
+        source: document.source(),
+        cursor_offset,
+        values: Vec::new(),
+        context_values: Vec::new(),
+        found_cursor_function: false,
+    };
+    collector.visit_file(document.syntax());
+    collector
+        .context_values
+        .into_iter()
+        .map(|value| ContextLocalValue {
+            name: value.name,
+            accounts_type_name: value.type_name,
+        })
+        .collect()
 }
 
 pub(crate) fn text_visible_typed_values_at_with_workspace(
@@ -71,6 +104,29 @@ pub(crate) fn text_visible_typed_values_at_with_workspace(
         }
     }
     values
+}
+
+pub(crate) fn text_visible_context_values_at(
+    document: &ParsedDocument,
+    position: Position,
+) -> Vec<ContextLocalValue> {
+    let Some(scope) = TextHandlerScope::at_position(document.source(), position) else {
+        return Vec::new();
+    };
+    scope
+        .bindings()
+        .iter()
+        .filter_map(|binding| {
+            binding
+                .type_display
+                .as_deref()
+                .and_then(context_type_name_from_text)
+                .map(|accounts_type_name| ContextLocalValue {
+                    name: binding.name.clone(),
+                    accounts_type_name,
+                })
+        })
+        .collect()
 }
 
 pub(crate) fn context_type_name_from_text(text: &str) -> Option<String> {
@@ -361,6 +417,7 @@ fn expression_type_name_with_context_scope(
             field,
             context_type_name,
         )
+        .or_else(|| context_member_type_name_from_expr(field, context_type_name))
         .or_else(|| {
             field_expression_type_name(
                 document,
@@ -409,6 +466,24 @@ fn context_account_field_type_name_from_expr(
         &context_name,
         &access.account_field,
     )
+}
+
+fn context_member_type_name_from_expr(
+    field: &ExprField,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let segments = field_expression_segments(field)?;
+    if segments.len() != 2 {
+        return None;
+    }
+    let context_name = context_type_name(&segments[0])?;
+    match segments[1].as_str() {
+        context_members::CONTEXT_ACCOUNTS_MEMBER => Some(context_name),
+        context_members::CONTEXT_BUMPS_MEMBER => {
+            Some(context_members::generated_bumps_type(&context_name))
+        }
+        _ => None,
+    }
 }
 
 fn field_expression_type_name(

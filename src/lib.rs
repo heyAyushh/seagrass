@@ -14,7 +14,7 @@ pub use testing::fuzz_harness;
 
 pub(crate) use anchor::{
     account_members, account_semantics, analysis as anchor_analysis, constraint_catalog,
-    constraint_ranges, constraint_text, types as anchor_types,
+    constraint_ranges, constraint_text, context_members, types as anchor_types,
 };
 pub use anchor::{errors as anchor_errors, support as anchor_support};
 pub(crate) use core::{definition_bridge, document_stub, evidence, workspace};

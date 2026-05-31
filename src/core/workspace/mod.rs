@@ -114,6 +114,7 @@ pub struct WorkspaceAccountField {
     pub name: String,
     pub type_name: Option<String>,
     pub generic_type_names: Vec<String>,
+    pub is_optional: bool,
     pub account_constraints: Vec<AccountConstraint>,
 }
 
