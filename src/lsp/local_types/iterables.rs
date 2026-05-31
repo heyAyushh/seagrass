@@ -10,11 +10,34 @@ const ITERABLE_VALUE_TYPES: &[&str] = &[
     "VecDeque",
 ];
 const TRANSPARENT_ITERABLE_TYPES: &[&str] = &["Box"];
-const ITERATOR_METHODS: &[&str] = &["into_iter", "iter", "iter_mut"];
+// These std Iterator adapters preserve the item type, so the shallow resolver
+// can carry a known struct type through them without invoking rust-analyzer.
+const ITERATOR_METHODS: &[&str] = &[
+    "by_ref",
+    "cloned",
+    "copied",
+    "fuse",
+    "into_iter",
+    "iter",
+    "iter_mut",
+    "peekable",
+    "rev",
+];
+const ITEM_PRESERVING_ITERATOR_METHODS_WITH_ONE_ARG: &[&str] = &[
+    "filter",
+    "inspect",
+    "skip",
+    "skip_while",
+    "step_by",
+    "take",
+    "take_while",
+];
 const OPTION_VALUE_METHODS: &[&str] = &["unwrap", "unwrap_or_default"];
 const OPTION_VALUE_METHODS_WITH_ONE_ARG: &[&str] = &["expect", "unwrap_or", "unwrap_or_else"];
 const COLLECTION_OPTION_ITEM_METHODS: &[&str] = &["first", "last", "pop"];
 const COLLECTION_OPTION_ITEM_METHODS_WITH_ONE_ARG: &[&str] = &["get", "get_mut"];
+const ITERATOR_OPTION_ITEM_METHODS: &[&str] = &["last", "next"];
+const ITERATOR_OPTION_ITEM_METHODS_WITH_ONE_ARG: &[&str] = &["find", "nth"];
 
 pub(super) fn item_type_name_from_type(ty: &Type) -> Option<String> {
     match transparent_type(ty) {
@@ -55,8 +78,10 @@ pub(super) fn expression_item_type_name(
             scope_item_type_name(&path.path.segments[0].ident.to_string())
         }
         syn::Expr::MethodCall(method_call)
-            if ITERATOR_METHODS.contains(&method_call.method.to_string().as_str())
-                && method_call.args.is_empty() =>
+            if item_preserving_iterator_method_matches(
+                &method_call.method.to_string(),
+                method_call.args.len(),
+            ) =>
         {
             expression_item_type_name(&method_call.receiver, scope_item_type_name)
         }
@@ -109,6 +134,14 @@ fn optional_item_type_name(
         {
             expression_item_type_name(&method_call.receiver, scope_item_type_name)
         }
+        syn::Expr::MethodCall(method_call)
+            if iterator_option_item_method_matches(
+                &method_call.method.to_string(),
+                method_call.args.len(),
+            ) =>
+        {
+            expression_item_type_name(&method_call.receiver, scope_item_type_name)
+        }
         syn::Expr::Reference(reference) => {
             optional_item_type_name(&reference.expr, scope_item_type_name)
         }
@@ -126,6 +159,16 @@ fn option_value_method_matches(method: &str, arg_count: usize) -> bool {
 fn collection_option_item_method_matches(method: &str, arg_count: usize) -> bool {
     (arg_count == 0 && COLLECTION_OPTION_ITEM_METHODS.contains(&method))
         || (arg_count == 1 && COLLECTION_OPTION_ITEM_METHODS_WITH_ONE_ARG.contains(&method))
+}
+
+fn item_preserving_iterator_method_matches(method: &str, arg_count: usize) -> bool {
+    (arg_count == 0 && ITERATOR_METHODS.contains(&method))
+        || (arg_count == 1 && ITEM_PRESERVING_ITERATOR_METHODS_WITH_ONE_ARG.contains(&method))
+}
+
+fn iterator_option_item_method_matches(method: &str, arg_count: usize) -> bool {
+    (arg_count == 0 && ITERATOR_OPTION_ITEM_METHODS.contains(&method))
+        || (arg_count == 1 && ITERATOR_OPTION_ITEM_METHODS_WITH_ONE_ARG.contains(&method))
 }
 
 fn transparent_type(ty: &Type) -> &Type {

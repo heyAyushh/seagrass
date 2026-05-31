@@ -305,13 +305,13 @@ fn editor_ux_resolves_typed_for_loop_members() {
     let source = r#"
 use anchor_lang::prelude::*;
 
-pub fn handler(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {
+pub fn handler(ctx: Context<Run>, bundles: Vec<SampleRecord>) -> Result<()> {
     for bundle in bundles.iter() {
         bundle.real_
     }
 }
 
-pub struct PositionBundle {
+pub struct SampleRecord {
     pub real_mint: Pubkey,
 }
 
@@ -487,6 +487,44 @@ pub struct Run<'info> {
     let items =
         completions::completions(&document, super::position_after(source, "selected.real_"))
             .expect("editor-visible if-expression inferred member completions");
+    assert_eq!(
+        items.first().map(|item| item.label.as_str()),
+        Some("real_mint")
+    );
+}
+
+#[test]
+fn editor_ux_resolves_iterator_chain_members() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {
+    let selected = bundles.iter().filter(|_| true).next().unwrap();
+    selected.real_
+}
+
+pub struct PositionBundle {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = diagnostics::collect(&document);
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("`selected` does not resolve")),
+        "iterator-chain binding should stay resolved: {diagnostics:#?}"
+    );
+
+    let items =
+        completions::completions(&document, super::position_after(source, "selected.real_"))
+            .expect("editor-visible iterator-chain member completions");
     assert_eq!(
         items.first().map(|item| item.label.as_str()),
         Some("real_mint")

@@ -755,4 +755,8 @@ mod assignment_tests;
 mod control_flow_tests;
 
 #[cfg(test)]
+#[path = "handler_members/iterator_tests.rs"]
+mod iterator_tests;
+
+#[cfg(test)]
 mod tests;
