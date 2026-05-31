@@ -6,6 +6,7 @@ const ITERABLE_VALUE_TYPES: &[&str] = &[
     "HashSet",
     "LinkedList",
     "Option",
+    "Result",
     "Vec",
     "VecDeque",
 ];
@@ -43,6 +44,14 @@ const ITEM_CLOSURE_ITERATOR_METHODS_WITH_ONE_ARG: &[&str] = &[
     "position",
     "skip_while",
     "take_while",
+];
+const WRAPPER_CLOSURE_VALUE_METHODS_WITH_ONE_ARG: &[&str] = &[
+    "and_then",
+    "filter",
+    "inspect",
+    "is_none_or",
+    "is_some_and",
+    "map",
 ];
 const OPTION_VALUE_METHODS: &[&str] = &["unwrap", "unwrap_or_default"];
 const OPTION_VALUE_METHODS_WITH_ONE_ARG: &[&str] = &["expect", "unwrap_or", "unwrap_or_else"];
@@ -127,6 +136,10 @@ pub(super) fn item_transforming_iterator_method_matches(method: &str, arg_count:
 
 pub(super) fn item_closure_iterator_method_matches(method: &str, arg_count: usize) -> bool {
     arg_count == 1 && ITEM_CLOSURE_ITERATOR_METHODS_WITH_ONE_ARG.contains(&method)
+}
+
+pub(super) fn wrapper_closure_value_method_matches(method: &str, arg_count: usize) -> bool {
+    arg_count == 1 && WRAPPER_CLOSURE_VALUE_METHODS_WITH_ONE_ARG.contains(&method)
 }
 
 pub(super) fn iterator_option_item_method_matches(method: &str, arg_count: usize) -> bool {

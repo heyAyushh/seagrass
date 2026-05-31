@@ -13,6 +13,22 @@ const ACCOUNT_DATA_TYPE_WRAPPERS: &[&str] = &[
 ];
 const TRANSPARENT_ACCOUNT_FIELD_WRAPPERS: &[&str] = &["Box", "Option"];
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum ValueWrapperKind {
+    Option,
+    Result,
+}
+
+impl ValueWrapperKind {
+    pub(super) fn from_type_name(type_name: &str) -> Option<Self> {
+        match type_name {
+            "Option" => Some(Self::Option),
+            "Result" => Some(Self::Result),
+            _ => None,
+        }
+    }
+}
+
 pub(crate) fn context_type_name_from_text(text: &str) -> Option<String> {
     let ty = syn::parse_str::<syn::Type>(text).ok()?;
     context_type_name_from_type(&ty)
@@ -141,6 +157,21 @@ pub(super) fn return_type_name(output: &ReturnType) -> Option<String> {
 pub(super) fn return_type_name_from_text(text: &str) -> Option<String> {
     let ty = syn::parse_str::<Type>(text).ok()?;
     local_value_type_name(&ty)
+}
+
+pub(super) fn wrapped_value_type_name_for_kind(
+    ty: &Type,
+    expected_kind: Option<ValueWrapperKind>,
+) -> Option<String> {
+    let Type::Path(type_path) = transparent_type_path(ty) else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    let kind = ValueWrapperKind::from_type_name(&segment.ident.to_string())?;
+    if expected_kind.is_some_and(|expected| expected != kind) {
+        return None;
+    }
+    first_type_argument_type(&segment.arguments).and_then(local_value_type_name)
 }
 
 pub(super) fn try_return_type_name(output: &ReturnType) -> Option<String> {

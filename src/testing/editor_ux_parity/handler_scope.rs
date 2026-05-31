@@ -578,3 +578,112 @@ pub struct Run<'info> {
         Some("real_authority")
     );
 }
+
+#[test]
+fn editor_ux_resolves_option_result_combinator_members() {
+    let closure_source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    maybe_record.map(|record| record.real_);
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let closure_document = ParsedDocument::parse_or_empty(closure_source);
+    let closure_items = completions::completions(
+        &closure_document,
+        super::position_after(closure_source, "record.real_"),
+    )
+    .expect("editor-visible Option::map closure member completions");
+    assert_eq!(
+        closure_items.first().map(|item| item.label.as_str()),
+        Some("real_mint")
+    );
+
+    let mapped_source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    let selected = maybe_record.and_then(|record| Some(record.metadata())).unwrap();
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let mapped_document = ParsedDocument::parse_or_empty(mapped_source);
+    let mapped_items = completions::completions(
+        &mapped_document,
+        super::position_after(mapped_source, "selected.real_"),
+    )
+    .expect("editor-visible Option::and_then output member completions");
+    assert_eq!(
+        mapped_items.first().map(|item| item.label.as_str()),
+        Some("real_authority")
+    );
+
+    let recovered_source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(
+    ctx: Context<Run>,
+    record_result: std::result::Result<SampleRecord, ()>,
+) -> Result<()> {
+    let recovered = record_result.ok().unwrap();
+    recovered.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let recovered_document = ParsedDocument::parse_or_empty(recovered_source);
+    let recovered_items = completions::completions(
+        &recovered_document,
+        super::position_after(recovered_source, "recovered.real_"),
+    )
+    .expect("editor-visible Result::ok output member completions");
+    assert_eq!(
+        recovered_items.first().map(|item| item.label.as_str()),
+        Some("real_mint")
+    );
+}

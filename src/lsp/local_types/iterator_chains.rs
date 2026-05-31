@@ -1,13 +1,33 @@
 use {
     super::{
         expression_type_name_with_item_scope, iterables, local_value_type_name_from_type,
-        typed_pattern_bindings,
+        type_names, typed_pattern_bindings,
     },
     crate::{document::ParsedDocument, workspace::WorkspaceIndex},
     syn::{Expr, ExprClosure, ExprMethodCall, ReturnType},
 };
 
 type TypeLookup<'a> = dyn Fn(&str) -> Option<String> + 'a;
+
+const OPTION_CONSTRUCTOR: &str = "Some";
+const RESULT_OK_CONSTRUCTOR: &str = "Ok";
+const WRAPPER_AND_THEN_METHOD: &str = "and_then";
+const WRAPPER_AS_MUT_METHOD: &str = "as_mut";
+const WRAPPER_AS_REF_METHOD: &str = "as_ref";
+const WRAPPER_FILTER_METHOD: &str = "filter";
+const WRAPPER_INSPECT_METHOD: &str = "inspect";
+const WRAPPER_MAP_METHOD: &str = "map";
+const WRAPPER_OK_METHOD: &str = "ok";
+
+struct WrapperValue {
+    kind: type_names::ValueWrapperKind,
+    type_name: String,
+}
+
+struct WrapperClosureInput<'a> {
+    type_name: &'a str,
+    expected_wrapper: type_names::ValueWrapperKind,
+}
 
 pub(super) fn accessed_item_type_name_with_scope(
     document: &ParsedDocument,
@@ -87,7 +107,15 @@ fn optional_item_type_name_with_scope(
 ) -> Option<String> {
     match expr {
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
-            scope_item_type_name(&path.path.segments[0].ident.to_string())
+            wrapper_value_type_name_with_scope(
+                document,
+                workspace_index,
+                expr,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+            .map(|value| value.type_name)
         }
         Expr::MethodCall(method_call)
             if iterables::collection_option_item_method_matches(
@@ -119,6 +147,15 @@ fn optional_item_type_name_with_scope(
                 scope_item_type_name,
             )
         }
+        Expr::MethodCall(_) => wrapper_value_type_name_with_scope(
+            document,
+            workspace_index,
+            expr,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .map(|value| value.type_name),
         Expr::Reference(reference) => optional_item_type_name_with_scope(
             document,
             workspace_index,
@@ -210,10 +247,20 @@ pub(crate) fn iterator_method_closure_item_type_name(
     context_type_name: &TypeLookup<'_>,
     scope_item_type_name: &TypeLookup<'_>,
 ) -> Option<String> {
-    if !iterables::item_closure_iterator_method_matches(
-        &method_call.method.to_string(),
-        method_call.args.len(),
-    ) {
+    let method = method_call.method.to_string();
+    if iterables::wrapper_closure_value_method_matches(&method, method_call.args.len()) {
+        if let Some(value) = wrapper_value_type_name_with_scope(
+            document,
+            workspace_index,
+            &method_call.receiver,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ) {
+            return Some(value.type_name);
+        }
+    }
+    if !iterables::item_closure_iterator_method_matches(&method, method_call.args.len()) {
         return None;
     }
     expression_iterable_item_type_name_with_item_scope(
@@ -224,6 +271,192 @@ pub(crate) fn iterator_method_closure_item_type_name(
         context_type_name,
         scope_item_type_name,
     )
+}
+
+fn wrapper_value_type_name_with_scope(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr: &Expr,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<WrapperValue> {
+    match expr {
+        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+            let name = path.path.segments[0].ident.to_string();
+            let kind = scope_type_name(&name)
+                .as_deref()
+                .and_then(type_names::ValueWrapperKind::from_type_name)?;
+            let type_name = scope_item_type_name(&name)?;
+            Some(WrapperValue { kind, type_name })
+        }
+        Expr::MethodCall(method_call) => wrapper_method_value_type_name(
+            document,
+            workspace_index,
+            method_call,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Reference(reference) => wrapper_value_type_name_with_scope(
+            document,
+            workspace_index,
+            &reference.expr,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Paren(paren) => wrapper_value_type_name_with_scope(
+            document,
+            workspace_index,
+            &paren.expr,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Group(group) => wrapper_value_type_name_with_scope(
+            document,
+            workspace_index,
+            &group.expr,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        _ => None,
+    }
+}
+
+fn wrapper_method_value_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    method_call: &ExprMethodCall,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<WrapperValue> {
+    let method = method_call.method.to_string();
+    match (method.as_str(), method_call.args.len()) {
+        (WRAPPER_MAP_METHOD, 1) => wrapper_map_value_type_name(
+            document,
+            workspace_index,
+            method_call,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        (WRAPPER_AND_THEN_METHOD, 1) => wrapper_and_then_value_type_name(
+            document,
+            workspace_index,
+            method_call,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        _ => wrapper_preserving_value_type_name(
+            document,
+            workspace_index,
+            method_call,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+    }
+}
+
+fn wrapper_preserving_value_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    method_call: &ExprMethodCall,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<WrapperValue> {
+    let receiver = wrapper_value_type_name_with_scope(
+        document,
+        workspace_index,
+        &method_call.receiver,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )?;
+    let method = method_call.method.to_string();
+    match (receiver.kind, method.as_str(), method_call.args.len()) {
+        (_, WRAPPER_AS_MUT_METHOD | WRAPPER_AS_REF_METHOD, 0)
+        | (_, WRAPPER_INSPECT_METHOD, 1)
+        | (type_names::ValueWrapperKind::Option, WRAPPER_FILTER_METHOD, 1) => Some(receiver),
+        (type_names::ValueWrapperKind::Result, WRAPPER_OK_METHOD, 0) => Some(WrapperValue {
+            kind: type_names::ValueWrapperKind::Option,
+            type_name: receiver.type_name,
+        }),
+        _ => None,
+    }
+}
+
+fn wrapper_map_value_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    method_call: &ExprMethodCall,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<WrapperValue> {
+    let input = wrapper_value_type_name_with_scope(
+        document,
+        workspace_index,
+        &method_call.receiver,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )?;
+    let closure = single_closure_arg(method_call)?;
+    let type_name = closure_return_type_name(
+        document,
+        workspace_index,
+        closure,
+        &input.type_name,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )?;
+    Some(WrapperValue {
+        kind: input.kind,
+        type_name,
+    })
+}
+
+fn wrapper_and_then_value_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    method_call: &ExprMethodCall,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<WrapperValue> {
+    let input = wrapper_value_type_name_with_scope(
+        document,
+        workspace_index,
+        &method_call.receiver,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )?;
+    let closure = single_closure_arg(method_call)?;
+    let type_name = closure_wrapped_return_type_name(
+        document,
+        workspace_index,
+        closure,
+        WrapperClosureInput {
+            type_name: &input.type_name,
+            expected_wrapper: input.kind,
+        },
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )?;
+    Some(WrapperValue {
+        kind: input.kind,
+        type_name,
+    })
 }
 
 fn iterator_map_item_type_name(
@@ -251,6 +484,41 @@ fn iterator_map_item_type_name(
         scope_type_name,
         context_type_name,
         scope_item_type_name,
+    )
+}
+
+fn closure_wrapped_return_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    closure: &ExprClosure,
+    input: WrapperClosureInput<'_>,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<String> {
+    if let ReturnType::Type(_, ty) = &closure.output {
+        return type_names::wrapped_value_type_name_for_kind(ty, Some(input.expected_wrapper));
+    }
+    let closure_arg = closure.inputs.iter().next()?;
+    let closure_values =
+        typed_pattern_bindings(document, workspace_index, closure_arg, input.type_name);
+    let context_lookup = |name: &str| context_type_name(name);
+    let item_lookup = |name: &str| scope_item_type_name(name);
+    expression_wrapped_value_type_name(
+        document,
+        workspace_index,
+        &closure.body,
+        input.expected_wrapper,
+        &|name| {
+            closure_values
+                .iter()
+                .rev()
+                .find(|value| value.name == name)
+                .map(|value| value.type_name.clone())
+                .or_else(|| scope_type_name(name))
+        },
+        &context_lookup,
+        &item_lookup,
     )
 }
 
@@ -289,6 +557,112 @@ fn closure_return_type_name(
                 .map(|value| value.type_name.clone())
                 .or_else(|| scope_type_name(name))
         },
+        &context_lookup,
+        &item_lookup,
+    )
+}
+
+fn expression_wrapped_value_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr: &Expr,
+    expected_wrapper: type_names::ValueWrapperKind,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<String> {
+    match expr {
+        Expr::Call(call) => constructor_wrapped_value_type_name(
+            document,
+            workspace_index,
+            call,
+            expected_wrapper,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+            wrapper_value_type_name_with_scope(
+                document,
+                workspace_index,
+                expr,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+            .and_then(|value| (value.kind == expected_wrapper).then_some(value.type_name))
+        }
+        Expr::Block(block) => block.block.stmts.last().and_then(|stmt| match stmt {
+            syn::Stmt::Expr(expr, None) => expression_wrapped_value_type_name(
+                document,
+                workspace_index,
+                expr,
+                expected_wrapper,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            ),
+            _ => None,
+        }),
+        Expr::Reference(reference) => expression_wrapped_value_type_name(
+            document,
+            workspace_index,
+            &reference.expr,
+            expected_wrapper,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Paren(paren) => expression_wrapped_value_type_name(
+            document,
+            workspace_index,
+            &paren.expr,
+            expected_wrapper,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        Expr::Group(group) => expression_wrapped_value_type_name(
+            document,
+            workspace_index,
+            &group.expr,
+            expected_wrapper,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
+        _ => None,
+    }
+}
+
+fn constructor_wrapped_value_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    call: &syn::ExprCall,
+    expected_wrapper: type_names::ValueWrapperKind,
+    scope_type_name: &TypeLookup<'_>,
+    context_type_name: &TypeLookup<'_>,
+    scope_item_type_name: &TypeLookup<'_>,
+) -> Option<String> {
+    let Expr::Path(path) = call.func.as_ref() else {
+        return None;
+    };
+    let constructor = path.path.segments.last()?.ident.to_string();
+    let expected_constructor = match expected_wrapper {
+        type_names::ValueWrapperKind::Option => OPTION_CONSTRUCTOR,
+        type_names::ValueWrapperKind::Result => RESULT_OK_CONSTRUCTOR,
+    };
+    if constructor != expected_constructor || call.args.len() != 1 {
+        return None;
+    }
+    let type_lookup = |name: &str| scope_type_name(name);
+    let context_lookup = |name: &str| context_type_name(name);
+    let item_lookup = |name: &str| scope_item_type_name(name);
+    expression_type_name_with_item_scope(
+        document,
+        workspace_index,
+        call.args.first()?,
+        &type_lookup,
         &context_lookup,
         &item_lookup,
     )

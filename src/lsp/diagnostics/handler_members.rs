@@ -771,4 +771,8 @@ mod control_flow_tests;
 mod iterator_tests;
 
 #[cfg(test)]
+#[path = "handler_members/combinator_tests.rs"]
+mod combinator_tests;
+
+#[cfg(test)]
 mod tests;

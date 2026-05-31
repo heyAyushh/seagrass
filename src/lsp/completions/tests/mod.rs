@@ -7,6 +7,7 @@ use {
 mod account_alias_tests;
 mod account_loader_tests;
 mod handler_call_return_tests;
+mod handler_combinator_tests;
 mod handler_expression_tests;
 mod handler_iterator_tests;
 mod handler_member_tests;
