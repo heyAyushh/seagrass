@@ -503,12 +503,12 @@ fn field_expression_type_name(
     let Member::Named(member) = &field.member else {
         return None;
     };
-    account_members::resolved_struct_members(document, workspace_index, &base_type)?
-        .members
-        .iter()
-        .find(|candidate| candidate.name == member.to_string())?
-        .type_name
-        .clone()
+    account_members::resolved_struct_member_type_name(
+        document,
+        workspace_index,
+        &base_type,
+        &member.to_string(),
+    )
 }
 
 fn text_typed_value_from_binding(

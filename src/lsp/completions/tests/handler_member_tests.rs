@@ -166,6 +166,78 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn completes_account_data_members_after_accounts_alias_field() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub bundle_account: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let accounts = &mut ctx.accounts;
+    accounts.bundle_account.asset_
+}
+
+#[account]
+pub struct PositionBundle {
+    pub asset_mint: Pubkey,
+    pub asset_owner: Pubkey,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(
+        &document,
+        position_after(source, "accounts.bundle_account.asset_"),
+    )
+    .expect("account data completions through accounts alias field");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"asset_mint"));
+    assert!(labels.contains(&"asset_owner"));
+}
+
+#[test]
+fn completes_account_data_members_after_accounts_alias_account_alias() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub bundle_account: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let accounts = &mut ctx.accounts;
+    let bundle = &mut accounts.bundle_account;
+    bundle.asset_
+}
+
+#[account]
+pub struct PositionBundle {
+    pub asset_mint: Pubkey,
+    pub asset_owner: Pubkey,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(&document, position_after(source, "bundle.asset_"))
+        .expect("account data completions through account alias from accounts alias");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"asset_mint"));
+    assert!(labels.contains(&"asset_owner"));
+}
+
+#[test]
 fn completes_context_bump_members_from_pda_fields() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -548,6 +620,50 @@ pub struct {owner} {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "expected generated context alias field completion, got {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_accounts_alias_field_members(
+        account_field in rust_identifier(),
+        accounts_alias in rust_identifier(),
+        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        field in rust_identifier(),
+    ) {
+        prop_assume!(account_field != accounts_alias);
+        prop_assume!(account_field != field);
+        prop_assume!(accounts_alias != field);
+        let prefix = field.chars().next().unwrap_or_default().to_string();
+        prop_assume!(!account_field.starts_with(&prefix));
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub {account_field}: Box<Account<'info, {owner}>>,
+}}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {{
+    let {accounts_alias} = &mut ctx.accounts;
+    {accounts_alias}.{account_field}.{prefix}
+}}
+
+#[account]
+pub struct {owner} {{
+    pub {field}: Pubkey,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let completion_line = format!("{accounts_alias}.{account_field}.{prefix}");
+
+        let items = completions(&document, position_after(&source, &completion_line))
+            .expect("generated accounts alias field member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "expected generated accounts alias field completion, got {items:#?}"
         );
     }
 

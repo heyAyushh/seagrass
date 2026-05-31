@@ -48,6 +48,44 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn editor_ux_completes_member_through_accounts_alias() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub bundled_position: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let accounts = &mut ctx.accounts;
+    accounts.bundled_position.position_
+}
+
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#,
+    );
+
+    let items = completions::completions(
+        &document,
+        position_after(document.source(), "accounts.bundled_position.position_"),
+    )
+    .expect("editor-visible accounts alias member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"position_bundle_mint"));
+    assert!(labels.contains(&"position_bitmap"));
+}
+
+#[test]
 fn editor_ux_completes_context_bump_members() {
     let document = ParsedDocument::parse_or_empty(
         r#"

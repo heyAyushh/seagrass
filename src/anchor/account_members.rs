@@ -2,9 +2,9 @@ use {
     crate::{
         account_semantics,
         document::{summarize_account_field_type, ParsedDocument, SymbolRange},
-        workspace::WorkspaceIndex,
+        workspace::{WorkspaceAccountField, WorkspaceAccountsStruct, WorkspaceIndex},
     },
-    tower_lsp::lsp_types::CompletionItemKind,
+    tower_lsp::lsp_types::{CompletionItemKind, Range},
 };
 
 pub(crate) const ACCOUNT_LOADER_LOADED_METHODS: &[&str] = &["load", "load_mut"];
@@ -71,10 +71,48 @@ pub(crate) fn resolved_struct_chain_members(
 ) -> Option<ResolvedAccountMembers> {
     let mut members = struct_members(document, workspace_index, receiver_type)?;
     for member_name in member_chain {
-        let next_type = members.member(member_name)?.type_name.as_ref()?;
-        members = struct_members(document, workspace_index, next_type)?;
+        members = resolved_struct_member_members(
+            document,
+            workspace_index,
+            &members.owner_type,
+            member_name,
+        )?;
     }
     Some(members)
+}
+
+pub(crate) fn resolved_struct_member_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    owner_type: &str,
+    member_name: &str,
+) -> Option<String> {
+    account_context_field_type_name(document, workspace_index, owner_type, member_name).or_else(
+        || {
+            struct_members(document, workspace_index, owner_type)?
+                .member(member_name)?
+                .type_name
+                .clone()
+        },
+    )
+}
+
+pub(crate) fn resolved_struct_member_members(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    owner_type: &str,
+    member_name: &str,
+) -> Option<ResolvedAccountMembers> {
+    account_context_field_members(document, workspace_index, owner_type, member_name).or_else(
+        || {
+            let next_type = struct_members(document, workspace_index, owner_type)?
+                .member(member_name)?
+                .type_name
+                .as_ref()?
+                .clone();
+            struct_members(document, workspace_index, &next_type)
+        },
+    )
 }
 
 pub(crate) fn resolved_struct_members(
@@ -83,6 +121,130 @@ pub(crate) fn resolved_struct_members(
     receiver_type: &str,
 ) -> Option<ResolvedAccountMembers> {
     struct_members(document, workspace_index, receiver_type)
+}
+
+fn account_context_field_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts_type: &str,
+    field_name: &str,
+) -> Option<String> {
+    document
+        .symbols()
+        .accounts_structs
+        .get(accounts_type)
+        .and_then(|accounts| {
+            accounts
+                .fields
+                .iter()
+                .find(|field| field.name == field_name)
+                .and_then(|field| {
+                    account_semantics::declared_or_expected_account_inner_type(accounts, field)
+                })
+                .map(str::to_string)
+        })
+        .or_else(|| {
+            workspace_index
+                .and_then(|index| index.accounts_struct(accounts_type))
+                .and_then(|accounts| {
+                    accounts
+                        .fields
+                        .iter()
+                        .find(|field| field.name == field_name)
+                        .and_then(|field| {
+                            account_semantics::declared_or_expected_account_inner_type(
+                                &workspace_accounts_symbol(accounts),
+                                &workspace_account_field_symbol(field),
+                            )
+                            .map(str::to_string)
+                        })
+                })
+        })
+}
+
+fn account_context_field_members(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts_type: &str,
+    field_name: &str,
+) -> Option<ResolvedAccountMembers> {
+    document
+        .symbols()
+        .accounts_structs
+        .get(accounts_type)
+        .and_then(|accounts| {
+            let field = accounts
+                .fields
+                .iter()
+                .find(|field| field.name == field_name)?;
+            resolved_field_members(
+                document,
+                workspace_index,
+                accounts,
+                field,
+                AccountMemberAccess::Direct,
+            )
+        })
+        .or_else(|| {
+            workspace_index
+                .and_then(|index| index.accounts_struct(accounts_type))
+                .and_then(|accounts| {
+                    let field = accounts
+                        .fields
+                        .iter()
+                        .find(|field| field.name == field_name)?;
+                    resolved_field_members(
+                        document,
+                        workspace_index,
+                        &workspace_accounts_symbol(accounts),
+                        &workspace_account_field_symbol(field),
+                        AccountMemberAccess::Direct,
+                    )
+                })
+        })
+}
+
+fn workspace_accounts_symbol(accounts: &WorkspaceAccountsStruct) -> SymbolRange {
+    SymbolRange {
+        name: accounts.name.clone(),
+        range: Range::default(),
+        selection_range: Range::default(),
+        fields: accounts
+            .fields
+            .iter()
+            .map(workspace_account_field_symbol)
+            .collect(),
+        type_name: None,
+        type_range: None,
+        generic_type_names: Vec::new(),
+        generic_type_ranges: Vec::new(),
+        is_optional: false,
+        account_constraints: Vec::new(),
+        pda_constraint: None,
+        instruction_arguments: accounts.instruction_arguments.clone(),
+        derive_accounts_range: None,
+    }
+}
+
+fn workspace_account_field_symbol(field: &WorkspaceAccountField) -> SymbolRange {
+    SymbolRange {
+        name: field.name.clone(),
+        range: Range::default(),
+        selection_range: Range::default(),
+        fields: Vec::new(),
+        type_name: field.type_name.clone(),
+        type_range: None,
+        generic_type_names: field.generic_type_names.clone(),
+        generic_type_ranges: Vec::new(),
+        is_optional: field.is_optional,
+        account_constraints: field.account_constraints.clone(),
+        pda_constraint: field
+            .account_constraints
+            .iter()
+            .find_map(|constraint| constraint.pda.clone()),
+        instruction_arguments: Vec::new(),
+        derive_accounts_range: None,
+    }
 }
 
 pub(crate) fn missing_member_in_chain(

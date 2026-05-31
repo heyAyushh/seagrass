@@ -275,9 +275,8 @@ fn unknown_member_diagnostic(
         ));
     }
 
-    let mut owner_type = receiver_type.to_string();
     let mut members =
-        account_members::resolved_struct_members(document, workspace_index, &owner_type)?;
+        account_members::resolved_struct_members(document, workspace_index, receiver_type)?;
     let mut receiver_path = access.receiver.clone();
 
     for member in &access.members {
@@ -306,11 +305,15 @@ fn unknown_member_diagnostic(
 
         receiver_path.push('.');
         receiver_path.push_str(&member.name);
-        let Some(next_type) = resolved.type_name.as_ref() else {
+        if resolved.type_name.is_none() {
             return None;
-        };
-        owner_type = next_type.clone();
-        members = account_members::resolved_struct_members(document, workspace_index, &owner_type)?;
+        }
+        members = account_members::resolved_struct_member_members(
+            document,
+            workspace_index,
+            &members.owner_type,
+            &member.name,
+        )?;
     }
 
     None

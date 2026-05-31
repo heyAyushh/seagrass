@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: resolve account-data member access through intermediate
+  `ctx.accounts` aliases such as `let accounts = &mut ctx.accounts`.
 - lsp: complete and validate `ctx.bumps.*` from generated Anchor `Bumps`
   fields using parsed PDA constraints instead of account-name guesses.
 - lsp: complete handler member access through `Context<T>` account aliases,
