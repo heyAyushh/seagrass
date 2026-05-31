@@ -107,13 +107,18 @@ impl VisibleTypedValueCollector<'_> {
             if let Some(context_name) = super::context_type_name_from_type(&pat_type.ty) {
                 self.add_context_pattern_candidate(&pat_type.pat, context_name);
             }
-            if let Some(item_type) = iterables::item_type_name_from_type(&pat_type.ty) {
-                self.add_iterable_pattern_candidate(&pat_type.pat, item_type);
+            let item_type = iterables::item_type_name_from_type(&pat_type.ty);
+            if let Some(item_type) = item_type.as_deref() {
+                self.add_iterable_pattern_candidate(&pat_type.pat, item_type.to_string());
             }
             let Some(type_name) = super::local_value_type_name_from_type(&pat_type.ty) else {
                 continue;
             };
-            self.add_typed_pattern_candidates(&pat_type.pat, &type_name);
+            self.add_typed_pattern_candidates_with_wrapped_item(
+                &pat_type.pat,
+                &type_name,
+                item_type.as_deref(),
+            );
         }
     }
 
@@ -200,20 +205,35 @@ impl VisibleTypedValueCollector<'_> {
             }
             Expr::Match(match_expr) => {
                 let scrutinee_type = self.expression_type_name(&match_expr.expr);
+                let wrapped_item_type = self.expression_optional_item_type_name(&match_expr.expr);
                 for arm in &match_expr.arms {
                     if arm
                         .guard
                         .as_ref()
                         .is_some_and(|(_, guard)| self.span_contains_cursor(guard.span()))
                     {
-                        if let Some(type_name) = scrutinee_type.as_deref() {
-                            self.add_typed_pattern_candidates(&arm.pat, type_name);
+                        if let Some(type_name) = scrutinee_type
+                            .as_deref()
+                            .or_else(|| patterns::wrapper_type_name(&arm.pat))
+                        {
+                            self.add_typed_pattern_candidates_with_wrapped_item(
+                                &arm.pat,
+                                type_name,
+                                wrapped_item_type.as_deref(),
+                            );
                         }
                         return true;
                     }
                     if self.span_contains_cursor(arm.body.span()) {
-                        if let Some(type_name) = scrutinee_type.as_deref() {
-                            self.add_typed_pattern_candidates(&arm.pat, type_name);
+                        if let Some(type_name) = scrutinee_type
+                            .as_deref()
+                            .or_else(|| patterns::wrapper_type_name(&arm.pat))
+                        {
+                            self.add_typed_pattern_candidates_with_wrapped_item(
+                                &arm.pat,
+                                type_name,
+                                wrapped_item_type.as_deref(),
+                            );
                         }
                         return self.collect_bindings_inside_expr(&arm.body);
                     }
@@ -235,7 +255,13 @@ impl VisibleTypedValueCollector<'_> {
             }
             if let Expr::Closure(closure) = arg {
                 if let Some(input_type) = inferred_item_type.as_deref() {
-                    self.collect_inferred_closure_input(closure, input_type);
+                    let wrapped_item_type =
+                        self.expression_optional_item_type_name(&method_call.receiver);
+                    self.collect_inferred_closure_input(
+                        closure,
+                        input_type,
+                        wrapped_item_type.as_deref(),
+                    );
                 }
                 self.collect_closure_inputs(closure);
                 return self.collect_bindings_inside_expr(&closure.body);
@@ -245,21 +271,35 @@ impl VisibleTypedValueCollector<'_> {
         true
     }
 
-    fn collect_inferred_closure_input(&mut self, closure: &syn::ExprClosure, input_type: &str) {
+    fn collect_inferred_closure_input(
+        &mut self,
+        closure: &syn::ExprClosure,
+        input_type: &str,
+        wrapped_item_type_name: Option<&str>,
+    ) {
         if let Some(input) = closure.inputs.iter().next() {
-            self.add_typed_pattern_candidates(input, input_type);
+            self.add_typed_pattern_candidates_with_wrapped_item(
+                input,
+                input_type,
+                wrapped_item_type_name,
+            );
         }
     }
 
     fn collect_closure_inputs(&mut self, closure: &syn::ExprClosure) {
         for input in &closure.inputs {
-            if let Some(item_type) = iterables::explicit_pattern_item_type_name(input) {
-                self.add_iterable_pattern_candidate(input, item_type);
+            let item_type = iterables::explicit_pattern_item_type_name(input);
+            if let Some(item_type) = item_type.as_deref() {
+                self.add_iterable_pattern_candidate(input, item_type.to_string());
             }
             let Some(type_name) = super::explicit_pattern_type_name(input) else {
                 continue;
             };
-            self.add_typed_pattern_candidates(input, &type_name);
+            self.add_typed_pattern_candidates_with_wrapped_item(
+                input,
+                &type_name,
+                item_type.as_deref(),
+            );
         }
     }
 
@@ -282,34 +322,53 @@ impl VisibleTypedValueCollector<'_> {
     }
 
     fn collect_local(&mut self, local: &syn::Local) {
-        if let Some(item_type) = super::local_iterable_item_type_name_with_scope(
+        let item_type = super::local_iterable_item_type_name_with_scope(
             self.document,
             self.workspace_index,
             local,
             &|name| self.visible_type_name(name),
             &|name| self.visible_context_type_name(name),
             &|name| self.visible_iterable_item_type_name(name),
-        ) {
-            self.add_iterable_pattern_candidate(&local.pat, item_type);
+        );
+        let wrapped_item_type = local
+            .init
+            .as_ref()
+            .and_then(|init| self.expression_optional_item_type_name(&init.expr));
+        if let Some(item_type) = item_type.as_deref() {
+            self.add_iterable_pattern_candidate(&local.pat, item_type.to_string());
         }
-        let Some(type_name) = super::local_type_name_with_item_scope(
+        let type_name = super::local_type_name_with_item_scope(
             self.document,
             self.workspace_index,
             local,
             &|name| self.visible_type_name(name),
             &|name| self.visible_context_type_name(name),
             &|name| self.visible_iterable_item_type_name(name),
-        ) else {
+        )
+        .or_else(|| patterns::wrapper_type_name(&local.pat).map(str::to_string));
+        let Some(type_name) = type_name else {
             return;
         };
-        self.add_typed_pattern_candidates(&local.pat, &type_name);
+        self.add_typed_pattern_candidates_with_wrapped_item(
+            &local.pat,
+            &type_name,
+            wrapped_item_type.as_deref().or(item_type.as_deref()),
+        );
     }
 
     fn collect_condition_pattern_candidates(&mut self, expr: &Expr) {
         match expr {
             Expr::Let(expr_let) => {
-                if let Some(type_name) = self.expression_type_name(&expr_let.expr) {
-                    self.add_typed_pattern_candidates(&expr_let.pat, &type_name);
+                let wrapped_item_type = self.expression_optional_item_type_name(&expr_let.expr);
+                let type_name = self
+                    .expression_type_name(&expr_let.expr)
+                    .or_else(|| patterns::wrapper_type_name(&expr_let.pat).map(str::to_string));
+                if let Some(type_name) = type_name {
+                    self.add_typed_pattern_candidates_with_wrapped_item(
+                        &expr_let.pat,
+                        &type_name,
+                        wrapped_item_type.as_deref(),
+                    );
                 }
             }
             Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
@@ -344,6 +403,17 @@ impl VisibleTypedValueCollector<'_> {
         )
     }
 
+    fn expression_optional_item_type_name(&self, expr: &Expr) -> Option<String> {
+        super::expression_optional_item_type_name_with_item_scope(
+            self.document,
+            self.workspace_index,
+            expr,
+            &|name| self.visible_type_name(name),
+            &|name| self.visible_context_type_name(name),
+            &|name| self.visible_iterable_item_type_name(name),
+        )
+    }
+
     fn iterator_method_closure_item_type_name(
         &self,
         method_call: &syn::ExprMethodCall,
@@ -365,6 +435,22 @@ impl VisibleTypedValueCollector<'_> {
             pat,
             type_name,
         ));
+    }
+
+    fn add_typed_pattern_candidates_with_wrapped_item(
+        &mut self,
+        pat: &Pat,
+        type_name: &str,
+        wrapped_item_type_name: Option<&str>,
+    ) {
+        self.values
+            .extend(patterns::typed_pattern_bindings_with_wrapped_item(
+                self.document,
+                self.workspace_index,
+                pat,
+                type_name,
+                wrapped_item_type_name,
+            ));
     }
 
     fn add_context_pattern_candidate(&mut self, pat: &Pat, type_name: String) {

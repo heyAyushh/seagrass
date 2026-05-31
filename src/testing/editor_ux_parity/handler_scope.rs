@@ -687,3 +687,68 @@ pub struct Run<'info> {
         Some("real_mint")
     );
 }
+
+#[test]
+fn editor_ux_resolves_option_result_pattern_members() {
+    let option_source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    if let Some(record) = maybe_record {
+        record.real_
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let option_document = ParsedDocument::parse_or_empty(option_source);
+    let option_items = completions::completions(
+        &option_document,
+        super::position_after(option_source, "record.real_"),
+    )
+    .expect("editor-visible Option pattern member completions");
+    assert_eq!(
+        option_items.first().map(|item| item.label.as_str()),
+        Some("real_mint")
+    );
+
+    let result_source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(
+    ctx: Context<Run>,
+    record_result: std::result::Result<SampleRecord, ()>,
+) -> Result<()> {
+    match record_result {
+        Ok(record) => record.real_,
+        _ => return Ok(()),
+    }
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let result_document = ParsedDocument::parse_or_empty(result_source);
+    let result_items = completions::completions(
+        &result_document,
+        super::position_after(result_source, "record.real_"),
+    )
+    .expect("editor-visible Result Ok pattern member completions");
+    assert_eq!(
+        result_items.first().map(|item| item.label.as_str()),
+        Some("real_mint")
+    );
+}

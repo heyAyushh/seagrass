@@ -43,11 +43,33 @@ impl TypedScopeStack {
         pat: &syn::Pat,
         type_name: &str,
     ) {
+        self.declare_typed_pattern_with_wrapped_item(
+            document,
+            workspace_index,
+            pat,
+            type_name,
+            None,
+        );
+    }
+
+    pub(super) fn declare_typed_pattern_with_wrapped_item(
+        &mut self,
+        document: &ParsedDocument,
+        workspace_index: Option<&WorkspaceIndex>,
+        pat: &syn::Pat,
+        type_name: &str,
+        wrapped_item_type_name: Option<&str>,
+    ) {
         let Some(scope) = self.scopes.last_mut() else {
             return;
         };
-        for value in local_types::typed_pattern_bindings(document, workspace_index, pat, type_name)
-        {
+        for value in local_types::typed_pattern_bindings_with_wrapped_item(
+            document,
+            workspace_index,
+            pat,
+            type_name,
+            wrapped_item_type_name,
+        ) {
             scope.insert(value.name, value.type_name);
         }
     }

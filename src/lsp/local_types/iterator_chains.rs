@@ -97,7 +97,7 @@ pub(super) fn accessed_item_type_name_with_scope(
     }
 }
 
-fn optional_item_type_name_with_scope(
+pub(super) fn optional_item_type_name_with_scope(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
     expr: &Expr,

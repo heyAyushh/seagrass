@@ -16,6 +16,7 @@ mod handler_method_tests;
 mod handler_pattern_tests;
 mod handler_transparent_tests;
 mod handler_value_tests;
+mod handler_wrapper_pattern_tests;
 mod mint_decimals_tests;
 mod ranking_tests;
 mod value_expression_tests;

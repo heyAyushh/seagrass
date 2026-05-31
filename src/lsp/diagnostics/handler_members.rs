@@ -1,6 +1,7 @@
 mod field_access;
 mod iterator_closures;
 mod method_calls;
+mod pattern_scopes;
 mod scope;
 
 use {
@@ -24,7 +25,7 @@ use {
     std::collections::HashSet,
     syn::{
         visit::{self, Visit},
-        BinOp, Expr, ExprField, ExprMethodCall, FnArg, ItemFn, ItemMod,
+        Expr, ExprField, ExprMethodCall, ItemFn, ItemMod,
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
@@ -73,29 +74,6 @@ impl<'a> HandlerMemberVisitor<'a> {
         self.declare_function_inputs(item_fn);
         self.visit_block(&item_fn.block);
         self.scopes.pop();
-    }
-
-    fn declare_function_inputs(&mut self, item_fn: &ItemFn) {
-        for input in &item_fn.sig.inputs {
-            let FnArg::Typed(pat_type) = input else {
-                continue;
-            };
-            if let Some(context_name) = local_types::context_type_name_from_type(&pat_type.ty) {
-                self.scopes.declare_context_pat(&pat_type.pat, context_name);
-            }
-            if let Some(item_type) = local_types::iterable_item_type_name_from_type(&pat_type.ty) {
-                self.scopes.declare_iterable_pat(&pat_type.pat, item_type);
-            }
-            let Some(type_name) = local_types::local_value_type_name_from_type(&pat_type.ty) else {
-                continue;
-            };
-            self.scopes.declare_typed_pattern(
-                self.document,
-                self.workspace_index,
-                &pat_type.pat,
-                &type_name,
-            );
-        }
     }
 
     fn report_unknown_member(&mut self, node: &ExprField) {
@@ -175,29 +153,6 @@ impl<'a> HandlerMemberVisitor<'a> {
             return;
         };
         self.push_diagnostic_once(diagnostic);
-    }
-
-    fn visit_condition_with_typed_pattern_scope(&mut self, expr: &Expr) {
-        match expr {
-            Expr::Let(expr_let) => {
-                self.visit_expr(&expr_let.expr);
-                if let Some(type_name) = self.expression_type_name(&expr_let.expr) {
-                    self.scopes.declare_typed_pattern(
-                        self.document,
-                        self.workspace_index,
-                        &expr_let.pat,
-                        &type_name,
-                    );
-                }
-            }
-            Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
-                self.visit_condition_with_typed_pattern_scope(&binary.left);
-                self.visit_condition_with_typed_pattern_scope(&binary.right);
-            }
-            Expr::Group(group) => self.visit_condition_with_typed_pattern_scope(&group.expr),
-            Expr::Paren(paren) => self.visit_condition_with_typed_pattern_scope(&paren.expr),
-            _ => self.visit_expr(expr),
-        }
     }
 
     fn expression_type_name(&self, expr: &Expr) -> Option<String> {
@@ -295,19 +250,26 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         ) {
             self.scopes.declare_iterable_pat(&node.pat, item_type);
         }
-        if let Some(type_name) = local_types::local_type_name_with_item_scope(
+        let wrapped_item_type = node
+            .init
+            .as_ref()
+            .and_then(|init| self.expression_optional_item_type_name(&init.expr));
+        let type_name = local_types::local_type_name_with_item_scope(
             self.document,
             self.workspace_index,
             node,
             &|name| self.scopes.get(name),
             &|name| self.scopes.get_context(name),
             &|name| self.scopes.get_iterable_item(name),
-        ) {
-            self.scopes.declare_typed_pattern(
+        )
+        .or_else(|| local_types::wrapper_pattern_type_name(&node.pat).map(str::to_string));
+        if let Some(type_name) = type_name {
+            self.scopes.declare_typed_pattern_with_wrapped_item(
                 self.document,
                 self.workspace_index,
                 &node.pat,
                 &type_name,
+                wrapped_item_type.as_deref(),
             );
         }
     }
@@ -347,14 +309,19 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
     fn visit_expr_match(&mut self, node: &'ast syn::ExprMatch) {
         self.visit_expr(&node.expr);
         let scrutinee_type = self.expression_type_name(&node.expr);
+        let wrapped_item_type = self.expression_optional_item_type_name(&node.expr);
         for arm in &node.arms {
             self.scopes.push();
-            if let Some(type_name) = scrutinee_type.as_deref() {
-                self.scopes.declare_typed_pattern(
+            if let Some(type_name) = scrutinee_type
+                .as_deref()
+                .or_else(|| local_types::wrapper_pattern_type_name(&arm.pat))
+            {
+                self.scopes.declare_typed_pattern_with_wrapped_item(
                     self.document,
                     self.workspace_index,
                     &arm.pat,
                     type_name,
+                    wrapped_item_type.as_deref(),
                 );
             }
             if let Some((_, guard)) = &arm.guard {
@@ -753,6 +720,10 @@ mod method_call_tests;
 #[cfg(test)]
 #[path = "handler_members/pattern_tests.rs"]
 mod pattern_tests;
+
+#[cfg(test)]
+#[path = "handler_members/wrapper_pattern_tests.rs"]
+mod wrapper_pattern_tests;
 
 #[cfg(test)]
 #[path = "handler_members/iterable_expression_tests.rs"]

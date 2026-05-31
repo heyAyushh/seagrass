@@ -26,6 +26,7 @@ pub(crate) use {
         expression_iterable_item_type_name_with_item_scope, iterator_method_closure_item_type_name,
     },
     patterns::typed_pattern_bindings,
+    patterns::typed_pattern_bindings_with_wrapped_item,
     type_names::{
         account_data_type_name_from_parts, account_data_type_name_from_text,
         context_type_name_from_text, context_type_name_from_type, shallow_type_name,
@@ -696,8 +697,30 @@ pub(crate) fn local_iterable_item_type_name_with_scope(
     })
 }
 
+pub(crate) fn expression_optional_item_type_name_with_item_scope(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr: &Expr,
+    scope_type_name: &dyn Fn(&str) -> Option<String>,
+    context_type_name: &dyn Fn(&str) -> Option<String>,
+    scope_item_type_name: &dyn Fn(&str) -> Option<String>,
+) -> Option<String> {
+    iterator_chains::optional_item_type_name_with_scope(
+        document,
+        workspace_index,
+        expr,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    )
+}
+
 pub(crate) fn explicit_pattern_iterable_item_type_name(pat: &Pat) -> Option<String> {
     iterables::explicit_pattern_item_type_name(pat)
+}
+
+pub(crate) fn wrapper_pattern_type_name(pat: &Pat) -> Option<&'static str> {
+    patterns::wrapper_type_name(pat)
 }
 
 pub(crate) fn explicit_pattern_type_name(pat: &Pat) -> Option<String> {
