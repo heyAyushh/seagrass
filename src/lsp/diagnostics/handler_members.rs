@@ -80,6 +80,9 @@ impl<'a> HandlerMemberVisitor<'a> {
             if let Some(context_name) = local_types::context_type_name_from_type(&pat_type.ty) {
                 self.scopes.declare_context_pat(&pat_type.pat, context_name);
             }
+            if let Some(item_type) = local_types::iterable_item_type_name_from_type(&pat_type.ty) {
+                self.scopes.declare_iterable_pat(&pat_type.pat, item_type);
+            }
             let Some(type_name) = local_types::local_value_type_name_from_type(&pat_type.ty) else {
                 continue;
             };
@@ -188,6 +191,12 @@ impl<'a> HandlerMemberVisitor<'a> {
         )
     }
 
+    fn expression_iterable_item_type_name(&self, expr: &Expr) -> Option<String> {
+        local_types::expression_iterable_item_type_name_with_scope(expr, &|name| {
+            self.scopes.get_iterable_item(name)
+        })
+    }
+
     fn push_diagnostic_once(&mut self, diagnostic: Diagnostic) {
         let key = (
             diagnostic.range.start.line,
@@ -239,6 +248,13 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
                 self.visit_expr(diverge);
             }
         }
+        if let Some(item_type) =
+            local_types::local_iterable_item_type_name_with_scope(node, &|name| {
+                self.scopes.get_iterable_item(name)
+            })
+        {
+            self.scopes.declare_iterable_pat(&node.pat, item_type);
+        }
         if let Some(type_name) = local_types::local_type_name_with_scope(
             self.document,
             self.workspace_index,
@@ -253,6 +269,21 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
                 &type_name,
             );
         }
+    }
+
+    fn visit_expr_for_loop(&mut self, node: &'ast syn::ExprForLoop) {
+        self.visit_expr(&node.expr);
+        self.scopes.push();
+        if let Some(item_type) = self.expression_iterable_item_type_name(&node.expr) {
+            self.scopes.declare_typed_pattern(
+                self.document,
+                self.workspace_index,
+                &node.pat,
+                &item_type,
+            );
+        }
+        self.visit_block(&node.body);
+        self.scopes.pop();
     }
 
     fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
@@ -296,6 +327,9 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
     fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
         self.scopes.push();
         for input in &node.inputs {
+            if let Some(item_type) = local_types::explicit_pattern_iterable_item_type_name(input) {
+                self.scopes.declare_iterable_pat(input, item_type);
+            }
             if let Some(type_name) = local_types::explicit_pattern_type_name(input) {
                 self.scopes.declare_typed_pattern(
                     self.document,

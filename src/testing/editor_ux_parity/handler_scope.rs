@@ -299,3 +299,41 @@ pub struct Run<'info> {
         Some("real_mint")
     );
 }
+
+#[test]
+fn editor_ux_resolves_typed_for_loop_members() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {
+    for bundle in bundles.iter() {
+        bundle.real_
+    }
+}
+
+pub struct PositionBundle {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = diagnostics::collect(&document);
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("`bundle` does not resolve")),
+        "typed for-loop binding should stay resolved: {diagnostics:#?}"
+    );
+
+    let items = completions::completions(&document, super::position_after(source, "bundle.real_"))
+        .expect("editor-visible for-loop member completions");
+    assert_eq!(
+        items.first().map(|item| item.label.as_str()),
+        Some("real_mint")
+    );
+}
