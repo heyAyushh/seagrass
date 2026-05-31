@@ -7,7 +7,8 @@ Source: `seagrass`
 ## What It Catches
 
 Anchor account mutability, account-data member usage, and shallow handler scope
-diagnostics.
+diagnostics. `AccountLoader<'info, T>` fields are treated as loader values until
+Anchor's zero-copy `load`, `load_mut`, or `load_init` methods produce `T`.
 
 Seagrass should emit this topic only when parsed Anchor, Solana, workspace, or
 artifact evidence proves this specific invariant. The diagnostic must not be

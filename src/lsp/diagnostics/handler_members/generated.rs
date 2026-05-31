@@ -306,4 +306,52 @@ pub struct {owner} {{
             "expected generated alias member diagnostic, got {diagnostics:#?}"
         );
     }
+
+    #[test]
+    fn reports_generated_account_loader_direct_alias_member(
+        account_field in generated_ident(),
+        alias in generated_ident(),
+        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        known_field in generated_ident(),
+        missing_field in generated_ident(),
+    ) {
+        prop_assume!(account_field != alias);
+        prop_assume!(known_field != missing_field);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub {account_field}: AccountLoader<'info, {owner}>,
+}}
+
+pub fn run(ctx: Context<Run>) -> Result<()> {{
+    let {alias} = &ctx.accounts.{account_field};
+    {alias}.{missing_field};
+    Ok(())
+}}
+
+#[account(zero_copy)]
+pub struct {owner} {{
+    pub {known_field}: Pubkey,
+}}
+"#
+        );
+        let document = ParsedDocument::parse(&source).unwrap();
+
+        let diagnostics = collect_with_workspace(&document, None);
+
+        prop_assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic
+                    .message
+                    .contains(&format!("`{alias}.{missing_field}` does not resolve"))
+                    && diagnostic.message.contains(&format!(
+                        "`AccountLoader<{owner}>` has no field `{missing_field}`"
+                    ))
+            }),
+            "expected generated AccountLoader direct alias diagnostic, got {diagnostics:#?}"
+        );
+    }
 }

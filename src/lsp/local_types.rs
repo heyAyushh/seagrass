@@ -8,20 +8,18 @@ use {
     syn::{
         spanned::Spanned,
         visit::{self, Visit},
-        Expr, ExprField, FnArg, GenericArgument, ItemFn, Member, Pat, PathArguments, Stmt, Type,
-        TypePath,
+        Expr, ExprField, FnArg, ItemFn, Member, Pat, Stmt, Type,
     },
     tower_lsp::lsp_types::Position,
 };
 
-const TRANSPARENT_LOCAL_TYPE_WRAPPERS: &[&str] = &["Box"];
-const ACCOUNT_DATA_TYPE_WRAPPERS: &[&str] = &[
-    "Account",
-    "InterfaceAccount",
-    "LazyAccount",
-    "AccountLoader",
-];
-const TRANSPARENT_ACCOUNT_FIELD_WRAPPERS: &[&str] = &["Box", "Option"];
+mod account_loader;
+mod type_names;
+
+pub(crate) use type_names::{
+    account_data_type_name_from_parts, account_data_type_name_from_text,
+    context_type_name_from_text, context_type_name_from_type, shallow_type_name,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct TypedLocalValue {
@@ -127,30 +125,6 @@ pub(crate) fn text_visible_context_values_at(
                 })
         })
         .collect()
-}
-
-pub(crate) fn context_type_name_from_text(text: &str) -> Option<String> {
-    let ty = syn::parse_str::<syn::Type>(text).ok()?;
-    context_type_name_from_type(&ty)
-}
-
-pub(crate) fn context_type_name_from_type(ty: &Type) -> Option<String> {
-    context_type_name(ty)
-}
-
-pub(crate) fn account_data_type_name_from_text(type_text: &str) -> Option<String> {
-    let ty = syn::parse_str::<syn::Type>(type_text).ok()?;
-    account_data_type_name(&ty)
-}
-
-pub(crate) fn account_data_type_name_from_parts(
-    type_name: Option<&str>,
-    generic_type_names: &[String],
-) -> Option<String> {
-    generic_type_names
-        .last()
-        .cloned()
-        .or_else(|| type_name.map(str::to_string))
 }
 
 pub(crate) fn text_context_account_type_name(
@@ -279,98 +253,6 @@ fn field_expression_segments(field: &ExprField) -> Option<Vec<String>> {
     Some(segments)
 }
 
-fn context_type_name(ty: &Type) -> Option<String> {
-    let Type::Path(type_path) = transparent_type_path(ty) else {
-        return None;
-    };
-    let segment = type_path.path.segments.last()?;
-    (segment.ident == "Context").then(|| first_type_argument(&segment.arguments))?
-}
-
-fn account_data_type_name(ty: &Type) -> Option<String> {
-    let Type::Path(type_path) = transparent_type_path(ty) else {
-        return None;
-    };
-    let segment = type_path.path.segments.last()?;
-    let wrapper = segment.ident.to_string();
-    if TRANSPARENT_ACCOUNT_FIELD_WRAPPERS.contains(&wrapper.as_str()) {
-        return first_type_argument_type(&segment.arguments).and_then(account_data_type_name);
-    }
-    if ACCOUNT_DATA_TYPE_WRAPPERS.contains(&wrapper.as_str()) {
-        return last_type_argument(&segment.arguments);
-    }
-    Some(wrapper)
-}
-
-fn transparent_type_path(ty: &Type) -> &Type {
-    match ty {
-        Type::Reference(reference) => transparent_type_path(&reference.elem),
-        Type::Ptr(pointer) => transparent_type_path(&pointer.elem),
-        Type::Paren(paren) => transparent_type_path(&paren.elem),
-        Type::Group(group) => transparent_type_path(&group.elem),
-        _ => ty,
-    }
-}
-
-fn first_type_argument(arguments: &PathArguments) -> Option<String> {
-    first_type_argument_type(arguments).and_then(type_path_name)
-}
-
-fn last_type_argument(arguments: &PathArguments) -> Option<String> {
-    let PathArguments::AngleBracketed(args) = arguments else {
-        return None;
-    };
-    args.args.iter().rev().find_map(|arg| match arg {
-        GenericArgument::Type(ty) => type_path_name(ty),
-        _ => None,
-    })
-}
-
-fn first_type_argument_type(arguments: &PathArguments) -> Option<&Type> {
-    let PathArguments::AngleBracketed(args) = arguments else {
-        return None;
-    };
-    args.args.iter().find_map(|arg| match arg {
-        GenericArgument::Type(ty) => Some(ty),
-        _ => None,
-    })
-}
-
-fn type_path_name(ty: &Type) -> Option<String> {
-    let Type::Path(TypePath { path, .. }) = transparent_type_path(ty) else {
-        return None;
-    };
-    path.segments
-        .last()
-        .map(|segment| segment.ident.to_string())
-}
-
-pub(crate) fn shallow_type_name(ty: &Type) -> Option<String> {
-    let ty = match ty {
-        Type::Reference(reference) => reference.elem.as_ref(),
-        Type::Ptr(pointer) => pointer.elem.as_ref(),
-        Type::Paren(paren) => paren.elem.as_ref(),
-        Type::Group(group) => group.elem.as_ref(),
-        _ => ty,
-    };
-    let Type::Path(type_path) = ty else {
-        return None;
-    };
-    let segment = type_path.path.segments.last()?;
-    let type_name = segment.ident.to_string();
-    if !TRANSPARENT_LOCAL_TYPE_WRAPPERS.contains(&type_name.as_str()) {
-        return Some(type_name);
-    }
-
-    let PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return Some(type_name);
-    };
-    let Some(GenericArgument::Type(inner)) = args.args.first() else {
-        return Some(type_name);
-    };
-    shallow_type_name(inner).or(Some(type_name))
-}
-
 pub(crate) fn constructed_type_name(expr: &Expr) -> Option<String> {
     match expr {
         Expr::Struct(expr_struct) => expr_struct
@@ -383,21 +265,6 @@ pub(crate) fn constructed_type_name(expr: &Expr) -> Option<String> {
         Expr::Group(group) => constructed_type_name(&group.expr),
         _ => None,
     }
-}
-
-pub(crate) fn expression_type_name_with_scope(
-    document: &ParsedDocument,
-    workspace_index: Option<&WorkspaceIndex>,
-    expr: &Expr,
-    scope_type_name: &impl Fn(&str) -> Option<String>,
-) -> Option<String> {
-    expression_type_name_with_context_scope(
-        document,
-        workspace_index,
-        expr,
-        scope_type_name,
-        &|_| None,
-    )
 }
 
 pub(crate) fn expression_type_name_with_context_scope(
@@ -427,6 +294,21 @@ pub(crate) fn expression_type_name_with_context_scope(
                 context_type_name,
             )
         }),
+        Expr::Try(expr_try) => expression_type_name_with_context_scope(
+            document,
+            workspace_index,
+            &expr_try.expr,
+            scope_type_name,
+            context_type_name,
+        ),
+        Expr::MethodCall(method_call) => account_loader_loaded_method_type_name(
+            document,
+            workspace_index,
+            method_call,
+            scope_type_name,
+            context_type_name,
+        )
+        .or_else(|| constructed_type_name(expr)),
         Expr::Reference(reference) => expression_type_name_with_context_scope(
             document,
             workspace_index,
@@ -450,6 +332,23 @@ pub(crate) fn expression_type_name_with_context_scope(
         ),
         _ => constructed_type_name(expr),
     }
+}
+
+fn account_loader_loaded_method_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    method_call: &syn::ExprMethodCall,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let receiver_type = expression_type_name_with_context_scope(
+        document,
+        workspace_index,
+        &method_call.receiver,
+        scope_type_name,
+        context_type_name,
+    )?;
+    account_loader::loaded_method_return_type(method_call, &receiver_type)
 }
 
 fn context_account_field_type_name_from_expr(
@@ -536,7 +435,13 @@ fn text_typed_value_from_binding(
         })
         .or_else(|| {
             binding.initializer_text.as_deref().and_then(|initializer| {
-                text_inferred_type_name(document, workspace_index, visible_values, initializer)
+                text_inferred_type_name(
+                    document,
+                    workspace_index,
+                    visible_values,
+                    visible_bindings,
+                    initializer,
+                )
             })
         })?;
 
@@ -548,7 +453,7 @@ fn text_typed_value_from_binding(
 
 fn type_name_from_text(text: &str) -> Option<String> {
     let ty = syn::parse_str::<syn::Type>(text).ok()?;
-    shallow_type_name(&ty)
+    local_value_type_name_from_type(&ty)
 }
 
 fn text_constructed_type_name(initializer: &str) -> Option<String> {
@@ -565,16 +470,34 @@ fn text_inferred_type_name(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
     visible_values: &[TypedLocalValue],
+    visible_bindings: &[TextHandlerBinding],
     initializer: &str,
 ) -> Option<String> {
     let expr = syn::parse_str::<syn::Expr>(initializer).ok()?;
-    expression_type_name_with_scope(document, workspace_index, &expr, &|name| {
-        visible_values
-            .iter()
-            .rev()
-            .find(|value| value.name == name)
-            .map(|value| value.type_name.clone())
-    })
+    expression_type_name_with_context_scope(
+        document,
+        workspace_index,
+        &expr,
+        &|name| {
+            visible_values
+                .iter()
+                .rev()
+                .find(|value| value.name == name)
+                .map(|value| value.type_name.clone())
+        },
+        &|name| {
+            visible_bindings
+                .iter()
+                .rev()
+                .find(|binding| binding.name == name)
+                .and_then(|binding| {
+                    binding
+                        .type_display
+                        .as_deref()
+                        .and_then(context_type_name_from_text)
+                })
+        },
+    )
 }
 
 fn is_identifier_path(value: &str) -> bool {
@@ -614,7 +537,7 @@ impl VisibleTypedValueCollector<'_> {
             if let Some(context_name) = context_type_name_from_type(&pat_type.ty) {
                 self.add_context_pattern_candidate(&pat_type.pat, context_name);
             }
-            let Some(type_name) = shallow_type_name(&pat_type.ty) else {
+            let Some(type_name) = local_value_type_name_from_type(&pat_type.ty) else {
                 continue;
             };
             self.add_pattern_candidate(&pat_type.pat, type_name);
@@ -778,9 +701,13 @@ pub(crate) fn local_type_name_with_scope(
 
 fn explicit_pattern_type_name(pat: &Pat) -> Option<String> {
     match pat {
-        Pat::Type(typed) => shallow_type_name(&typed.ty),
+        Pat::Type(typed) => local_value_type_name_from_type(&typed.ty),
         Pat::Reference(reference) => explicit_pattern_type_name(&reference.pat),
         Pat::Paren(paren) => explicit_pattern_type_name(&paren.pat),
         _ => None,
     }
+}
+
+pub(crate) fn local_value_type_name_from_type(ty: &Type) -> Option<String> {
+    account_loader::local_type_name_from_type(ty).or_else(|| shallow_type_name(ty))
 }

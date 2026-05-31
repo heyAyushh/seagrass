@@ -9,9 +9,12 @@ use {
     tower_lsp::lsp_types::{CompletionItemKind, Range, SymbolKind},
 };
 
-pub(crate) const ACCOUNT_LOADER_LOADED_METHODS: &[&str] = &["load", "load_mut"];
-pub(crate) const ACCOUNT_LOADER_LOADED_METHOD_COMPLETIONS: &[&str] = &["load()?", "load_mut()?"];
-pub(crate) const ACCOUNT_LOADER_LOADED_METHOD_SUFFIXES: &[&str] = &[".load()?", ".load_mut()?"];
+pub(crate) const ACCOUNT_LOADER_TYPE: &str = "AccountLoader";
+pub(crate) const ACCOUNT_LOADER_LOADED_METHODS: &[&str] = &["load", "load_mut", "load_init"];
+pub(crate) const ACCOUNT_LOADER_LOADED_METHOD_COMPLETIONS: &[&str] =
+    &["load()?", "load_mut()?", "load_init()?"];
+pub(crate) const ACCOUNT_LOADER_LOADED_METHOD_SUFFIXES: &[&str] =
+    &[".load()?", ".load_mut()?", ".load_init()?"];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum AccountMemberAccess {
@@ -60,7 +63,7 @@ pub(crate) fn resolved_field_chain_members(
     let mut members = resolved_field_members(document, workspace_index, accounts, field, access)?;
     for member_name in member_chain {
         let next_type = members.member(member_name)?.type_name.as_ref()?;
-        members = struct_members(document, workspace_index, next_type)?;
+        members = resolved_struct_members(document, workspace_index, next_type)?;
     }
     Some(members)
 }
@@ -71,7 +74,7 @@ pub(crate) fn resolved_struct_chain_members(
     receiver_type: &str,
     member_chain: &[String],
 ) -> Option<ResolvedAccountMembers> {
-    let mut members = struct_members(document, workspace_index, receiver_type)?;
+    let mut members = resolved_struct_members(document, workspace_index, receiver_type)?;
     for member_name in member_chain {
         members = resolved_struct_member_members(
             document,
@@ -103,7 +106,7 @@ pub(crate) fn resolved_struct_member_type_name(
 ) -> Option<String> {
     account_context_field_type_name(document, workspace_index, owner_type, member_name).or_else(
         || {
-            struct_members(document, workspace_index, owner_type)?
+            resolved_struct_members(document, workspace_index, owner_type)?
                 .member(member_name)?
                 .type_name
                 .clone()
@@ -119,12 +122,12 @@ pub(crate) fn resolved_struct_member_members(
 ) -> Option<ResolvedAccountMembers> {
     account_context_field_members(document, workspace_index, owner_type, member_name).or_else(
         || {
-            let next_type = struct_members(document, workspace_index, owner_type)?
+            let next_type = resolved_struct_members(document, workspace_index, owner_type)?
                 .member(member_name)?
                 .type_name
                 .as_ref()?
                 .clone();
-            struct_members(document, workspace_index, &next_type)
+            resolved_struct_members(document, workspace_index, &next_type)
         },
     )
 }
@@ -134,6 +137,9 @@ pub(crate) fn resolved_struct_members(
     workspace_index: Option<&WorkspaceIndex>,
     receiver_type: &str,
 ) -> Option<ResolvedAccountMembers> {
+    if receiver_type == ACCOUNT_LOADER_TYPE || account_loader_inner_type(receiver_type).is_some() {
+        return Some(account_loader_members(receiver_type.to_string()));
+    }
     struct_members(document, workspace_index, receiver_type)
 }
 
@@ -152,10 +158,7 @@ fn account_context_field_type_name(
                 .fields
                 .iter()
                 .find(|field| field.name == field_name)
-                .and_then(|field| {
-                    account_semantics::declared_or_expected_account_inner_type(accounts, field)
-                })
-                .map(str::to_string)
+                .and_then(|field| account_context_field_local_type_name(accounts, field))
         })
         .or_else(|| {
             workspace_index
@@ -166,11 +169,9 @@ fn account_context_field_type_name(
                         .iter()
                         .find(|field| field.name == field_name)
                         .and_then(|field| {
-                            account_semantics::declared_or_expected_account_inner_type(
-                                &workspace_accounts_symbol(accounts),
-                                &workspace_account_field_symbol(field),
-                            )
-                            .map(str::to_string)
+                            let accounts_symbol = workspace_accounts_symbol(accounts);
+                            let field_symbol = workspace_account_field_symbol(field);
+                            account_context_field_local_type_name(&accounts_symbol, &field_symbol)
                         })
                 })
         })
@@ -304,7 +305,9 @@ pub(crate) fn resolved_field_members(
     access: AccountMemberAccess,
 ) -> Option<ResolvedAccountMembers> {
     if access == AccountMemberAccess::Direct && is_account_loader(field) {
-        return Some(account_loader_members(field));
+        return Some(account_loader_members(account_loader_field_type_name(
+            field,
+        )));
     }
 
     let account_type = account_semantics::resolve_field_account_type(accounts, field);
@@ -328,13 +331,7 @@ pub(crate) fn resolved_field_members(
         .or_else(|| composite_members(document, workspace_index, field, access))
 }
 
-fn account_loader_members(field: &SymbolRange) -> ResolvedAccountMembers {
-    let owner_type = field
-        .generic_type_names
-        .last()
-        .map(|inner| format!("AccountLoader<{inner}>"))
-        .unwrap_or_else(|| "AccountLoader".to_string());
-
+fn account_loader_members(owner_type: String) -> ResolvedAccountMembers {
     ResolvedAccountMembers {
         owner_type,
         members: ACCOUNT_LOADER_LOADED_METHOD_COMPLETIONS
@@ -390,7 +387,7 @@ fn account_data_members(
 fn account_data_members_are_visible(field: &SymbolRange, access: AccountMemberAccess) -> bool {
     matches!(
         (field.type_name.as_deref(), access),
-        (Some("AccountLoader"), AccountMemberAccess::Loaded)
+        (Some(ACCOUNT_LOADER_TYPE), AccountMemberAccess::Loaded)
             | (
                 Some("Account" | "InterfaceAccount" | "LazyAccount"),
                 AccountMemberAccess::Direct
@@ -413,11 +410,49 @@ fn composite_members(
 }
 
 fn is_account_loader(field: &SymbolRange) -> bool {
-    field.type_name.as_deref() == Some("AccountLoader")
+    field.type_name.as_deref() == Some(ACCOUNT_LOADER_TYPE)
 }
 
 pub(crate) fn is_account_loader_loaded_method(method: &str) -> bool {
     ACCOUNT_LOADER_LOADED_METHODS.contains(&method)
+}
+
+pub(crate) fn account_loader_type_name(inner_type: &str) -> String {
+    format!("{ACCOUNT_LOADER_TYPE}<{inner_type}>")
+}
+
+pub(crate) fn account_loader_type_name_from_parts(
+    type_name: Option<&str>,
+    generic_type_names: &[String],
+) -> Option<String> {
+    (type_name == Some(ACCOUNT_LOADER_TYPE)).then(|| {
+        generic_type_names.last().map_or_else(
+            || ACCOUNT_LOADER_TYPE.to_string(),
+            |inner| account_loader_type_name(inner),
+        )
+    })
+}
+
+pub(crate) fn account_loader_inner_type(type_name: &str) -> Option<&str> {
+    type_name
+        .strip_prefix(ACCOUNT_LOADER_TYPE)?
+        .strip_prefix('<')?
+        .strip_suffix('>')
+}
+
+fn account_loader_field_type_name(field: &SymbolRange) -> String {
+    account_loader_type_name_from_parts(field.type_name.as_deref(), &field.generic_type_names)
+        .unwrap_or_else(|| ACCOUNT_LOADER_TYPE.to_string())
+}
+
+fn account_context_field_local_type_name(
+    accounts: &SymbolRange,
+    field: &SymbolRange,
+) -> Option<String> {
+    if is_account_loader(field) {
+        return Some(account_loader_field_type_name(field));
+    }
+    account_semantics::declared_or_expected_account_inner_type(accounts, field).map(str::to_string)
 }
 
 fn struct_members(

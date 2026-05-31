@@ -82,7 +82,8 @@ fn account_field_from_assignment_rhs(rhs: &str, accounts_aliases: &[String]) -> 
 
 fn direct_account_field_from_rhs(rhs: &str) -> Option<String> {
     let accounts_start = rhs.find(".accounts.")? + ".accounts.".len();
-    identifier_at_start(&rhs[accounts_start..]).map(str::to_string)
+    let (account, rest) = identifier_at_start(&rhs[accounts_start..])?;
+    is_direct_account_alias_remainder(rest).then(|| account.to_string())
 }
 
 fn alias_account_field_from_rhs(rhs: &str, accounts_alias: &str) -> Option<String> {
@@ -92,7 +93,8 @@ fn alias_account_field_from_rhs(rhs: &str, accounts_alias: &str) -> Option<Strin
         .strip_prefix("mut ")
         .unwrap_or_else(|| rhs.trim_start_matches('&').trim_start());
     let tail = rhs.strip_prefix(accounts_alias)?.strip_prefix('.')?;
-    identifier_at_start(tail).map(str::to_string)
+    let (account, rest) = identifier_at_start(tail)?;
+    is_direct_account_alias_remainder(rest).then(|| account.to_string())
 }
 
 fn is_accounts_container_assignment(rhs: &str) -> bool {
@@ -101,13 +103,17 @@ fn is_accounts_container_assignment(rhs: &str) -> bool {
     rhs.ends_with(".accounts")
 }
 
-fn identifier_at_start(value: &str) -> Option<&str> {
+fn identifier_at_start(value: &str) -> Option<(&str, &str)> {
     let end = value
         .char_indices()
         .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx))
         .unwrap_or(value.len());
     let identifier = &value[..end];
-    is_identifier(identifier).then_some(identifier)
+    is_identifier(identifier).then_some((identifier, &value[end..]))
+}
+
+fn is_direct_account_alias_remainder(value: &str) -> bool {
+    value.trim().is_empty()
 }
 
 fn is_identifier(value: &str) -> bool {
@@ -202,5 +208,21 @@ mod tests {
         assert_eq!(path.account_field, "a0");
         assert!(path.member_chain.is_empty());
         assert_eq!(path.member_prefix, "");
+    }
+
+    #[test]
+    fn ignores_method_call_on_account_alias_rhs() {
+        let source = r#"
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let loaded = ctx.accounts.position.load()?;
+    loaded.position_
+}
+"#;
+
+        assert!(
+            local_account_alias_path_at(source, position_after(source, "    loaded.position_"))
+                .is_none(),
+            "loaded account data should be handled by the typed member resolver"
+        );
     }
 }

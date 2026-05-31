@@ -78,7 +78,7 @@ impl<'a> HandlerMemberVisitor<'a> {
             if let Some(context_name) = local_types::context_type_name_from_type(&pat_type.ty) {
                 self.scopes.declare_context_pat(&pat_type.pat, context_name);
             }
-            let Some(type_name) = local_types::shallow_type_name(&pat_type.ty) else {
+            let Some(type_name) = local_types::local_value_type_name_from_type(&pat_type.ty) else {
                 continue;
             };
             self.scopes.declare_pat(&pat_type.pat, type_name);

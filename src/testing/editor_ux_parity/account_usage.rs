@@ -249,6 +249,82 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn editor_ux_completes_loaded_account_loader_members() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub position: AccountLoader<'info, Position>,
+}
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let position = ctx.accounts.position.load()?;
+    position.position_
+}
+
+#[account(zero_copy)]
+pub struct Position {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    );
+
+    let items = completions::completions(
+        &document,
+        position_after(document.source(), "position.position_"),
+    )
+    .expect("editor-visible loaded AccountLoader completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"position_bundle_mint"));
+}
+
+#[test]
+fn editor_ux_hides_account_loader_data_before_load() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>) -> Result<()> {
+        let position = &ctx.accounts.position;
+        position.position_bundle_mint;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub position: AccountLoader<'info, Position>,
+}
+
+#[account(zero_copy)]
+pub struct Position {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    );
+
+    let diagnostics = diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic
+                .message
+                .contains("`position.position_bundle_mint` does not resolve")
+        })
+        .unwrap_or_else(|| panic!("missing direct AccountLoader diagnostic: {diagnostics:#?}"));
+
+    assert!(diagnostic
+        .message
+        .contains("`AccountLoader<Position>` has no field `position_bundle_mint`"));
+}
+
+#[test]
 fn editor_ux_flags_unknown_context_bump_member() {
     let document = ParsedDocument::parse_or_empty(
         r#"

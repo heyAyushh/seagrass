@@ -582,6 +582,121 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn accepts_loaded_account_loader_member() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub position: AccountLoader<'info, Position>,
+}
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    let position = ctx.accounts.position.load_mut()?;
+    position.position_mint;
+    Ok(())
+}
+
+#[account(zero_copy)]
+pub struct Position {
+    pub position_mint: Pubkey,
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("position.position_mint")),
+        "loaded AccountLoader field should resolve, got {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_unknown_member_after_account_loader_load() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub position: AccountLoader<'info, Position>,
+}
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    let position = ctx.accounts.position.load()?;
+    position.fake;
+    Ok(())
+}
+
+#[account(zero_copy)]
+pub struct Position {
+    pub position_mint: Pubkey,
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("`position.fake` does not resolve")
+                && diagnostic
+                    .message
+                    .contains("`Position` has no field `fake`")
+        }),
+        "missing loaded AccountLoader member diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_account_loader_direct_alias_member_as_loader_member() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub position: AccountLoader<'info, Position>,
+}
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    let position = &ctx.accounts.position;
+    position.position_mint;
+    Ok(())
+}
+
+#[account(zero_copy)]
+pub struct Position {
+    pub position_mint: Pubkey,
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("`position.position_mint` does not resolve")
+                && diagnostic
+                    .message
+                    .contains("`AccountLoader<Position>` has no field `position_mint`")
+        }),
+        "direct AccountLoader alias should not expose data fields: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn ignores_unknown_handler_alias_type() {
     let document = ParsedDocument::parse(
         r#"

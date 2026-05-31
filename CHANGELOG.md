@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: resolve `AccountLoader<'info, T>` in handler member access as a loader
+  until `load`, `load_mut`, or `load_init` produces the zero-copy account data.
 - lsp: complete inherent account-data methods in handler member access from
   parsed `impl` blocks and flag known fields that are accidentally called as
   methods, with a quick fix to remove the call suffix.
