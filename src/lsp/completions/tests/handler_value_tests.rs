@@ -186,6 +186,32 @@ pub fn handler(ctx: Context<Close>) -> Result<()> {
     );
 }
 
+#[test]
+fn completes_closure_pattern_binding_inside_closure_body() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>) -> Result<()> {
+    let visit = |position_bundle: Pubkey| {
+        let selected = pos;
+    };
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "let selected = pos"))
+        .expect("expected closure pattern value completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "position_bundle"),
+        "closure pattern binding should complete inside closure body: {items:#?}"
+    );
+}
+
 proptest! {
     #[test]
     fn completes_generated_handler_locals_without_hardcoded_names(
@@ -263,6 +289,37 @@ pub fn handler(ctx: Context<Close>) -> Result<()> {{
         prop_assert!(
             items.iter().any(|item| item.label == pattern),
             "generated if-let pattern should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_closure_pattern_bindings_without_hardcoded_names(
+        pattern_tail in rust_identifier(),
+    ) {
+        let pattern = format!("pattern_value_{pattern_tail}");
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {{
+    pub receiver: AccountInfo<'info>,
+}}
+
+pub fn handler(ctx: Context<Close>) -> Result<()> {{
+    let visit = |{pattern}: Pubkey| {{
+        let selected = pattern_;
+    }};
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "let selected = pattern_"))
+            .expect("expected generated closure pattern completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == pattern),
+            "generated closure pattern should complete; items: {items:#?}"
         );
     }
 }

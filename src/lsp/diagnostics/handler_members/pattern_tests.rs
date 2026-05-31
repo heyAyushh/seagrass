@@ -250,6 +250,42 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn reports_unknown_member_on_typed_closure_pattern_binding() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let check = |PositionBundle { inner, .. }: PositionBundle| {
+        inner.real_fake;
+    };
+    Ok(())
+}
+
+pub struct PositionBundle {
+    pub inner: InnerBundle,
+}
+
+pub struct InnerBundle {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#,
+    ));
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("`inner.real_fake` does not resolve")),
+        "missing typed closure pattern member diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn reports_unknown_member_on_let_else_account_pattern_binding() {
     let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
         r#"
@@ -350,6 +386,51 @@ pub struct PositionBundle {{
                 .iter()
                 .any(|diagnostic| diagnostic.message.contains(&format!("`{binding}.{missing}` does not resolve"))),
             "expected generated if-let member diagnostic: {diagnostics:#?}"
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn reports_generated_unknown_members_on_closure_pattern_bindings(
+        binding in generated_ident(),
+        known in generated_ident(),
+        missing in generated_ident(),
+    ) {
+        prop_assume!(binding != known && binding != missing && known != missing);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {{
+    let check = |PositionBundle {{ {binding}, .. }}: PositionBundle| {{
+        {binding}.{missing};
+    }};
+    Ok(())
+}}
+
+pub struct PositionBundle {{
+    pub {binding}: InnerBundle,
+}}
+
+pub struct InnerBundle {{
+    pub {known}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+
+        let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(&source));
+
+        prop_assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains(&format!("`{binding}.{missing}` does not resolve"))),
+            "expected generated closure-pattern member diagnostic: {diagnostics:#?}"
         );
     }
 }

@@ -561,7 +561,11 @@ impl VisibleTypedValueCollector<'_> {
     fn collect_bindings_inside_statement(&mut self, stmt: &Stmt) -> bool {
         match stmt {
             Stmt::Expr(expr, _) => self.collect_bindings_inside_expr(expr),
-            Stmt::Local(_) | Stmt::Item(_) | Stmt::Macro(_) => true,
+            Stmt::Local(local) => local.init.as_ref().is_none_or(|init| {
+                !self.span_contains_cursor(init.expr.span())
+                    || self.collect_bindings_inside_expr(&init.expr)
+            }),
+            Stmt::Item(_) | Stmt::Macro(_) => true,
         }
     }
 
@@ -583,6 +587,10 @@ impl VisibleTypedValueCollector<'_> {
             }
             Expr::Loop(loop_expr) if self.span_contains_cursor(loop_expr.body.span()) => {
                 self.collect_block_bindings(&loop_expr.body)
+            }
+            Expr::Closure(closure) if self.span_contains_cursor(closure.body.span()) => {
+                self.collect_closure_inputs(closure);
+                self.collect_bindings_inside_expr(&closure.body)
             }
             Expr::While(while_expr) if self.span_contains_cursor(while_expr.body.span()) => {
                 self.collect_condition_pattern_candidates(&while_expr.cond);
@@ -611,6 +619,15 @@ impl VisibleTypedValueCollector<'_> {
                 true
             }
             _ => true,
+        }
+    }
+
+    fn collect_closure_inputs(&mut self, closure: &syn::ExprClosure) {
+        for input in &closure.inputs {
+            let Some(type_name) = explicit_pattern_type_name(input) else {
+                continue;
+            };
+            self.add_typed_pattern_candidates(input, &type_name);
         }
     }
 
@@ -734,7 +751,7 @@ pub(crate) fn local_type_name_with_scope(
     })
 }
 
-fn explicit_pattern_type_name(pat: &Pat) -> Option<String> {
+pub(crate) fn explicit_pattern_type_name(pat: &Pat) -> Option<String> {
     match pat {
         Pat::Type(typed) => local_value_type_name_from_type(&typed.ty),
         Pat::Reference(reference) => explicit_pattern_type_name(&reference.pat),

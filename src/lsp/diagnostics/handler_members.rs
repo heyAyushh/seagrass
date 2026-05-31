@@ -293,6 +293,22 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         }
     }
 
+    fn visit_expr_closure(&mut self, node: &'ast syn::ExprClosure) {
+        self.scopes.push();
+        for input in &node.inputs {
+            if let Some(type_name) = local_types::explicit_pattern_type_name(input) {
+                self.scopes.declare_typed_pattern(
+                    self.document,
+                    self.workspace_index,
+                    input,
+                    &type_name,
+                );
+            }
+        }
+        self.visit_expr(&node.body);
+        self.scopes.pop();
+    }
+
     fn visit_expr_field(&mut self, node: &'ast ExprField) {
         self.report_unknown_member(node);
         visit::visit_expr_field(self, node);

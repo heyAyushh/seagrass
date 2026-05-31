@@ -350,7 +350,11 @@ impl VisibleBindingCollector<'_> {
     fn collect_bindings_inside_statement(&mut self, stmt: &Stmt) -> bool {
         match stmt {
             Stmt::Expr(expr, _) => self.collect_bindings_inside_expr(expr),
-            Stmt::Local(_) | Stmt::Item(_) | Stmt::Macro(_) => true,
+            Stmt::Local(local) => local.init.as_ref().is_none_or(|init| {
+                !self.span_contains_cursor(init.expr.span())
+                    || self.collect_bindings_inside_expr(&init.expr)
+            }),
+            Stmt::Item(_) | Stmt::Macro(_) => true,
         }
     }
 
@@ -374,6 +378,10 @@ impl VisibleBindingCollector<'_> {
             Expr::Loop(loop_expr) if self.span_contains_cursor(loop_expr.body.span()) => {
                 self.collect_block_bindings(&loop_expr.body)
             }
+            Expr::Closure(closure) if self.span_contains_cursor(closure.body.span()) => {
+                self.add_closure_pattern_candidates(closure);
+                self.collect_bindings_inside_expr(&closure.body)
+            }
             Expr::While(while_expr) if self.span_contains_cursor(while_expr.body.span()) => {
                 self.add_condition_pattern_candidates(&while_expr.cond);
                 self.collect_block_bindings(&while_expr.body)
@@ -396,6 +404,12 @@ impl VisibleBindingCollector<'_> {
                 true
             }
             _ => true,
+        }
+    }
+
+    fn add_closure_pattern_candidates(&mut self, closure: &syn::ExprClosure) {
+        for input in &closure.inputs {
+            self.add_pattern_candidates(input, None);
         }
     }
 
