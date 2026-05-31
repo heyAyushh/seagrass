@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer account-data member types from typed `let` patterns, including
+  `let Some(account) = ... else` handler flows.
 - lsp: infer shallow types for pattern-bound Anchor account values so `if let`
   bindings drive handler member diagnostics and completions.
 - lsp: resolve Rust pattern bindings from `if let`, `while let`, and `match`

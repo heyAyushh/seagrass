@@ -38,6 +38,41 @@ pub struct PositionBundle {
     assert!(labels.contains(&"asset_owner"));
 }
 
+#[test]
+fn completes_members_on_let_else_account_pattern_binding() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub optional_bundle: Option<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let Some(bundle) = ctx.accounts.optional_bundle.as_ref() else {
+        return Ok(());
+    };
+    bundle.asset_
+}
+
+#[account]
+pub struct PositionBundle {
+    pub asset_mint: Pubkey,
+    pub asset_owner: Pubkey,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "bundle.asset_"))
+        .expect("let-else account pattern member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"asset_mint"));
+    assert!(labels.contains(&"asset_owner"));
+}
+
 proptest! {
     #[test]
     fn completes_generated_if_let_account_pattern_members(

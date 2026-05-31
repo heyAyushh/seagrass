@@ -96,6 +96,69 @@ pub struct PositionBundle {
     );
 }
 
+#[test]
+fn reports_unknown_member_on_let_else_account_pattern_binding() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub optional_bundle: Option<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let Some(bundle) = ctx.accounts.optional_bundle.as_ref() else {
+        return Ok(());
+    };
+    bundle.asset_fake;
+    Ok(())
+}
+
+#[account]
+pub struct PositionBundle {
+    pub asset_mint: Pubkey,
+}
+"#,
+    ));
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("`bundle.asset_fake` does not resolve")),
+        "missing typed let-else member diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn does_not_infer_members_from_opaque_tuple_destructuring() {
+    let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, pair: Pair) -> Result<()> {
+    let (bundle, _) = pair;
+    bundle.asset_fake;
+    Ok(())
+}
+
+pub struct Pair(PositionBundle, u64);
+
+#[account]
+pub struct PositionBundle {
+    pub asset_mint: Pubkey,
+}
+"#,
+    ));
+
+    assert!(
+        diagnostics.iter().all(|diagnostic| !diagnostic
+            .message
+            .contains("`bundle.asset_fake` does not resolve")),
+        "opaque tuple destructuring should not guess member type: {diagnostics:#?}"
+    );
+}
+
 proptest! {
     #[test]
     fn reports_generated_unknown_members_on_if_let_pattern_bindings(

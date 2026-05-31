@@ -623,7 +623,7 @@ impl VisibleTypedValueCollector<'_> {
         ) else {
             return;
         };
-        self.add_pattern_candidate(&local.pat, type_name);
+        self.add_typed_pattern_candidates(&local.pat, &type_name);
     }
 
     fn collect_condition_pattern_candidates(&mut self, expr: &Expr) {

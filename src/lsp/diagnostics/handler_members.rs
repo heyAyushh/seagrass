@@ -236,7 +236,7 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
             &|name| self.scopes.get(name),
             &|name| self.scopes.get_context(name),
         ) {
-            self.scopes.declare_pat(&node.pat, type_name);
+            self.scopes.declare_typed_pattern(&node.pat, &type_name);
         }
     }
 

@@ -1,4 +1,4 @@
-use {super::TypedLocalValue, crate::lsp::scope::collect_pattern_bindings, syn::Pat};
+use {super::TypedLocalValue, syn::Pat};
 
 const TRANSPARENT_PATTERN_WRAPPERS: &[&str] = &["Some", "Ok"];
 
@@ -33,14 +33,7 @@ fn collect_typed_pattern_bindings(pat: &Pat, type_name: &str, values: &mut Vec<T
                 collect_typed_pattern_bindings(case, type_name, values);
             }
         }
-        _ => {
-            let mut names = Vec::new();
-            collect_pattern_bindings(pat, &mut names);
-            values.extend(names.into_iter().map(|name| TypedLocalValue {
-                name,
-                type_name: type_name.to_string(),
-            }));
-        }
+        _ => {}
     }
 }
 
