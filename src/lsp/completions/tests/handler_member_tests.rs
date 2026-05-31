@@ -169,6 +169,50 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn completes_typed_handler_member_after_field_alias_while_dot_is_incomplete() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let inner = bundle.inner;
+    inner.
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let index = WorkspaceIndex::build(
+        &[],
+        [(
+            Url::parse("file:///tmp/state.rs").unwrap(),
+            r#"
+pub struct PositionBundle {
+    pub inner: InnerBundle,
+}
+
+pub struct InnerBundle {
+    pub real_mint: Pubkey,
+    pub real_owner: Pubkey,
+}
+"#
+            .to_string(),
+        )],
+    );
+
+    let items = crate::lsp::completions::completions_with_workspace(
+        &document,
+        position_after(source, "inner."),
+        Some(&index),
+    )
+    .expect("typed handler field alias member completions during incomplete dot access");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"real_mint"));
+    assert!(labels.contains(&"real_owner"));
+}
+
+#[test]
 fn completes_workspace_typed_handler_local_members() {
     let source = r#"
 use anchor_lang::prelude::*;

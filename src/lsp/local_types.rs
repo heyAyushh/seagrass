@@ -1,5 +1,10 @@
 use {
-    crate::{account_members, document::ParsedDocument, workspace::WorkspaceIndex},
+    crate::{
+        account_members,
+        document::ParsedDocument,
+        lsp::scope::{TextHandlerBinding, TextHandlerScope},
+        workspace::WorkspaceIndex,
+    },
     syn::{
         spanned::Spanned,
         visit::{self, Visit},
@@ -34,6 +39,25 @@ pub(crate) fn visible_typed_values_at_with_workspace(
     };
     collector.visit_file(document.syntax());
     collector.values
+}
+
+pub(crate) fn text_visible_typed_values_at_with_workspace(
+    document: &ParsedDocument,
+    position: Position,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<TypedLocalValue> {
+    let Some(scope) = TextHandlerScope::at_position(document.source(), position) else {
+        return Vec::new();
+    };
+    let mut values = Vec::new();
+    for binding in scope.bindings() {
+        if let Some(value) =
+            text_typed_value_from_binding(document, workspace_index, &values, binding)
+        {
+            values.push(value);
+        }
+    }
+    values
 }
 
 pub(crate) fn shallow_type_name(ty: &Type) -> Option<String> {
@@ -122,6 +146,77 @@ fn field_expression_type_name(
         .find(|candidate| candidate.name == member.to_string())?
         .type_name
         .clone()
+}
+
+fn text_typed_value_from_binding(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    visible_values: &[TypedLocalValue],
+    binding: &TextHandlerBinding,
+) -> Option<TypedLocalValue> {
+    let type_name = binding
+        .type_display
+        .as_deref()
+        .and_then(type_name_from_text)
+        .or_else(|| {
+            binding
+                .initializer_text
+                .as_deref()
+                .and_then(text_constructed_type_name)
+        })
+        .or_else(|| {
+            binding.initializer_text.as_deref().and_then(|initializer| {
+                text_inferred_type_name(document, workspace_index, visible_values, initializer)
+            })
+        })?;
+
+    Some(TypedLocalValue {
+        name: binding.name.clone(),
+        type_name,
+    })
+}
+
+fn type_name_from_text(text: &str) -> Option<String> {
+    let ty = syn::parse_str::<syn::Type>(text).ok()?;
+    shallow_type_name(&ty)
+}
+
+fn text_constructed_type_name(initializer: &str) -> Option<String> {
+    initializer
+        .split_once('{')
+        .map(|(head, _)| head.trim())
+        .filter(|head| is_identifier_path(head))?
+        .rsplit("::")
+        .next()
+        .map(str::to_string)
+}
+
+fn text_inferred_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    visible_values: &[TypedLocalValue],
+    initializer: &str,
+) -> Option<String> {
+    let expr = syn::parse_str::<syn::Expr>(initializer).ok()?;
+    expression_type_name_with_scope(document, workspace_index, &expr, &|name| {
+        visible_values
+            .iter()
+            .rev()
+            .find(|value| value.name == name)
+            .map(|value| value.type_name.clone())
+    })
+}
+
+fn is_identifier_path(value: &str) -> bool {
+    !value.is_empty() && value.split("::").all(is_identifier)
+}
+
+fn is_identifier(value: &str) -> bool {
+    let mut chars = value.chars();
+    chars
+        .next()
+        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
+        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
 }
 
 struct VisibleTypedValueCollector<'a> {

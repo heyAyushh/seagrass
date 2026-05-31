@@ -68,6 +68,7 @@ pub(crate) fn last_function_keyword_before(source: &str) -> Option<usize> {
 pub(crate) struct TextHandlerBinding {
     pub name: String,
     pub type_display: Option<String>,
+    pub initializer_text: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -165,6 +166,7 @@ fn text_function_input_binding(input: &str) -> Option<TextHandlerBinding> {
     is_identifier(name).then(|| TextHandlerBinding {
         name: name.to_string(),
         type_display: (!ty.trim().is_empty()).then(|| ty.trim().to_string()),
+        initializer_text: None,
     })
 }
 
@@ -187,7 +189,7 @@ fn text_local_binding_bindings(body_prefix: &str) -> Vec<TextHandlerBinding> {
 fn text_local_binding_binding(line: &str) -> Option<TextHandlerBinding> {
     let trimmed = line.trim();
     let rest = trimmed.strip_prefix("let ")?;
-    let (left, _) = rest.split_once('=')?;
+    let (left, right) = rest.split_once('=')?;
     let left = left.trim().strip_prefix("mut ").unwrap_or(left.trim());
     let (name, ty) = left
         .split_once(':')
@@ -195,7 +197,13 @@ fn text_local_binding_binding(line: &str) -> Option<TextHandlerBinding> {
     is_identifier(name).then(|| TextHandlerBinding {
         name: name.to_string(),
         type_display: ty.filter(|ty| !ty.is_empty()).map(str::to_string),
+        initializer_text: trimmed_initializer_text(right),
     })
+}
+
+fn trimmed_initializer_text(text: &str) -> Option<String> {
+    let initializer = text.trim().trim_end_matches(';').trim();
+    (!initializer.is_empty()).then(|| initializer.to_string())
 }
 
 fn split_top_level_commas(text: &str) -> Vec<&str> {

@@ -2,7 +2,7 @@ use {
     crate::{
         account_members::{self, ResolvedAccountMember},
         document::ParsedDocument,
-        lsp::local_types::{self, TypedLocalValue},
+        lsp::local_types,
         workspace::WorkspaceIndex,
     },
     tower_lsp::lsp_types::{CompletionItem, CompletionTextEdit, Position, Range, TextEdit},
@@ -48,7 +48,7 @@ fn visible_receiver_type(
 ) -> Option<String> {
     local_types::visible_typed_values_at_with_workspace(document, position, workspace_index)
         .into_iter()
-        .chain(text_visible_typed_values(
+        .chain(local_types::text_visible_typed_values_at_with_workspace(
             document,
             position,
             workspace_index,
@@ -108,195 +108,6 @@ fn member_item(
     }
 }
 
-fn text_visible_typed_values(
-    document: &ParsedDocument,
-    position: Position,
-    workspace_index: Option<&WorkspaceIndex>,
-) -> Vec<TypedLocalValue> {
-    let source = document.source();
-    let Some(offset) = crate::range::byte_offset_at(source, position) else {
-        return Vec::new();
-    };
-    let before_cursor = &source[..offset.min(source.len())];
-    let Some(function_start) = super::cursor_context::last_function_keyword_before(before_cursor)
-    else {
-        return Vec::new();
-    };
-    let function_prefix = &before_cursor[function_start..];
-    let mut values = text_function_input_values(function_prefix);
-    if let Some((_, body_prefix)) = function_prefix.split_once('{') {
-        let completed_body_lines = body_prefix
-            .rsplit_once('\n')
-            .map_or("", |(completed_lines, _)| completed_lines);
-        values.extend(text_local_typed_values(
-            document,
-            workspace_index,
-            completed_body_lines,
-            &values,
-        ));
-    }
-    values
-}
-
-fn text_function_input_values(function_prefix: &str) -> Vec<TypedLocalValue> {
-    let signature = function_prefix
-        .split_once('{')
-        .map_or(function_prefix, |(signature, _)| signature);
-    let Some(open) = signature.find('(') else {
-        return Vec::new();
-    };
-    let Some(close) = matching_close_paren(signature, open) else {
-        return Vec::new();
-    };
-    split_top_level_commas(&signature[open + '('.len_utf8()..close])
-        .into_iter()
-        .filter_map(text_typed_value_from_binding)
-        .collect()
-}
-
-fn matching_close_paren(text: &str, open: usize) -> Option<usize> {
-    let mut depth = 0usize;
-    for (relative_idx, ch) in text[open..].char_indices() {
-        match ch {
-            '(' => depth += 1,
-            ')' => {
-                depth = depth.checked_sub(1)?;
-                if depth == 0 {
-                    return Some(open + relative_idx);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
-}
-
-fn text_local_typed_values(
-    document: &ParsedDocument,
-    workspace_index: Option<&WorkspaceIndex>,
-    body_prefix: &str,
-    inherited_values: &[TypedLocalValue],
-) -> Vec<TypedLocalValue> {
-    let mut depth = 0usize;
-    let mut values = inherited_values.to_vec();
-    for line in body_prefix.lines() {
-        if depth == 0 {
-            if let Some(value) = text_local_typed_value(document, workspace_index, &values, line) {
-                values.push(value);
-            }
-        }
-        depth = line.chars().fold(depth, |depth, ch| match ch {
-            '{' => depth + 1,
-            '}' => depth.saturating_sub(1),
-            _ => depth,
-        });
-    }
-    values[inherited_values.len()..].to_vec()
-}
-
-fn text_local_typed_value(
-    document: &ParsedDocument,
-    workspace_index: Option<&WorkspaceIndex>,
-    visible_values: &[TypedLocalValue],
-    line: &str,
-) -> Option<TypedLocalValue> {
-    let trimmed = line.trim();
-    let rest = trimmed.strip_prefix("let ")?;
-    let (left, right) = rest.split_once('=')?;
-    text_typed_value_from_binding(left)
-        .or_else(|| text_constructed_value(left, right.trim().trim_end_matches(';').trim()))
-        .or_else(|| {
-            text_inferred_value(
-                document,
-                workspace_index,
-                visible_values,
-                left,
-                right.trim().trim_end_matches(';').trim(),
-            )
-        })
-}
-
-fn text_typed_value_from_binding(binding: &str) -> Option<TypedLocalValue> {
-    let (name, ty) = binding.trim().split_once(':')?;
-    let name = name.trim().strip_prefix("mut ").unwrap_or(name.trim());
-    if !is_identifier(name) {
-        return None;
-    }
-    let type_name = type_name_from_text(ty.trim())?;
-    Some(TypedLocalValue {
-        name: name.to_string(),
-        type_name,
-    })
-}
-
-fn text_constructed_value(left: &str, right: &str) -> Option<TypedLocalValue> {
-    let name = left.trim().strip_prefix("mut ").unwrap_or(left.trim());
-    if !is_identifier(name) {
-        return None;
-    }
-    let type_name = right
-        .split_once('{')
-        .map(|(head, _)| head.trim())
-        .filter(|head| is_identifier_path(head))?
-        .rsplit("::")
-        .next()?
-        .to_string();
-    Some(TypedLocalValue {
-        name: name.to_string(),
-        type_name,
-    })
-}
-
-fn text_inferred_value(
-    document: &ParsedDocument,
-    workspace_index: Option<&WorkspaceIndex>,
-    visible_values: &[TypedLocalValue],
-    left: &str,
-    right: &str,
-) -> Option<TypedLocalValue> {
-    let name = left.trim().strip_prefix("mut ").unwrap_or(left.trim());
-    if !is_identifier(name) {
-        return None;
-    }
-    let expr = syn::parse_str::<syn::Expr>(right).ok()?;
-    let type_name =
-        local_types::expression_type_name_with_scope(document, workspace_index, &expr, &|name| {
-            visible_values
-                .iter()
-                .rev()
-                .find(|value| value.name == name)
-                .map(|value| value.type_name.clone())
-        })?;
-    Some(TypedLocalValue {
-        name: name.to_string(),
-        type_name,
-    })
-}
-
-fn type_name_from_text(text: &str) -> Option<String> {
-    let ty = syn::parse_str::<syn::Type>(text).ok()?;
-    local_types::shallow_type_name(&ty)
-}
-
-fn split_top_level_commas(text: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut start = 0usize;
-    let mut depth = 0usize;
-    for (idx, ch) in text.char_indices() {
-        match ch {
-            '<' | '(' | '[' => depth += 1,
-            '>' | ')' | ']' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                parts.push(text[start..idx].trim());
-                start = idx + ch.len_utf8();
-            }
-            _ => {}
-        }
-    }
-    parts.push(text[start..].trim());
-    parts
-}
-
 fn prefix_replacement_range(position: Position, prefix: &str) -> Range {
     Range {
         start: Position {
@@ -313,10 +124,6 @@ fn matches_prefix(candidate: &str, prefix: &str) -> bool {
     candidate
         .to_ascii_lowercase()
         .starts_with(&prefix.to_ascii_lowercase())
-}
-
-fn is_identifier_path(value: &str) -> bool {
-    !value.is_empty() && value.split("::").all(is_identifier)
 }
 
 fn is_identifier(value: &str) -> bool {
