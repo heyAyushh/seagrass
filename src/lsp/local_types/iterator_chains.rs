@@ -12,12 +12,7 @@ mod wrapper_branches;
 type TypeLookup<'a> = dyn Fn(&str) -> Option<String> + 'a;
 
 const WRAPPER_AND_THEN_METHOD: &str = "and_then";
-const WRAPPER_AS_MUT_METHOD: &str = "as_mut";
-const WRAPPER_AS_REF_METHOD: &str = "as_ref";
-const WRAPPER_FILTER_METHOD: &str = "filter";
-const WRAPPER_INSPECT_METHOD: &str = "inspect";
 const WRAPPER_MAP_METHOD: &str = "map";
-const WRAPPER_OK_METHOD: &str = "ok";
 
 struct WrapperValue {
     kind: type_names::ValueWrapperKind,
@@ -518,16 +513,15 @@ fn wrapper_preserving_value_type_name(
         scope_item_type_name,
     )?;
     let method = method_call.method.to_string();
-    match (receiver.kind, method.as_str(), method_call.args.len()) {
-        (_, WRAPPER_AS_MUT_METHOD | WRAPPER_AS_REF_METHOD, 0)
-        | (_, WRAPPER_INSPECT_METHOD, 1)
-        | (type_names::ValueWrapperKind::Option, WRAPPER_FILTER_METHOD, 1) => Some(receiver),
-        (type_names::ValueWrapperKind::Result, WRAPPER_OK_METHOD, 0) => Some(WrapperValue {
-            kind: type_names::ValueWrapperKind::Option,
-            type_name: receiver.type_name,
-        }),
-        _ => None,
-    }
+    let kind = iterables::wrapper_value_method_output_kind(
+        receiver.kind,
+        &method,
+        method_call.args.len(),
+    )?;
+    Some(WrapperValue {
+        kind,
+        type_name: receiver.type_name,
+    })
 }
 
 fn wrapper_map_value_type_name(

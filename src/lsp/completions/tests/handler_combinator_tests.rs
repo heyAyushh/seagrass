@@ -230,6 +230,87 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn completes_members_after_wrapper_fallback_methods() {
+    let cases = [
+        (
+            "Option::or",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.or(Some(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Option::or_else",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.or_else(|| Some(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Option::xor",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.xor(Some(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Option::ok_or",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.ok_or(()).unwrap()",
+        ),
+        (
+            "Option::ok_or_else",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.ok_or_else(|| ()).unwrap()",
+        ),
+        (
+            "Result::or",
+            "ctx: Context<Run>, record_result: std::result::Result<SampleRecord, ()>",
+            "record_result.or(Ok(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Result::or_else",
+            "ctx: Context<Run>, record_result: std::result::Result<SampleRecord, ()>",
+            "record_result.or_else(|_| Ok(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Result::map_err",
+            "ctx: Context<Run>, record_result: std::result::Result<SampleRecord, ()>",
+            "record_result.map_err(|_| ()).unwrap()",
+        ),
+        (
+            "Result::inspect_err",
+            "ctx: Context<Run>, record_result: std::result::Result<SampleRecord, ()>",
+            "record_result.inspect_err(|_| {}).unwrap()",
+        ),
+    ];
+
+    for (case_name, handler_args, selected_expr) in cases {
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler({handler_args}) -> Result<()> {{
+    let selected = {selected_expr};
+    selected.real_
+}}
+
+pub struct SampleRecord {{
+    pub real_mint: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "selected.real_"))
+            .unwrap_or_else(|| panic!("{case_name}: missing wrapper fallback completions"));
+
+        assert!(
+            items.iter().any(|item| item.label == "real_mint"),
+            "{case_name}: wrapper fallback output should complete: {items:#?}"
+        );
+    }
+}
+
+#[test]
 fn completes_members_after_option_map_or() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -516,6 +597,40 @@ pub struct Run<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated Option::map_or output should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_option_ok_or_members(
+        field_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {{
+    let selected = maybe_record.ok_or(()).unwrap();
+    selected.real_
+}}
+
+pub struct SampleRecord {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "selected.real_"))
+            .expect("generated Option::ok_or member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated Option::ok_or output should complete; items: {items:#?}"
         );
     }
 }

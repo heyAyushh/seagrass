@@ -244,6 +244,89 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn reports_unknown_member_after_wrapper_fallback_methods() {
+    let cases = [
+        (
+            "Option::or",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.or(Some(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Option::or_else",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.or_else(|| Some(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Option::xor",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.xor(Some(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Option::ok_or",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.ok_or(()).unwrap()",
+        ),
+        (
+            "Option::ok_or_else",
+            "ctx: Context<Run>, maybe_record: Option<SampleRecord>",
+            "maybe_record.ok_or_else(|| ()).unwrap()",
+        ),
+        (
+            "Result::or",
+            "ctx: Context<Run>, record_result: std::result::Result<SampleRecord, ()>",
+            "record_result.or(Ok(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Result::or_else",
+            "ctx: Context<Run>, record_result: std::result::Result<SampleRecord, ()>",
+            "record_result.or_else(|_| Ok(SampleRecord { real_mint: Pubkey::default() })).unwrap()",
+        ),
+        (
+            "Result::map_err",
+            "ctx: Context<Run>, record_result: std::result::Result<SampleRecord, ()>",
+            "record_result.map_err(|_| ()).unwrap()",
+        ),
+        (
+            "Result::inspect_err",
+            "ctx: Context<Run>, record_result: std::result::Result<SampleRecord, ()>",
+            "record_result.inspect_err(|_| {}).unwrap()",
+        ),
+    ];
+
+    for (case_name, handler_args, selected_expr) in cases {
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler({handler_args}) -> Result<()> {{
+    let selected = {selected_expr};
+    selected.real_fake;
+    Ok(())
+}}
+
+pub struct SampleRecord {{
+    pub real_mint: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+
+        let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(&source));
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("`selected.real_fake` does not resolve")),
+            "{case_name}: missing wrapper fallback diagnostic: {diagnostics:#?}"
+        );
+    }
+}
+
+#[test]
 fn reports_unknown_member_after_option_map_or() {
     let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(
         r#"
@@ -546,6 +629,43 @@ pub struct Run<'info> {{
                 .iter()
                 .any(|diagnostic| diagnostic.message.contains(&format!("`selected.{missing}` does not resolve"))),
             "expected generated Option::map_or diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn reports_generated_unknown_members_after_option_ok_or(
+        known in generated_ident(),
+        missing in generated_ident(),
+    ) {
+        prop_assume!(known != missing);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {{
+    let selected = maybe_record.ok_or(()).unwrap();
+    selected.{missing};
+    Ok(())
+}}
+
+pub struct SampleRecord {{
+    pub {known}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+
+        let diagnostics = diagnostics::collect(&ParsedDocument::parse_or_empty(&source));
+
+        prop_assert!(
+            diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.message.contains(&format!("`selected.{missing}` does not resolve"))),
+            "expected generated Option::ok_or diagnostic: {diagnostics:#?}"
         );
     }
 }

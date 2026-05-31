@@ -1,4 +1,7 @@
-use syn::{GenericArgument, Pat, PathArguments, Type};
+use {
+    super::type_names::ValueWrapperKind,
+    syn::{GenericArgument, Pat, PathArguments, Type},
+};
 
 const ITERABLE_VALUE_TYPES: &[&str] = &[
     "BTreeSet",
@@ -53,6 +56,12 @@ const WRAPPER_CLOSURE_VALUE_METHODS_WITH_ONE_ARG: &[&str] = &[
     "is_some_and",
     "map",
 ];
+const WRAPPER_VALUE_PRESERVING_METHODS: &[&str] = &["as_mut", "as_ref", "inspect"];
+const OPTION_VALUE_PRESERVING_METHODS_WITH_ONE_ARG: &[&str] = &["filter", "or", "or_else", "xor"];
+const OPTION_TO_RESULT_METHODS_WITH_ONE_ARG: &[&str] = &["ok_or", "ok_or_else"];
+const RESULT_VALUE_PRESERVING_METHODS_WITH_ONE_ARG: &[&str] =
+    &["inspect_err", "map_err", "or", "or_else"];
+const RESULT_OK_TO_OPTION_METHODS: &[&str] = &["ok"];
 const OPTION_VALUE_METHODS: &[&str] = &["unwrap", "unwrap_or_default"];
 const OPTION_VALUE_METHODS_WITH_ONE_ARG: &[&str] = &["expect", "unwrap_or", "unwrap_or_else"];
 const COLLECTION_OPTION_ITEM_METHODS: &[&str] = &["first", "last", "pop"];
@@ -140,6 +149,41 @@ pub(super) fn item_closure_iterator_method_matches(method: &str, arg_count: usiz
 
 pub(super) fn wrapper_closure_value_method_matches(method: &str, arg_count: usize) -> bool {
     arg_count == 1 && WRAPPER_CLOSURE_VALUE_METHODS_WITH_ONE_ARG.contains(&method)
+}
+
+pub(super) fn wrapper_value_method_output_kind(
+    kind: ValueWrapperKind,
+    method: &str,
+    arg_count: usize,
+) -> Option<ValueWrapperKind> {
+    if arg_count == 0 && WRAPPER_VALUE_PRESERVING_METHODS.contains(&method) {
+        return Some(kind);
+    }
+
+    match kind {
+        ValueWrapperKind::Option => option_value_method_output_kind(method, arg_count),
+        ValueWrapperKind::Result => result_value_method_output_kind(method, arg_count),
+    }
+}
+
+fn option_value_method_output_kind(method: &str, arg_count: usize) -> Option<ValueWrapperKind> {
+    if arg_count == 1 && OPTION_VALUE_PRESERVING_METHODS_WITH_ONE_ARG.contains(&method) {
+        return Some(ValueWrapperKind::Option);
+    }
+    if arg_count == 1 && OPTION_TO_RESULT_METHODS_WITH_ONE_ARG.contains(&method) {
+        return Some(ValueWrapperKind::Result);
+    }
+    None
+}
+
+fn result_value_method_output_kind(method: &str, arg_count: usize) -> Option<ValueWrapperKind> {
+    if arg_count == 0 && RESULT_OK_TO_OPTION_METHODS.contains(&method) {
+        return Some(ValueWrapperKind::Option);
+    }
+    if arg_count == 1 && RESULT_VALUE_PRESERVING_METHODS_WITH_ONE_ARG.contains(&method) {
+        return Some(ValueWrapperKind::Result);
+    }
+    None
 }
 
 pub(super) fn iterator_option_item_method_matches(method: &str, arg_count: usize) -> bool {
