@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer associated function return types such as `Type::new()?` for
+  handler member completions and diagnostics, including split-file impls.
 - lsp: carry inherent method return types through workspace associated-value
   indexing so split-file method returns drive member completions and diagnostics.
 - lsp: carry helper function return types through the workspace index so

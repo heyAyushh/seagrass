@@ -108,6 +108,7 @@ fn workspace_method_return_type_name(
             ReturnMode::Direct => type_names::return_type_name_from_text(&display),
             ReturnMode::TryUnwrap => type_names::try_return_type_name_from_text(&display),
         })
+        .map(|type_name| resolve_self_type(type_name, receiver_type))
         .collect::<Vec<_>>();
     return_type_names.sort();
     return_type_names.dedup();
@@ -134,7 +135,8 @@ impl LocalMethodReturnVisitor<'_> {
             ReturnMode::TryUnwrap => type_names::try_return_type_name(output),
         };
         if let Some(type_name) = type_name {
-            self.return_type_names.push(type_name);
+            self.return_type_names
+                .push(resolve_self_type(type_name, self.receiver_type));
         }
     }
 }
@@ -167,4 +169,12 @@ fn impl_self_type_name(item_impl: &ItemImpl) -> Option<String> {
         .segments
         .last()
         .map(|segment| segment.ident.to_string())
+}
+
+fn resolve_self_type(type_name: String, self_type: &str) -> String {
+    if type_name == "Self" {
+        self_type.to_string()
+    } else {
+        type_name
+    }
 }

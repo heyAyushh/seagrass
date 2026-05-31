@@ -142,6 +142,96 @@ pub struct PositionBundle {
         .contains("`PositionBundle` has no field `s`"));
 }
 
+#[test]
+fn reports_unknown_member_from_associated_function_return() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>) -> Result<()> {
+        let metadata = BundleMetadata::new()?;
+        metadata.s;
+        Ok(())
+    }
+}
+
+pub struct BundleMetadata {
+    pub asset_mint: Pubkey,
+}
+
+impl BundleMetadata {
+    pub fn new() -> Result<Self> {
+        unreachable!()
+    }
+}
+"#,
+    );
+
+    let diagnostics = collect_with_workspace(&document, None);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("`metadata.s` does not resolve"))
+        .unwrap_or_else(|| {
+            panic!("missing associated-function return diagnostic: {diagnostics:#?}")
+        });
+
+    assert!(diagnostic
+        .message
+        .contains("`BundleMetadata` has no field `s`"));
+}
+
+#[test]
+fn reports_unknown_member_from_workspace_associated_function_return() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>) -> Result<()> {
+        let metadata = BundleMetadata::new()?;
+        metadata.s;
+        Ok(())
+    }
+}
+"#,
+    );
+    let index = WorkspaceIndex::build(
+        &[],
+        [(
+            Url::parse("file:///tmp/metadata.rs").unwrap(),
+            r#"
+use anchor_lang::prelude::*;
+
+pub struct BundleMetadata {
+    pub asset_mint: Pubkey,
+}
+
+impl BundleMetadata {
+    pub fn new() -> Result<Self> {
+        unreachable!()
+    }
+}
+"#
+            .to_string(),
+        )],
+    );
+
+    let diagnostics = collect_with_workspace(&document, Some(&index));
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("`metadata.s` does not resolve"))
+        .unwrap_or_else(|| {
+            panic!("missing workspace associated-function return diagnostic: {diagnostics:#?}")
+        });
+
+    assert!(diagnostic
+        .message
+        .contains("`BundleMetadata` has no field `s`"));
+}
+
 proptest! {
     #[test]
     fn reports_generated_unknown_helper_return_members(

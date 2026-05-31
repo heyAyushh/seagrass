@@ -197,6 +197,76 @@ pub struct PositionBundle {
     assert_eq!(items[0].label, "position_bundle_mint");
 }
 
+#[test]
+fn completes_members_from_associated_function_return() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let metadata = BundleMetadata::new()?;
+    metadata.asset_
+}
+
+pub struct BundleMetadata {
+    pub asset_mint: Pubkey,
+}
+
+impl BundleMetadata {
+    pub fn new() -> Result<Self> {
+        unreachable!()
+    }
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(&document, position_after(source, "metadata.asset_"))
+        .expect("associated function return member completions");
+
+    assert_eq!(items[0].label, "asset_mint");
+}
+
+#[test]
+fn completes_members_from_workspace_associated_function_return() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let metadata = BundleMetadata::new()?;
+    metadata.asset_
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let index = WorkspaceIndex::build(
+        &[],
+        [(
+            Url::parse("file:///tmp/metadata.rs").unwrap(),
+            r#"
+use anchor_lang::prelude::*;
+
+pub struct BundleMetadata {
+    pub asset_mint: Pubkey,
+}
+
+impl BundleMetadata {
+    pub fn new() -> Result<Self> {
+        unreachable!()
+    }
+}
+"#
+            .to_string(),
+        )],
+    );
+
+    let items = crate::lsp::completions::completions_with_workspace(
+        &document,
+        position_after(source, "metadata.asset_"),
+        Some(&index),
+    )
+    .expect("workspace associated function return member completions");
+
+    assert_eq!(items[0].label, "asset_mint");
+}
+
 proptest! {
     #[test]
     fn completes_generated_helper_return_members(
