@@ -248,10 +248,29 @@ pub(crate) fn expression_type_name_with_context_scope(
     scope_type_name: &impl Fn(&str) -> Option<String>,
     context_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
+    expression_type_name_with_item_scope(
+        document,
+        workspace_index,
+        expr,
+        scope_type_name,
+        context_type_name,
+        &|_| None,
+    )
+}
+
+pub(crate) fn expression_type_name_with_item_scope(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr: &Expr,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
     match expr {
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             scope_type_name(&path.path.segments[0].ident.to_string())
         }
+        Expr::Index(_) => iterables::accessed_item_type_name(expr, scope_item_type_name),
         Expr::Field(field) => context_account_field_type_name_from_expr(
             document,
             workspace_index,
@@ -266,55 +285,67 @@ pub(crate) fn expression_type_name_with_context_scope(
                 field,
                 scope_type_name,
                 context_type_name,
+                scope_item_type_name,
             )
         }),
-        Expr::Try(expr_try) => method_returns::try_method_return_type_name(
-            document,
-            workspace_index,
-            &expr_try.expr,
-            scope_type_name,
-            context_type_name,
-        )
-        .or_else(|| {
-            call_returns::try_call_return_type_name(document, workspace_index, &expr_try.expr)
-        })
-        .or_else(|| {
-            expression_type_name_with_context_scope(
-                document,
-                workspace_index,
-                &expr_try.expr,
-                scope_type_name,
-                context_type_name,
-            )
-        }),
+        Expr::Try(expr_try) => iterables::accessed_item_type_name(expr, scope_item_type_name)
+            .or_else(|| {
+                method_returns::try_method_return_type_name(
+                    document,
+                    workspace_index,
+                    &expr_try.expr,
+                    scope_type_name,
+                    context_type_name,
+                )
+            })
+            .or_else(|| {
+                call_returns::try_call_return_type_name(document, workspace_index, &expr_try.expr)
+            })
+            .or_else(|| {
+                expression_type_name_with_item_scope(
+                    document,
+                    workspace_index,
+                    &expr_try.expr,
+                    scope_type_name,
+                    context_type_name,
+                    scope_item_type_name,
+                )
+            }),
         Expr::Call(call) => call_returns::call_return_type_name(document, workspace_index, call)
             .or_else(|| constructed_type_name(expr)),
-        Expr::MethodCall(method_call) => account_loader_loaded_method_type_name(
-            document,
-            workspace_index,
-            method_call,
-            scope_type_name,
-            context_type_name,
-        )
-        .or_else(|| {
-            transparent_receiver_method_type_name(
-                document,
-                workspace_index,
-                method_call,
-                scope_type_name,
-                context_type_name,
-            )
-        })
-        .or_else(|| {
-            method_returns::method_return_type_name(
-                document,
-                workspace_index,
-                method_call,
-                scope_type_name,
-                context_type_name,
-            )
-        })
-        .or_else(|| constructed_type_name(expr)),
+        Expr::MethodCall(method_call) => {
+            iterables::accessed_item_type_name(expr, scope_item_type_name)
+                .or_else(|| {
+                    account_loader_loaded_method_type_name(
+                        document,
+                        workspace_index,
+                        method_call,
+                        scope_type_name,
+                        context_type_name,
+                        scope_item_type_name,
+                    )
+                })
+                .or_else(|| {
+                    transparent_receiver_method_type_name(
+                        document,
+                        workspace_index,
+                        method_call,
+                        scope_type_name,
+                        context_type_name,
+                        scope_item_type_name,
+                    )
+                })
+                .or_else(|| {
+                    method_returns::method_return_type_name(
+                        document,
+                        workspace_index,
+                        method_call,
+                        scope_type_name,
+                        context_type_name,
+                    )
+                })
+                .or_else(|| constructed_type_name(expr))
+        }
         Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Deref(_)) => {
             transparent_deref_type_name(
                 document,
@@ -322,28 +353,32 @@ pub(crate) fn expression_type_name_with_context_scope(
                 unary,
                 scope_type_name,
                 context_type_name,
+                scope_item_type_name,
             )
         }
-        Expr::Reference(reference) => expression_type_name_with_context_scope(
+        Expr::Reference(reference) => expression_type_name_with_item_scope(
             document,
             workspace_index,
             &reference.expr,
             scope_type_name,
             context_type_name,
+            scope_item_type_name,
         ),
-        Expr::Paren(paren) => expression_type_name_with_context_scope(
+        Expr::Paren(paren) => expression_type_name_with_item_scope(
             document,
             workspace_index,
             &paren.expr,
             scope_type_name,
             context_type_name,
+            scope_item_type_name,
         ),
-        Expr::Group(group) => expression_type_name_with_context_scope(
+        Expr::Group(group) => expression_type_name_with_item_scope(
             document,
             workspace_index,
             &group.expr,
             scope_type_name,
             context_type_name,
+            scope_item_type_name,
         ),
         _ => constructed_type_name(expr),
     }
@@ -355,13 +390,15 @@ fn account_loader_loaded_method_type_name(
     method_call: &syn::ExprMethodCall,
     scope_type_name: &impl Fn(&str) -> Option<String>,
     context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    let receiver_type = expression_type_name_with_context_scope(
+    let receiver_type = expression_type_name_with_item_scope(
         document,
         workspace_index,
         &method_call.receiver,
         scope_type_name,
         context_type_name,
+        scope_item_type_name,
     )?;
     account_loader::loaded_method_return_type(method_call, &receiver_type)
 }
@@ -372,6 +409,7 @@ fn transparent_receiver_method_type_name(
     method_call: &syn::ExprMethodCall,
     scope_type_name: &impl Fn(&str) -> Option<String>,
     context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
     if !method_call.args.is_empty()
         || !TRANSPARENT_RECEIVER_METHODS.contains(&method_call.method.to_string().as_str())
@@ -379,12 +417,13 @@ fn transparent_receiver_method_type_name(
     {
         return None;
     }
-    let receiver_type = expression_type_name_with_context_scope(
+    let receiver_type = expression_type_name_with_item_scope(
         document,
         workspace_index,
         &method_call.receiver,
         scope_type_name,
         context_type_name,
+        scope_item_type_name,
     )?;
     account_members::resolved_struct_members(document, workspace_index, &receiver_type)
         .map(|_| receiver_type)
@@ -396,13 +435,15 @@ fn transparent_deref_type_name(
     unary: &syn::ExprUnary,
     scope_type_name: &impl Fn(&str) -> Option<String>,
     context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    let receiver_type = expression_type_name_with_context_scope(
+    let receiver_type = expression_type_name_with_item_scope(
         document,
         workspace_index,
         &unary.expr,
         scope_type_name,
         context_type_name,
+        scope_item_type_name,
     )?;
     account_members::resolved_struct_members(document, workspace_index, &receiver_type)
         .map(|_| receiver_type)
@@ -448,13 +489,15 @@ fn field_expression_type_name(
     field: &ExprField,
     scope_type_name: &impl Fn(&str) -> Option<String>,
     context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    let base_type = expression_type_name_with_context_scope(
+    let base_type = expression_type_name_with_item_scope(
         document,
         workspace_index,
         &field.base,
         scope_type_name,
         context_type_name,
+        scope_item_type_name,
     )?;
     let Member::Named(member) = &field.member else {
         return None;
@@ -467,21 +510,23 @@ fn field_expression_type_name(
     )
 }
 
-pub(crate) fn local_type_name_with_scope(
+pub(crate) fn local_type_name_with_item_scope(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
     local: &syn::Local,
     scope_type_name: &impl Fn(&str) -> Option<String>,
     context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
     explicit_pattern_type_name(&local.pat).or_else(|| {
         local.init.as_ref().and_then(|init| {
-            expression_type_name_with_context_scope(
+            expression_type_name_with_item_scope(
                 document,
                 workspace_index,
                 &init.expr,
                 scope_type_name,
                 context_type_name,
+                scope_item_type_name,
             )
         })
     })

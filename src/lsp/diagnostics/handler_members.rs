@@ -132,12 +132,13 @@ impl<'a> HandlerMemberVisitor<'a> {
     }
 
     fn report_method_call(&mut self, node: &ExprMethodCall) {
-        let Some(receiver_type) = local_types::expression_type_name_with_context_scope(
+        let Some(receiver_type) = local_types::expression_type_name_with_item_scope(
             self.document,
             self.workspace_index,
             &node.receiver,
             &|name| self.scopes.get(name),
             &|name| self.scopes.get_context(name),
+            &|name| self.scopes.get_iterable_item(name),
         ) else {
             return;
         };
@@ -182,12 +183,13 @@ impl<'a> HandlerMemberVisitor<'a> {
     }
 
     fn expression_type_name(&self, expr: &Expr) -> Option<String> {
-        local_types::expression_type_name_with_context_scope(
+        local_types::expression_type_name_with_item_scope(
             self.document,
             self.workspace_index,
             expr,
             &|name| self.scopes.get(name),
             &|name| self.scopes.get_context(name),
+            &|name| self.scopes.get_iterable_item(name),
         )
     }
 
@@ -255,12 +257,13 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         {
             self.scopes.declare_iterable_pat(&node.pat, item_type);
         }
-        if let Some(type_name) = local_types::local_type_name_with_scope(
+        if let Some(type_name) = local_types::local_type_name_with_item_scope(
             self.document,
             self.workspace_index,
             node,
             &|name| self.scopes.get(name),
             &|name| self.scopes.get_context(name),
+            &|name| self.scopes.get_iterable_item(name),
         ) {
             self.scopes.declare_typed_pattern(
                 self.document,

@@ -11,6 +11,10 @@ const ITERABLE_VALUE_TYPES: &[&str] = &[
 ];
 const TRANSPARENT_ITERABLE_TYPES: &[&str] = &["Box"];
 const ITERATOR_METHODS: &[&str] = &["into_iter", "iter", "iter_mut"];
+const OPTION_VALUE_METHODS: &[&str] = &["unwrap", "unwrap_or_default"];
+const OPTION_VALUE_METHODS_WITH_ONE_ARG: &[&str] = &["expect", "unwrap_or", "unwrap_or_else"];
+const COLLECTION_OPTION_ITEM_METHODS: &[&str] = &["first", "last", "pop"];
+const COLLECTION_OPTION_ITEM_METHODS_WITH_ONE_ARG: &[&str] = &["get", "get_mut"];
 
 pub(super) fn item_type_name_from_type(ty: &Type) -> Option<String> {
     match transparent_type(ty) {
@@ -63,6 +67,65 @@ pub(super) fn expression_item_type_name(
         syn::Expr::Group(group) => expression_item_type_name(&group.expr, scope_item_type_name),
         _ => None,
     }
+}
+
+pub(super) fn accessed_item_type_name(
+    expr: &syn::Expr,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    match expr {
+        syn::Expr::Index(index) => expression_item_type_name(&index.expr, scope_item_type_name),
+        syn::Expr::MethodCall(method_call)
+            if option_value_method_matches(
+                &method_call.method.to_string(),
+                method_call.args.len(),
+            ) =>
+        {
+            optional_item_type_name(&method_call.receiver, scope_item_type_name)
+        }
+        syn::Expr::Try(expr_try) => optional_item_type_name(&expr_try.expr, scope_item_type_name),
+        syn::Expr::Reference(reference) => {
+            accessed_item_type_name(&reference.expr, scope_item_type_name)
+        }
+        syn::Expr::Paren(paren) => accessed_item_type_name(&paren.expr, scope_item_type_name),
+        syn::Expr::Group(group) => accessed_item_type_name(&group.expr, scope_item_type_name),
+        _ => None,
+    }
+}
+
+fn optional_item_type_name(
+    expr: &syn::Expr,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    match expr {
+        syn::Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+            scope_item_type_name(&path.path.segments[0].ident.to_string())
+        }
+        syn::Expr::MethodCall(method_call)
+            if collection_option_item_method_matches(
+                &method_call.method.to_string(),
+                method_call.args.len(),
+            ) =>
+        {
+            expression_item_type_name(&method_call.receiver, scope_item_type_name)
+        }
+        syn::Expr::Reference(reference) => {
+            optional_item_type_name(&reference.expr, scope_item_type_name)
+        }
+        syn::Expr::Paren(paren) => optional_item_type_name(&paren.expr, scope_item_type_name),
+        syn::Expr::Group(group) => optional_item_type_name(&group.expr, scope_item_type_name),
+        _ => None,
+    }
+}
+
+fn option_value_method_matches(method: &str, arg_count: usize) -> bool {
+    (arg_count == 0 && OPTION_VALUE_METHODS.contains(&method))
+        || (arg_count == 1 && OPTION_VALUE_METHODS_WITH_ONE_ARG.contains(&method))
+}
+
+fn collection_option_item_method_matches(method: &str, arg_count: usize) -> bool {
+    (arg_count == 0 && COLLECTION_OPTION_ITEM_METHODS.contains(&method))
+        || (arg_count == 1 && COLLECTION_OPTION_ITEM_METHODS_WITH_ONE_ARG.contains(&method))
 }
 
 fn transparent_type(ty: &Type) -> &Type {

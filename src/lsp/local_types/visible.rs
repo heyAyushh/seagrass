@@ -204,12 +204,13 @@ impl VisibleTypedValueCollector<'_> {
         }) {
             self.add_iterable_pattern_candidate(&local.pat, item_type);
         }
-        let Some(type_name) = super::local_type_name_with_scope(
+        let Some(type_name) = super::local_type_name_with_item_scope(
             self.document,
             self.workspace_index,
             local,
             &|name| self.visible_type_name(name),
             &|name| self.visible_context_type_name(name),
+            &|name| self.visible_iterable_item_type_name(name),
         ) else {
             return;
         };
@@ -234,12 +235,13 @@ impl VisibleTypedValueCollector<'_> {
     }
 
     fn expression_type_name(&self, expr: &Expr) -> Option<String> {
-        super::expression_type_name_with_context_scope(
+        super::expression_type_name_with_item_scope(
             self.document,
             self.workspace_index,
             expr,
             &|name| self.visible_type_name(name),
             &|name| self.visible_context_type_name(name),
+            &|name| self.visible_iterable_item_type_name(name),
         )
     }
 
