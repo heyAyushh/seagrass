@@ -31,6 +31,28 @@ pub(super) fn typed_values_at(
     collector.values
 }
 
+pub(super) fn iterable_item_values_at(
+    document: &ParsedDocument,
+    position: Position,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<TypedLocalValue> {
+    let Some(cursor_offset) = crate::range::byte_offset_at(document.source(), position) else {
+        return Vec::new();
+    };
+    let mut collector = VisibleTypedValueCollector {
+        document,
+        workspace_index,
+        source: document.source(),
+        cursor_offset,
+        values: Vec::new(),
+        iterable_values: Vec::new(),
+        context_values: Vec::new(),
+        found_cursor_function: false,
+    };
+    collector.visit_file(document.syntax());
+    collector.iterable_values
+}
+
 pub(super) fn context_values_at(
     document: &ParsedDocument,
     position: Position,

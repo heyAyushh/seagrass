@@ -57,6 +57,22 @@ pub fn run(ctx: Context<Run>) -> Result<()> {
     ));
 }
 
+#[test]
+fn completion_gate_wakes_for_indexed_member_expression() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn run(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {
+    bundles[0].real_
+}
+"#;
+
+    assert!(should_offer_completion(
+        source,
+        position_after(source, "bundles[0].real_")
+    ));
+}
+
 proptest! {
     #[test]
     fn completion_gate_wakes_for_generated_direct_account_alias_members(

@@ -6,12 +6,17 @@ use {
         lsp::local_types,
         workspace::WorkspaceIndex,
     },
+    syn::{
+        visit::{self, Visit},
+        Expr, ExprField, Member,
+    },
     tower_lsp::lsp_types::{CompletionItem, CompletionTextEdit, Position, Range, TextEdit},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct HandlerMemberAccess {
-    receiver: String,
+    receiver: Option<String>,
+    receiver_type: Option<String>,
     member_chain: Vec<String>,
     member_prefix: String,
 }
@@ -21,21 +26,26 @@ pub(super) fn completions(
     position: Position,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Option<Vec<CompletionItem>> {
-    let access = handler_member_access(document.source(), position)?;
-    if let Some(context_type) = visible_receiver_context_type(document, position, &access.receiver)
-    {
-        if let Some(members) = context_members::resolved_context_chain_members(
-            document,
-            workspace_index,
-            &context_type,
-            &access.member_chain,
-        ) {
-            return completion_items(position, &access.member_prefix, members);
+    let access = syntax_handler_member_access(document, position, workspace_index)
+        .or_else(|| text_handler_member_access(document.source(), position))?;
+    if let Some(receiver) = access.receiver.as_deref() {
+        if let Some(context_type) = visible_receiver_context_type(document, position, receiver) {
+            if let Some(members) = context_members::resolved_context_chain_members(
+                document,
+                workspace_index,
+                &context_type,
+                &access.member_chain,
+            ) {
+                return completion_items(position, &access.member_prefix, members);
+            }
         }
     }
 
-    let receiver_type =
-        visible_receiver_type(document, position, workspace_index, &access.receiver)?;
+    let receiver_type = access.receiver_type.or_else(|| {
+        access.receiver.as_deref().and_then(|receiver| {
+            visible_receiver_type(document, position, workspace_index, receiver)
+        })
+    })?;
     if let Some(members) = context_members::resolved_generated_bumps_chain_members(
         document,
         workspace_index,
@@ -102,7 +112,143 @@ fn visible_receiver_context_type(
         .map(|value| value.accounts_type_name)
 }
 
-fn handler_member_access(source: &str, position: Position) -> Option<HandlerMemberAccess> {
+fn syntax_handler_member_access(
+    document: &ParsedDocument,
+    position: Position,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Option<HandlerMemberAccess> {
+    let mut visitor = SyntaxMemberAccessVisitor {
+        document,
+        position,
+        workspace_index,
+        access: None,
+    };
+    visitor.visit_file(document.syntax());
+    visitor.access
+}
+
+struct SyntaxMemberAccessVisitor<'a> {
+    document: &'a ParsedDocument,
+    position: Position,
+    workspace_index: Option<&'a WorkspaceIndex>,
+    access: Option<HandlerMemberAccess>,
+}
+
+impl<'ast> Visit<'ast> for SyntaxMemberAccessVisitor<'_> {
+    fn visit_expr_field(&mut self, node: &'ast ExprField) {
+        if self.access.is_none() && member_contains_position(node, self.position) {
+            self.access = self.access_from_field(node);
+        }
+        visit::visit_expr_field(self, node);
+    }
+}
+
+impl SyntaxMemberAccessVisitor<'_> {
+    fn access_from_field(&self, node: &ExprField) -> Option<HandlerMemberAccess> {
+        let mut members = Vec::new();
+        let receiver = collect_field_chain(node, &mut members)?;
+        let member_prefix = members.pop()?;
+        let receiver_type = self.receiver_type(receiver)?;
+        Some(HandlerMemberAccess {
+            receiver: receiver_name(receiver),
+            receiver_type: Some(receiver_type),
+            member_chain: members,
+            member_prefix,
+        })
+    }
+
+    fn receiver_type(&self, receiver: &Expr) -> Option<String> {
+        let typed_values = local_types::visible_typed_values_at_with_workspace(
+            self.document,
+            self.position,
+            self.workspace_index,
+        );
+        let context_values = local_types::visible_context_values_at(self.document, self.position);
+        let iterable_values = local_types::visible_iterable_item_values_at_with_workspace(
+            self.document,
+            self.position,
+            self.workspace_index,
+        );
+        local_types::expression_type_name_with_item_scope(
+            self.document,
+            self.workspace_index,
+            receiver,
+            &|name| {
+                typed_values
+                    .iter()
+                    .rev()
+                    .find(|value| value.name == name)
+                    .map(|value| value.type_name.clone())
+            },
+            &|name| {
+                context_values
+                    .iter()
+                    .rev()
+                    .find(|value| value.name == name)
+                    .map(|value| value.accounts_type_name.clone())
+            },
+            &|name| {
+                iterable_values
+                    .iter()
+                    .rev()
+                    .find(|value| value.name == name)
+                    .map(|value| value.type_name.clone())
+            },
+        )
+    }
+}
+
+fn member_contains_position(field: &ExprField, position: Position) -> bool {
+    let Member::Named(member) = &field.member else {
+        return false;
+    };
+    contains_position(crate::range::range_from_span(member.span()), position)
+}
+
+fn collect_field_chain<'a>(field: &'a ExprField, members: &mut Vec<String>) -> Option<&'a Expr> {
+    let receiver = match field.base.as_ref() {
+        Expr::Field(base) => collect_field_chain(base, members)?,
+        Expr::Paren(paren) => match paren.expr.as_ref() {
+            Expr::Field(base) => collect_field_chain(base, members)?,
+            expr => expr,
+        },
+        Expr::Group(group) => match group.expr.as_ref() {
+            Expr::Field(base) => collect_field_chain(base, members)?,
+            expr => expr,
+        },
+        Expr::Reference(reference) => match reference.expr.as_ref() {
+            Expr::Field(base) => collect_field_chain(base, members)?,
+            expr => expr,
+        },
+        expr => expr,
+    };
+    let Member::Named(member) = &field.member else {
+        return None;
+    };
+    members.push(member.to_string());
+    Some(receiver)
+}
+
+fn receiver_name(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+            Some(path.path.segments[0].ident.to_string())
+        }
+        Expr::Paren(paren) => receiver_name(&paren.expr),
+        Expr::Group(group) => receiver_name(&group.expr),
+        Expr::Reference(reference) => receiver_name(&reference.expr),
+        _ => None,
+    }
+}
+
+fn contains_position(range: Range, position: Position) -> bool {
+    (position.line > range.start.line
+        || (position.line == range.start.line && position.character >= range.start.character))
+        && (position.line < range.end.line
+            || (position.line == range.end.line && position.character <= range.end.character))
+}
+
+fn text_handler_member_access(source: &str, position: Position) -> Option<HandlerMemberAccess> {
     let line = crate::range::line_at(source, position.line)?;
     let cursor = usize::try_from(position.character).ok()?.min(line.len());
     let tail = line[..cursor]
@@ -123,7 +269,8 @@ fn handler_member_access(source: &str, position: Position) -> Option<HandlerMemb
         return None;
     }
     Some(HandlerMemberAccess {
-        receiver: receiver.to_string(),
+        receiver: Some(receiver.to_string()),
+        receiver_type: None,
         member_chain,
         member_prefix: member_prefix.to_string(),
     })

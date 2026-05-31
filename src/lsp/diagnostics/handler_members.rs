@@ -1,7 +1,9 @@
+mod field_access;
 mod method_calls;
 mod scope;
 
 use {
+    self::field_access::{expression_access_path, FieldAccess, FieldExpressionAccess, FieldMember},
     self::scope::TypedScopeStack,
     super::{
         diagnostic_from_range,
@@ -21,7 +23,7 @@ use {
     std::collections::HashSet,
     syn::{
         visit::{self, Visit},
-        BinOp, Expr, ExprField, ExprMethodCall, FnArg, ItemFn, ItemMod, Member,
+        BinOp, Expr, ExprField, ExprMethodCall, FnArg, ItemFn, ItemMod,
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
@@ -96,33 +98,48 @@ impl<'a> HandlerMemberVisitor<'a> {
     }
 
     fn report_unknown_member(&mut self, node: &ExprField) {
-        let Some(access) = FieldAccess::from_expr_field(node) else {
-            return;
-        };
-        if let Some(context_type) = self.scopes.get_context(&access.receiver).or_else(|| {
-            text_receiver_context_type(self.document, access.end_position()?, &access.receiver)
-        }) {
-            if let Some(diagnostic) = unknown_context_member_diagnostic(
-                self.document,
-                self.workspace_index,
-                &context_type,
-                &access,
-            ) {
-                self.push_diagnostic_once(diagnostic);
+        if let Some(access) = FieldAccess::from_named_expr_field(node) {
+            if let Some(context_type) = self.scopes.get_context(&access.receiver).or_else(|| {
+                text_receiver_context_type(self.document, access.end_position()?, &access.receiver)
+            }) {
+                if let Some(diagnostic) = unknown_context_member_diagnostic(
+                    self.document,
+                    self.workspace_index,
+                    &context_type,
+                    &access,
+                ) {
+                    self.push_diagnostic_once(diagnostic);
+                    return;
+                }
+            }
+
+            if let Some(receiver_type) = self.scopes.get(&access.receiver).or_else(|| {
+                text_receiver_type(
+                    self.document,
+                    self.workspace_index,
+                    access.end_position()?,
+                    &access.receiver,
+                )
+            }) {
+                if let Some(diagnostic) = unknown_member_diagnostic(
+                    self.document,
+                    self.workspace_index,
+                    &receiver_type,
+                    &access,
+                ) {
+                    self.push_diagnostic_once(diagnostic);
+                }
                 return;
             }
         }
 
-        let Some(receiver_type) = self.scopes.get(&access.receiver).or_else(|| {
-            text_receiver_type(
-                self.document,
-                self.workspace_index,
-                access.end_position()?,
-                &access.receiver,
-            )
-        }) else {
+        let Some(access) = FieldExpressionAccess::from_expr_field(node) else {
             return;
         };
+        let Some(receiver_type) = self.expression_type_name(access.receiver()) else {
+            return;
+        };
+        let access = access.into_field_access(&receiver_type);
         let Some(diagnostic) =
             unknown_member_diagnostic(self.document, self.workspace_index, &receiver_type, &access)
         else {
@@ -354,86 +371,6 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
     fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
         self.report_method_call(node);
         visit::visit_expr_method_call(self, node);
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FieldAccess {
-    receiver: String,
-    members: Vec<FieldMember>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct FieldMember {
-    name: String,
-    range: Range,
-}
-
-impl FieldAccess {
-    fn from_expr_field(node: &ExprField) -> Option<Self> {
-        let mut members = Vec::new();
-        collect_field_access(node, &mut members).map(|receiver| Self { receiver, members })
-    }
-
-    fn end_position(&self) -> Option<Position> {
-        self.members.last().map(|member| member.range.end)
-    }
-}
-
-fn collect_field_access(node: &ExprField, members: &mut Vec<FieldMember>) -> Option<String> {
-    let receiver = match node.base.as_ref() {
-        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
-            path.path.segments[0].ident.to_string()
-        }
-        Expr::Field(base) => collect_field_access(base, members)?,
-        Expr::Paren(paren) => {
-            let Expr::Field(field) = paren.expr.as_ref() else {
-                return None;
-            };
-            collect_field_access(field, members)?
-        }
-        Expr::Group(group) => {
-            let Expr::Field(field) = group.expr.as_ref() else {
-                return None;
-            };
-            collect_field_access(field, members)?
-        }
-        Expr::Reference(reference) => {
-            let Expr::Field(field) = reference.expr.as_ref() else {
-                return None;
-            };
-            collect_field_access(field, members)?
-        }
-        _ => return None,
-    };
-    let Member::Named(ident) = &node.member else {
-        return None;
-    };
-    members.push(FieldMember {
-        name: ident.to_string(),
-        range: range_from_span(ident.span()),
-    });
-    Some(receiver)
-}
-
-fn expression_access_path(expr: &Expr) -> Option<String> {
-    match expr {
-        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
-            Some(path.path.segments[0].ident.to_string())
-        }
-        Expr::Field(field) => {
-            let access = FieldAccess::from_expr_field(field)?;
-            let mut path = access.receiver;
-            for member in access.members {
-                path.push('.');
-                path.push_str(&member.name);
-            }
-            Some(path)
-        }
-        Expr::Paren(paren) => expression_access_path(&paren.expr),
-        Expr::Group(group) => expression_access_path(&group.expr),
-        Expr::Reference(reference) => expression_access_path(&reference.expr),
-        _ => None,
     }
 }
 
@@ -786,6 +723,10 @@ mod method_call_tests;
 #[cfg(test)]
 #[path = "handler_members/pattern_tests.rs"]
 mod pattern_tests;
+
+#[cfg(test)]
+#[path = "handler_members/iterable_expression_tests.rs"]
+mod iterable_expression_tests;
 
 #[cfg(test)]
 mod tests;

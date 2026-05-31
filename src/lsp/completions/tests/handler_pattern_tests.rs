@@ -306,6 +306,68 @@ pub struct Run<'info> {
     );
 }
 
+#[test]
+fn completes_members_on_indexed_iterable_expression() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {
+    bundles[0].real_
+}
+
+pub struct PositionBundle {
+    pub real_mint: Pubkey,
+    pub real_owner: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "bundles[0].real_"))
+        .expect("indexed iterable expression member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"real_mint"));
+    assert!(labels.contains(&"real_owner"));
+}
+
+#[test]
+fn completes_members_on_unwrapped_iterable_expression() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {
+    bundles.first().unwrap().real_
+}
+
+pub struct PositionBundle {
+    pub real_mint: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(
+        &document,
+        position_after(source, "bundles.first().unwrap().real_"),
+    )
+    .expect("unwrapped iterable expression member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_mint"),
+        "unwrapped iterable expression should complete: {items:#?}"
+    );
+}
+
 proptest! {
     #[test]
     fn completes_generated_if_let_account_pattern_members(
@@ -382,6 +444,41 @@ pub struct Run<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated indexed iterable alias member should complete; items: {items:#?}"
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn completes_generated_indexed_iterable_expression_members(
+        field_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {{
+    bundles[0].real_
+}}
+
+pub struct PositionBundle {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "bundles[0].real_"))
+            .expect("generated indexed iterable expression member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated indexed iterable expression member should complete; items: {items:#?}"
         );
     }
 }

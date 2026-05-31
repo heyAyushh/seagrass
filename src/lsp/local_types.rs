@@ -48,6 +48,14 @@ pub(crate) fn visible_typed_values_at_with_workspace(
     visible::typed_values_at(document, position, workspace_index)
 }
 
+pub(crate) fn visible_iterable_item_values_at_with_workspace(
+    document: &ParsedDocument,
+    position: Position,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<TypedLocalValue> {
+    visible::iterable_item_values_at(document, position, workspace_index)
+}
+
 pub(crate) fn visible_context_values_at(
     document: &ParsedDocument,
     position: Position,

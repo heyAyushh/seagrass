@@ -671,11 +671,10 @@ fn handler_member_typed_prefix<'a>(
         return None;
     }
 
-    let tail = line_prefix
-        .rsplit(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == '.'))
-        .next()
-        .unwrap_or_default();
-    let (_, member_prefix) = tail.rsplit_once('.')?;
+    let (receiver, member_prefix) = line_prefix.rsplit_once('.')?;
+    if receiver.trim_end().is_empty() {
+        return None;
+    }
     if !member_prefix.chars().all(is_identifier_char) {
         return None;
     }
