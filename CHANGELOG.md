@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: propagate shallow handler types through local aliases and resolved
+  field aliases for member diagnostics and completions.
 - lsp: offer quick fixes for misspelled in-scope handler values.
 - lsp: offer quick fixes for misspelled typed handler member access.
 - lsp: complete and validate handler member access for locals and arguments

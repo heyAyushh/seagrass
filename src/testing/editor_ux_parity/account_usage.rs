@@ -95,6 +95,45 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn editor_ux_flags_unknown_member_on_typed_handler_alias() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+        let alias = bundle;
+        alias.s.s;
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#,
+    );
+
+    let diagnostics = diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("`alias.s` does not resolve"))
+        .unwrap_or_else(|| panic!("missing typed handler alias diagnostic: {diagnostics:#?}"));
+
+    assert!(diagnostic
+        .message
+        .contains("`PositionBundle` has no field `s`"));
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|value| value.as_str()),
+        Some("unknown-handler-member")
+    );
+}
+
+#[test]
 fn editor_ux_flags_split_helper_signer_usage() {
     let accounts_source = r#"
 #[derive(Accounts)]

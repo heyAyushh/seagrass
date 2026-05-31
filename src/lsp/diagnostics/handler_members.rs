@@ -138,7 +138,12 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
                 self.visit_expr(diverge);
             }
         }
-        if let Some(type_name) = local_types::local_type_name(node) {
+        if let Some(type_name) = local_types::local_type_name_with_scope(
+            self.document,
+            self.workspace_index,
+            node,
+            &|name| self.scopes.get(name),
+        ) {
             self.scopes.declare_pat(&node.pat, type_name);
         }
     }
@@ -409,6 +414,102 @@ pub struct InnerBundle {
     }
 
     #[test]
+    fn reports_unknown_member_through_typed_handler_alias() {
+        let document = ParsedDocument::parse(
+            r#"
+#[program]
+pub mod demo {
+    pub fn run(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+        let alias = bundle;
+        alias.fake;
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect_with_workspace(&document, None);
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.message.contains("`alias.fake` does not resolve")
+                    && diagnostic
+                        .message
+                        .contains("`PositionBundle` has no field `fake`")
+            }),
+            "missing alias handler member diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn reports_unknown_member_through_typed_field_alias() {
+        let document = ParsedDocument::parse(
+            r#"
+#[program]
+pub mod demo {
+    pub fn run(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+        let inner = bundle.inner;
+        inner.fake;
+        Ok(())
+    }
+}
+
+pub struct PositionBundle {
+    pub inner: InnerBundle,
+}
+
+pub struct InnerBundle {
+    pub real: Pubkey,
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect_with_workspace(&document, None);
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| {
+                diagnostic.message.contains("`inner.fake` does not resolve")
+                    && diagnostic
+                        .message
+                        .contains("`InnerBundle` has no field `fake`")
+            }),
+            "missing field alias handler member diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn ignores_unknown_handler_alias_type() {
+        let document = ParsedDocument::parse(
+            r#"
+#[program]
+pub mod demo {
+    pub fn run(ctx: Context<Run>) -> Result<()> {
+        let alias = unknown_value;
+        alias.fake;
+        Ok(())
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect_with_workspace(&document, None);
+
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| !diagnostic.message.contains("alias.fake")),
+            "unknown alias type should stay outside shallow resolver, got {diagnostics:#?}"
+        );
+    }
+
+    #[test]
     fn ignores_unknown_external_handler_local_type() {
         let document = ParsedDocument::parse(
             r#"
@@ -472,6 +573,49 @@ pub struct {owner} {{
                             .contains(&format!("`{owner}` has no field `{missing_field}`"))
                 }),
                 "expected generated handler member diagnostic, got {diagnostics:#?}"
+            );
+        }
+
+        #[test]
+        fn reports_generated_unknown_member_through_typed_alias(
+            local in generated_ident(),
+            alias in generated_ident(),
+            owner in "[A-Z][A-Za-z0-9_]{1,10}",
+            known_field in generated_ident(),
+            missing_field in generated_ident(),
+        ) {
+            prop_assume!(local != alias);
+            prop_assume!(known_field != missing_field);
+            let source = format!(
+                r#"
+#[program]
+pub mod demo {{
+    pub fn run(ctx: Context<Run>, {local}: {owner}) -> Result<()> {{
+        let {alias} = {local};
+        {alias}.{missing_field};
+        Ok(())
+    }}
+}}
+
+pub struct {owner} {{
+    pub {known_field}: Pubkey,
+}}
+"#
+            );
+            let document = ParsedDocument::parse(&source).unwrap();
+
+            let diagnostics = collect_with_workspace(&document, None);
+
+            prop_assert!(
+                diagnostics.iter().any(|diagnostic| {
+                    diagnostic
+                        .message
+                        .contains(&format!("`{alias}.{missing_field}` does not resolve"))
+                        && diagnostic
+                            .message
+                            .contains(&format!("`{owner}` has no field `{missing_field}`"))
+                }),
+                "expected generated alias member diagnostic, got {diagnostics:#?}"
             );
         }
     }

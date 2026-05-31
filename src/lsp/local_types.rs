@@ -1,9 +1,9 @@
 use {
-    crate::document::ParsedDocument,
+    crate::{account_members, document::ParsedDocument, workspace::WorkspaceIndex},
     syn::{
         spanned::Spanned,
         visit::{self, Visit},
-        Expr, FnArg, GenericArgument, ItemFn, Pat, PathArguments, Stmt, Type,
+        Expr, ExprField, FnArg, GenericArgument, ItemFn, Member, Pat, PathArguments, Stmt, Type,
     },
     tower_lsp::lsp_types::Position,
 };
@@ -16,14 +16,17 @@ pub(crate) struct TypedLocalValue {
     pub(crate) type_name: String,
 }
 
-pub(crate) fn visible_typed_values_at(
+pub(crate) fn visible_typed_values_at_with_workspace(
     document: &ParsedDocument,
     position: Position,
+    workspace_index: Option<&WorkspaceIndex>,
 ) -> Vec<TypedLocalValue> {
     let Some(cursor_offset) = crate::range::byte_offset_at(document.source(), position) else {
         return Vec::new();
     };
     let mut collector = VisibleTypedValueCollector {
+        document,
+        workspace_index,
         source: document.source(),
         cursor_offset,
         values: Vec::new(),
@@ -73,7 +76,57 @@ pub(crate) fn constructed_type_name(expr: &Expr) -> Option<String> {
     }
 }
 
+pub(crate) fn expression_type_name_with_scope(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    expr: &Expr,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    match expr {
+        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+            scope_type_name(&path.path.segments[0].ident.to_string())
+        }
+        Expr::Field(field) => {
+            field_expression_type_name(document, workspace_index, field, scope_type_name)
+        }
+        Expr::Reference(reference) => expression_type_name_with_scope(
+            document,
+            workspace_index,
+            &reference.expr,
+            scope_type_name,
+        ),
+        Expr::Paren(paren) => {
+            expression_type_name_with_scope(document, workspace_index, &paren.expr, scope_type_name)
+        }
+        Expr::Group(group) => {
+            expression_type_name_with_scope(document, workspace_index, &group.expr, scope_type_name)
+        }
+        _ => constructed_type_name(expr),
+    }
+}
+
+fn field_expression_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    field: &ExprField,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    let base_type =
+        expression_type_name_with_scope(document, workspace_index, &field.base, scope_type_name)?;
+    let Member::Named(member) = &field.member else {
+        return None;
+    };
+    account_members::resolved_struct_members(document, workspace_index, &base_type)?
+        .members
+        .iter()
+        .find(|candidate| candidate.name == member.to_string())?
+        .type_name
+        .clone()
+}
+
 struct VisibleTypedValueCollector<'a> {
+    document: &'a ParsedDocument,
+    workspace_index: Option<&'a WorkspaceIndex>,
     source: &'a str,
     cursor_offset: usize,
     values: Vec<TypedLocalValue>,
@@ -164,7 +217,11 @@ impl VisibleTypedValueCollector<'_> {
     }
 
     fn collect_local(&mut self, local: &syn::Local) {
-        let Some(type_name) = local_type_name(local) else {
+        let Some(type_name) =
+            local_type_name_with_scope(self.document, self.workspace_index, local, &|name| {
+                self.visible_type_name(name)
+            })
+        else {
             return;
         };
         self.add_pattern_candidate(&local.pat, type_name);
@@ -187,6 +244,14 @@ impl VisibleTypedValueCollector<'_> {
         };
         start <= self.cursor_offset && self.cursor_offset <= end
     }
+
+    fn visible_type_name(&self, name: &str) -> Option<String> {
+        self.values
+            .iter()
+            .rev()
+            .find(|value| value.name == name)
+            .map(|value| value.type_name.clone())
+    }
 }
 
 impl<'ast> Visit<'ast> for VisibleTypedValueCollector<'_> {
@@ -204,12 +269,16 @@ impl<'ast> Visit<'ast> for VisibleTypedValueCollector<'_> {
     }
 }
 
-pub(crate) fn local_type_name(local: &syn::Local) -> Option<String> {
+pub(crate) fn local_type_name_with_scope(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    local: &syn::Local,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
     explicit_pattern_type_name(&local.pat).or_else(|| {
-        local
-            .init
-            .as_ref()
-            .and_then(|init| constructed_type_name(&init.expr))
+        local.init.as_ref().and_then(|init| {
+            expression_type_name_with_scope(document, workspace_index, &init.expr, scope_type_name)
+        })
     })
 }
 
