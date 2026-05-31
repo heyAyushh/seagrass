@@ -1,4 +1,5 @@
 mod field_access;
+mod iterator_closures;
 mod method_calls;
 mod scope;
 
@@ -211,9 +212,14 @@ impl<'a> HandlerMemberVisitor<'a> {
     }
 
     fn expression_iterable_item_type_name(&self, expr: &Expr) -> Option<String> {
-        local_types::expression_iterable_item_type_name_with_scope(expr, &|name| {
-            self.scopes.get_iterable_item(name)
-        })
+        local_types::expression_iterable_item_type_name_with_item_scope(
+            self.document,
+            self.workspace_index,
+            expr,
+            &|name| self.scopes.get(name),
+            &|name| self.scopes.get_context(name),
+            &|name| self.scopes.get_iterable_item(name),
+        )
     }
 
     fn declare_assignment_type(&mut self, node: &syn::ExprAssign) {
@@ -279,11 +285,14 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
                 self.visit_expr(diverge);
             }
         }
-        if let Some(item_type) =
-            local_types::local_iterable_item_type_name_with_scope(node, &|name| {
-                self.scopes.get_iterable_item(name)
-            })
-        {
+        if let Some(item_type) = local_types::local_iterable_item_type_name_with_scope(
+            self.document,
+            self.workspace_index,
+            node,
+            &|name| self.scopes.get(name),
+            &|name| self.scopes.get_context(name),
+            &|name| self.scopes.get_iterable_item(name),
+        ) {
             self.scopes.declare_iterable_pat(&node.pat, item_type);
         }
         if let Some(type_name) = local_types::local_type_name_with_item_scope(
@@ -388,6 +397,9 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
 
     fn visit_expr_method_call(&mut self, node: &'ast ExprMethodCall) {
         self.report_method_call(node);
+        if self.visit_method_call_with_inferred_iterator_closure(node) {
+            return;
+        }
         visit::visit_expr_method_call(self, node);
     }
 }

@@ -12,6 +12,7 @@ use {
 mod account_loader;
 mod call_returns;
 mod iterables;
+mod iterator_chains;
 mod method_returns;
 mod patterns;
 mod text_inference;
@@ -21,6 +22,9 @@ mod visible;
 const TRANSPARENT_RECEIVER_METHODS: &[&str] = &["as_ref", "deref", "deref_mut"];
 
 pub(crate) use {
+    iterator_chains::{
+        expression_iterable_item_type_name_with_item_scope, iterator_method_closure_item_type_name,
+    },
     patterns::typed_pattern_bindings,
     type_names::{
         account_data_type_name_from_parts, account_data_type_name_from_text,
@@ -278,7 +282,14 @@ pub(crate) fn expression_type_name_with_item_scope(
         Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
             scope_type_name(&path.path.segments[0].ident.to_string())
         }
-        Expr::Index(_) => iterables::accessed_item_type_name(expr, scope_item_type_name),
+        Expr::Index(_) => iterator_chains::accessed_item_type_name_with_scope(
+            document,
+            workspace_index,
+            expr,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        ),
         Expr::Field(field) => context_account_field_type_name_from_expr(
             document,
             workspace_index,
@@ -296,29 +307,36 @@ pub(crate) fn expression_type_name_with_item_scope(
                 scope_item_type_name,
             )
         }),
-        Expr::Try(expr_try) => iterables::accessed_item_type_name(expr, scope_item_type_name)
-            .or_else(|| {
-                method_returns::try_method_return_type_name(
-                    document,
-                    workspace_index,
-                    &expr_try.expr,
-                    scope_type_name,
-                    context_type_name,
-                )
-            })
-            .or_else(|| {
-                call_returns::try_call_return_type_name(document, workspace_index, &expr_try.expr)
-            })
-            .or_else(|| {
-                expression_type_name_with_item_scope(
-                    document,
-                    workspace_index,
-                    &expr_try.expr,
-                    scope_type_name,
-                    context_type_name,
-                    scope_item_type_name,
-                )
-            }),
+        Expr::Try(expr_try) => iterator_chains::accessed_item_type_name_with_scope(
+            document,
+            workspace_index,
+            expr,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .or_else(|| {
+            method_returns::try_method_return_type_name(
+                document,
+                workspace_index,
+                &expr_try.expr,
+                scope_type_name,
+                context_type_name,
+            )
+        })
+        .or_else(|| {
+            call_returns::try_call_return_type_name(document, workspace_index, &expr_try.expr)
+        })
+        .or_else(|| {
+            expression_type_name_with_item_scope(
+                document,
+                workspace_index,
+                &expr_try.expr,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+        }),
         Expr::Call(call) => call_returns::call_return_type_name(document, workspace_index, call)
             .or_else(|| constructed_type_name(expr)),
         Expr::Block(block) => block_type_name(
@@ -345,39 +363,44 @@ pub(crate) fn expression_type_name_with_item_scope(
             context_type_name,
             scope_item_type_name,
         ),
-        Expr::MethodCall(method_call) => {
-            iterables::accessed_item_type_name(expr, scope_item_type_name)
-                .or_else(|| {
-                    account_loader_loaded_method_type_name(
-                        document,
-                        workspace_index,
-                        method_call,
-                        scope_type_name,
-                        context_type_name,
-                        scope_item_type_name,
-                    )
-                })
-                .or_else(|| {
-                    transparent_receiver_method_type_name(
-                        document,
-                        workspace_index,
-                        method_call,
-                        scope_type_name,
-                        context_type_name,
-                        scope_item_type_name,
-                    )
-                })
-                .or_else(|| {
-                    method_returns::method_return_type_name(
-                        document,
-                        workspace_index,
-                        method_call,
-                        scope_type_name,
-                        context_type_name,
-                    )
-                })
-                .or_else(|| constructed_type_name(expr))
-        }
+        Expr::MethodCall(method_call) => iterator_chains::accessed_item_type_name_with_scope(
+            document,
+            workspace_index,
+            expr,
+            scope_type_name,
+            context_type_name,
+            scope_item_type_name,
+        )
+        .or_else(|| {
+            account_loader_loaded_method_type_name(
+                document,
+                workspace_index,
+                method_call,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+        })
+        .or_else(|| {
+            transparent_receiver_method_type_name(
+                document,
+                workspace_index,
+                method_call,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+        })
+        .or_else(|| {
+            method_returns::method_return_type_name(
+                document,
+                workspace_index,
+                method_call,
+                scope_type_name,
+                context_type_name,
+            )
+        })
+        .or_else(|| constructed_type_name(expr)),
         Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Deref(_)) => {
             transparent_deref_type_name(
                 document,
@@ -652,25 +675,29 @@ pub(crate) fn assignment_target_name(expr: &Expr) -> Option<String> {
 }
 
 pub(crate) fn local_iterable_item_type_name_with_scope(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
     local: &syn::Local,
-    scope_item_type_name: &impl Fn(&str) -> Option<String>,
+    scope_type_name: &dyn Fn(&str) -> Option<String>,
+    context_type_name: &dyn Fn(&str) -> Option<String>,
+    scope_item_type_name: &dyn Fn(&str) -> Option<String>,
 ) -> Option<String> {
     explicit_pattern_iterable_item_type_name(&local.pat).or_else(|| {
         local.init.as_ref().and_then(|init| {
-            expression_iterable_item_type_name_with_scope(&init.expr, scope_item_type_name)
+            expression_iterable_item_type_name_with_item_scope(
+                document,
+                workspace_index,
+                &init.expr,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
         })
     })
 }
 
 pub(crate) fn explicit_pattern_iterable_item_type_name(pat: &Pat) -> Option<String> {
     iterables::explicit_pattern_item_type_name(pat)
-}
-
-pub(crate) fn expression_iterable_item_type_name_with_scope(
-    expr: &Expr,
-    scope_item_type_name: &impl Fn(&str) -> Option<String>,
-) -> Option<String> {
-    iterables::expression_item_type_name(expr, scope_item_type_name)
 }
 
 pub(crate) fn explicit_pattern_type_name(pat: &Pat) -> Option<String> {

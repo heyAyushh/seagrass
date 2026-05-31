@@ -7,6 +7,8 @@ keep future entries aligned with release-plz output.
 
 - lsp: carry handler member types through standard Iterator item-preserving
   adapters and `next`/`nth`/`find` unwrapping.
+- lsp: infer Iterator `map` closure inputs and mapped output member types in
+  handler diagnostics and completions.
 - lsp: infer handler member types from `if`, `match`, and block expression
   results when every branch resolves to the same shallow type.
 - lsp: infer handler member types from assignment expressions that initialize

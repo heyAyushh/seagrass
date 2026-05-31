@@ -193,6 +193,7 @@ impl VisibleTypedValueCollector<'_> {
                 self.collect_closure_inputs(closure);
                 self.collect_bindings_inside_expr(&closure.body)
             }
+            Expr::MethodCall(method_call) => self.collect_bindings_inside_method_call(method_call),
             Expr::While(while_expr) if self.span_contains_cursor(while_expr.body.span()) => {
                 self.collect_condition_pattern_candidates(&while_expr.cond);
                 self.collect_block_bindings(&while_expr.body)
@@ -220,6 +221,33 @@ impl VisibleTypedValueCollector<'_> {
                 true
             }
             _ => true,
+        }
+    }
+
+    fn collect_bindings_inside_method_call(&mut self, method_call: &syn::ExprMethodCall) -> bool {
+        if self.span_contains_cursor(method_call.receiver.span()) {
+            return self.collect_bindings_inside_expr(&method_call.receiver);
+        }
+        let inferred_item_type = self.iterator_method_closure_item_type_name(method_call);
+        for arg in &method_call.args {
+            if !self.span_contains_cursor(arg.span()) {
+                continue;
+            }
+            if let Expr::Closure(closure) = arg {
+                if let Some(input_type) = inferred_item_type.as_deref() {
+                    self.collect_inferred_closure_input(closure, input_type);
+                }
+                self.collect_closure_inputs(closure);
+                return self.collect_bindings_inside_expr(&closure.body);
+            }
+            return self.collect_bindings_inside_expr(arg);
+        }
+        true
+    }
+
+    fn collect_inferred_closure_input(&mut self, closure: &syn::ExprClosure, input_type: &str) {
+        if let Some(input) = closure.inputs.iter().next() {
+            self.add_typed_pattern_candidates(input, input_type);
         }
     }
 
@@ -254,9 +282,14 @@ impl VisibleTypedValueCollector<'_> {
     }
 
     fn collect_local(&mut self, local: &syn::Local) {
-        if let Some(item_type) = super::local_iterable_item_type_name_with_scope(local, &|name| {
-            self.visible_iterable_item_type_name(name)
-        }) {
+        if let Some(item_type) = super::local_iterable_item_type_name_with_scope(
+            self.document,
+            self.workspace_index,
+            local,
+            &|name| self.visible_type_name(name),
+            &|name| self.visible_context_type_name(name),
+            &|name| self.visible_iterable_item_type_name(name),
+        ) {
             self.add_iterable_pattern_candidate(&local.pat, item_type);
         }
         let Some(type_name) = super::local_type_name_with_item_scope(
@@ -301,9 +334,28 @@ impl VisibleTypedValueCollector<'_> {
     }
 
     fn expression_iterable_item_type_name(&self, expr: &Expr) -> Option<String> {
-        super::expression_iterable_item_type_name_with_scope(expr, &|name| {
-            self.visible_iterable_item_type_name(name)
-        })
+        super::expression_iterable_item_type_name_with_item_scope(
+            self.document,
+            self.workspace_index,
+            expr,
+            &|name| self.visible_type_name(name),
+            &|name| self.visible_context_type_name(name),
+            &|name| self.visible_iterable_item_type_name(name),
+        )
+    }
+
+    fn iterator_method_closure_item_type_name(
+        &self,
+        method_call: &syn::ExprMethodCall,
+    ) -> Option<String> {
+        super::iterator_method_closure_item_type_name(
+            self.document,
+            self.workspace_index,
+            method_call,
+            &|name| self.visible_type_name(name),
+            &|name| self.visible_context_type_name(name),
+            &|name| self.visible_iterable_item_type_name(name),
+        )
     }
 
     fn add_typed_pattern_candidates(&mut self, pat: &Pat, type_name: &str) {

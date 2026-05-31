@@ -530,3 +530,51 @@ pub struct Run<'info> {
         Some("real_mint")
     );
 }
+
+#[test]
+fn editor_ux_resolves_iterator_map_closure_and_output_members() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, records: Vec<SampleRecord>) -> Result<()> {
+    let selected = records.iter().map(|record| record.metadata()).next().unwrap();
+    records.iter().map(|record| record.real_).count();
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let closure_items =
+        completions::completions(&document, super::position_after(source, "record.real_"))
+            .expect("editor-visible iterator map closure member completions");
+    assert_eq!(
+        closure_items.first().map(|item| item.label.as_str()),
+        Some("real_mint")
+    );
+
+    let output_items =
+        completions::completions(&document, super::position_after(source, "selected.real_"))
+            .expect("editor-visible iterator map output member completions");
+    assert_eq!(
+        output_items.first().map(|item| item.label.as_str()),
+        Some("real_authority")
+    );
+}

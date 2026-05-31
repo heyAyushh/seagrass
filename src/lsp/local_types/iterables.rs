@@ -32,6 +32,18 @@ const ITEM_PRESERVING_ITERATOR_METHODS_WITH_ONE_ARG: &[&str] = &[
     "take",
     "take_while",
 ];
+const ITEM_TRANSFORMING_ITERATOR_METHODS_WITH_ONE_ARG: &[&str] = &["map"];
+const ITEM_CLOSURE_ITERATOR_METHODS_WITH_ONE_ARG: &[&str] = &[
+    "all",
+    "any",
+    "filter",
+    "find",
+    "inspect",
+    "map",
+    "position",
+    "skip_while",
+    "take_while",
+];
 const OPTION_VALUE_METHODS: &[&str] = &["unwrap", "unwrap_or_default"];
 const OPTION_VALUE_METHODS_WITH_ONE_ARG: &[&str] = &["expect", "unwrap_or", "unwrap_or_else"];
 const COLLECTION_OPTION_ITEM_METHODS: &[&str] = &["first", "last", "pop"];
@@ -94,79 +106,30 @@ pub(super) fn expression_item_type_name(
     }
 }
 
-pub(super) fn accessed_item_type_name(
-    expr: &syn::Expr,
-    scope_item_type_name: &impl Fn(&str) -> Option<String>,
-) -> Option<String> {
-    match expr {
-        syn::Expr::Index(index) => expression_item_type_name(&index.expr, scope_item_type_name),
-        syn::Expr::MethodCall(method_call)
-            if option_value_method_matches(
-                &method_call.method.to_string(),
-                method_call.args.len(),
-            ) =>
-        {
-            optional_item_type_name(&method_call.receiver, scope_item_type_name)
-        }
-        syn::Expr::Try(expr_try) => optional_item_type_name(&expr_try.expr, scope_item_type_name),
-        syn::Expr::Reference(reference) => {
-            accessed_item_type_name(&reference.expr, scope_item_type_name)
-        }
-        syn::Expr::Paren(paren) => accessed_item_type_name(&paren.expr, scope_item_type_name),
-        syn::Expr::Group(group) => accessed_item_type_name(&group.expr, scope_item_type_name),
-        _ => None,
-    }
-}
-
-fn optional_item_type_name(
-    expr: &syn::Expr,
-    scope_item_type_name: &impl Fn(&str) -> Option<String>,
-) -> Option<String> {
-    match expr {
-        syn::Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
-            scope_item_type_name(&path.path.segments[0].ident.to_string())
-        }
-        syn::Expr::MethodCall(method_call)
-            if collection_option_item_method_matches(
-                &method_call.method.to_string(),
-                method_call.args.len(),
-            ) =>
-        {
-            expression_item_type_name(&method_call.receiver, scope_item_type_name)
-        }
-        syn::Expr::MethodCall(method_call)
-            if iterator_option_item_method_matches(
-                &method_call.method.to_string(),
-                method_call.args.len(),
-            ) =>
-        {
-            expression_item_type_name(&method_call.receiver, scope_item_type_name)
-        }
-        syn::Expr::Reference(reference) => {
-            optional_item_type_name(&reference.expr, scope_item_type_name)
-        }
-        syn::Expr::Paren(paren) => optional_item_type_name(&paren.expr, scope_item_type_name),
-        syn::Expr::Group(group) => optional_item_type_name(&group.expr, scope_item_type_name),
-        _ => None,
-    }
-}
-
-fn option_value_method_matches(method: &str, arg_count: usize) -> bool {
+pub(super) fn option_value_method_matches(method: &str, arg_count: usize) -> bool {
     (arg_count == 0 && OPTION_VALUE_METHODS.contains(&method))
         || (arg_count == 1 && OPTION_VALUE_METHODS_WITH_ONE_ARG.contains(&method))
 }
 
-fn collection_option_item_method_matches(method: &str, arg_count: usize) -> bool {
+pub(super) fn collection_option_item_method_matches(method: &str, arg_count: usize) -> bool {
     (arg_count == 0 && COLLECTION_OPTION_ITEM_METHODS.contains(&method))
         || (arg_count == 1 && COLLECTION_OPTION_ITEM_METHODS_WITH_ONE_ARG.contains(&method))
 }
 
-fn item_preserving_iterator_method_matches(method: &str, arg_count: usize) -> bool {
+pub(super) fn item_preserving_iterator_method_matches(method: &str, arg_count: usize) -> bool {
     (arg_count == 0 && ITERATOR_METHODS.contains(&method))
         || (arg_count == 1 && ITEM_PRESERVING_ITERATOR_METHODS_WITH_ONE_ARG.contains(&method))
 }
 
-fn iterator_option_item_method_matches(method: &str, arg_count: usize) -> bool {
+pub(super) fn item_transforming_iterator_method_matches(method: &str, arg_count: usize) -> bool {
+    arg_count == 1 && ITEM_TRANSFORMING_ITERATOR_METHODS_WITH_ONE_ARG.contains(&method)
+}
+
+pub(super) fn item_closure_iterator_method_matches(method: &str, arg_count: usize) -> bool {
+    arg_count == 1 && ITEM_CLOSURE_ITERATOR_METHODS_WITH_ONE_ARG.contains(&method)
+}
+
+pub(super) fn iterator_option_item_method_matches(method: &str, arg_count: usize) -> bool {
     (arg_count == 0 && ITERATOR_OPTION_ITEM_METHODS.contains(&method))
         || (arg_count == 1 && ITERATOR_OPTION_ITEM_METHODS_WITH_ONE_ARG.contains(&method))
 }
