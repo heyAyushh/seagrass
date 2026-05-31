@@ -17,6 +17,8 @@ keep future entries aligned with release-plz output.
   constructor values before pattern matching and unwraps.
 - lsp: infer handler member types through `Some`/`None` and `Ok`/`Err`
   control-flow expressions before pattern matching and unwraps.
+- lsp: infer handler member types from `Option`/`Result` `map_or` and
+  `map_or_else` output values.
 - lsp: infer handler member types from `if`, `match`, and block expression
   results when every branch resolves to the same shallow type.
 - lsp: infer handler member types from assignment expressions that initialize

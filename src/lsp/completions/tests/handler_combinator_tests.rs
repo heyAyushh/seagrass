@@ -230,6 +230,133 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn completes_members_after_option_map_or() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    let selected = maybe_record.map_or(
+        SampleMetadata { real_authority: Pubkey::default() },
+        |record| record.metadata(),
+    );
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "selected.real_"))
+        .expect("Option::map_or output member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_authority"),
+        "Option::map_or output should complete: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_result_map_or_else() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(
+    ctx: Context<Run>,
+    record_result: std::result::Result<SampleRecord, ()>,
+) -> Result<()> {
+    let selected = record_result.map_or_else(
+        |_| SampleMetadata { real_authority: Pubkey::default() },
+        |record| record.metadata(),
+    );
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "selected.real_"))
+        .expect("Result::map_or_else output member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_authority"),
+        "Result::map_or_else output should complete: {items:#?}"
+    );
+}
+
+#[test]
+fn does_not_complete_members_for_mismatched_map_or_outputs() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    let selected = maybe_record.map_or(
+        SampleMetadata { real_authority: Pubkey::default() },
+        |record| OtherMetadata { other_authority: Pubkey::default() },
+    );
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+pub struct OtherMetadata {
+    pub other_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items =
+        completions(&document, position_after(source, "selected.real_")).unwrap_or_default();
+
+    assert!(
+        items.iter().all(|item| item.label != "real_authority"),
+        "mismatched map_or outputs should not infer a single output type: {items:#?}"
+    );
+}
+
+#[test]
 fn does_not_complete_members_after_invalid_option_ok_unwrap() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -342,6 +469,53 @@ pub struct Run<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated Option::map unwrap output should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_option_map_or_members(
+        field_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {{
+    let selected = maybe_record.map_or(
+        SampleMetadata {{ {field}: Pubkey::default() }},
+        |record| record.metadata(),
+    );
+    selected.real_
+}}
+
+pub struct SampleRecord {{
+    pub source: Pubkey,
+}}
+
+impl SampleRecord {{
+    pub fn metadata(&self) -> SampleMetadata {{
+        SampleMetadata {{ {field}: Pubkey::default() }}
+    }}
+}}
+
+pub struct SampleMetadata {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "selected.real_"))
+            .expect("generated Option::map_or output member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated Option::map_or output should complete; items: {items:#?}"
         );
     }
 }

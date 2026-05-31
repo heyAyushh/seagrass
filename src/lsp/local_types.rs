@@ -18,6 +18,7 @@ mod patterns;
 mod text_inference;
 mod type_names;
 mod visible;
+mod wrapper_outputs;
 
 const TRANSPARENT_RECEIVER_METHODS: &[&str] = &["as_ref", "deref", "deref_mut"];
 
@@ -375,6 +376,16 @@ pub(crate) fn expression_type_name_with_item_scope(
             context_type_name,
             scope_item_type_name,
         )
+        .or_else(|| {
+            wrapper_outputs::method_output_type_name(
+                document,
+                workspace_index,
+                method_call,
+                scope_type_name,
+                context_type_name,
+                scope_item_type_name,
+            )
+        })
         .or_else(|| {
             account_loader_loaded_method_type_name(
                 document,
