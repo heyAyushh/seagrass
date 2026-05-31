@@ -368,6 +368,39 @@ pub struct Run<'info> {
     );
 }
 
+#[test]
+fn completes_members_after_assignment_infers_type() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {
+    let mut selected;
+    selected = bundles[0];
+    selected.real_
+}
+
+pub struct PositionBundle {
+    pub real_mint: Pubkey,
+    pub real_owner: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "selected.real_"))
+        .expect("assignment-inferred member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"real_mint"));
+    assert!(labels.contains(&"real_owner"));
+}
+
 proptest! {
     #[test]
     fn completes_generated_if_let_account_pattern_members(
@@ -479,6 +512,46 @@ pub struct Run<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated indexed iterable expression member should complete; items: {items:#?}"
+        );
+    }
+}
+
+proptest! {
+    #[test]
+    fn completes_generated_assignment_inferred_members(
+        field_tail in rust_identifier(),
+        binding_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let binding = format!("selected_{binding_tail}");
+        prop_assume!(field != binding);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundles: Vec<PositionBundle>) -> Result<()> {{
+    let mut {binding};
+    {binding} = bundles[0];
+    {binding}.real_
+}}
+
+pub struct PositionBundle {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, &format!("{binding}.real_")))
+            .expect("generated assignment-inferred member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated assignment-inferred member should complete; items: {items:#?}"
         );
     }
 }

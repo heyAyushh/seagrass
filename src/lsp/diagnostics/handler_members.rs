@@ -216,6 +216,18 @@ impl<'a> HandlerMemberVisitor<'a> {
         })
     }
 
+    fn declare_assignment_type(&mut self, node: &syn::ExprAssign) {
+        let Some(target) = local_types::assignment_target_name(&node.left) else {
+            return;
+        };
+        if let Some(item_type) = self.expression_iterable_item_type_name(&node.right) {
+            self.scopes.declare_iterable_name(&target, item_type);
+        }
+        if let Some(type_name) = self.expression_type_name(&node.right) {
+            self.scopes.declare_typed_name(&target, type_name);
+        }
+    }
+
     fn push_diagnostic_once(&mut self, diagnostic: Diagnostic) {
         let key = (
             diagnostic.range.start.line,
@@ -361,6 +373,12 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         }
         self.visit_expr(&node.body);
         self.scopes.pop();
+    }
+
+    fn visit_expr_assign(&mut self, node: &'ast syn::ExprAssign) {
+        self.visit_expr(&node.left);
+        self.visit_expr(&node.right);
+        self.declare_assignment_type(node);
     }
 
     fn visit_expr_field(&mut self, node: &'ast ExprField) {
@@ -727,6 +745,10 @@ mod pattern_tests;
 #[cfg(test)]
 #[path = "handler_members/iterable_expression_tests.rs"]
 mod iterable_expression_tests;
+
+#[cfg(test)]
+#[path = "handler_members/assignment_tests.rs"]
+mod assignment_tests;
 
 #[cfg(test)]
 mod tests;

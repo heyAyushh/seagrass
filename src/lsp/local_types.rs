@@ -540,6 +540,17 @@ pub(crate) fn local_type_name_with_item_scope(
     })
 }
 
+pub(crate) fn assignment_target_name(expr: &Expr) -> Option<String> {
+    match expr {
+        Expr::Path(path) if path.qself.is_none() && path.path.segments.len() == 1 => {
+            Some(path.path.segments[0].ident.to_string())
+        }
+        Expr::Paren(paren) => assignment_target_name(&paren.expr),
+        Expr::Group(group) => assignment_target_name(&group.expr),
+        _ => None,
+    }
+}
+
 pub(crate) fn local_iterable_item_type_name_with_scope(
     local: &syn::Local,
     scope_item_type_name: &impl Fn(&str) -> Option<String>,

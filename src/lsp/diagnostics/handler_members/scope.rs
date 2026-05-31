@@ -52,12 +52,22 @@ impl TypedScopeStack {
         }
     }
 
+    pub(super) fn declare_typed_name(&mut self, name: &str, type_name: String) {
+        if let Some(scope) = self.scopes.last_mut() {
+            scope.insert(name.to_string(), type_name);
+        }
+    }
+
     pub(super) fn declare_iterable_pat(&mut self, pat: &syn::Pat, type_name: String) {
         let Some(name) = pattern_binding_name(pat) else {
             return;
         };
+        self.declare_iterable_name(&name, type_name);
+    }
+
+    pub(super) fn declare_iterable_name(&mut self, name: &str, type_name: String) {
         if let Some(scope) = self.iterable_scopes.last_mut() {
-            scope.insert(name, type_name);
+            scope.insert(name.to_string(), type_name);
         }
     }
 

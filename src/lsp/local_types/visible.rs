@@ -134,11 +134,26 @@ impl VisibleTypedValueCollector<'_> {
             if self.cursor_offset <= stmt_end {
                 return self.collect_bindings_inside_statement(stmt);
             }
-            if let Stmt::Local(local) = stmt {
-                self.collect_local(local);
-            }
+            self.collect_completed_statement(stmt);
         }
         false
+    }
+
+    fn collect_completed_statement(&mut self, stmt: &Stmt) {
+        match stmt {
+            Stmt::Local(local) => self.collect_local(local),
+            Stmt::Expr(expr, _) => self.collect_completed_expression(expr),
+            Stmt::Item(_) | Stmt::Macro(_) => {}
+        }
+    }
+
+    fn collect_completed_expression(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Assign(assign) => self.collect_assignment(assign),
+            Expr::Group(group) => self.collect_completed_expression(&group.expr),
+            Expr::Paren(paren) => self.collect_completed_expression(&paren.expr),
+            _ => {}
+        }
     }
 
     fn collect_bindings_inside_statement(&mut self, stmt: &Stmt) -> bool {
@@ -217,6 +232,24 @@ impl VisibleTypedValueCollector<'_> {
                 continue;
             };
             self.add_typed_pattern_candidates(input, &type_name);
+        }
+    }
+
+    fn collect_assignment(&mut self, assignment: &syn::ExprAssign) {
+        let Some(target) = super::assignment_target_name(&assignment.left) else {
+            return;
+        };
+        if let Some(item_type) = self.expression_iterable_item_type_name(&assignment.right) {
+            self.iterable_values.push(TypedLocalValue {
+                name: target.clone(),
+                type_name: item_type,
+            });
+        }
+        if let Some(type_name) = self.expression_type_name(&assignment.right) {
+            self.values.push(TypedLocalValue {
+                name: target,
+                type_name,
+            });
         }
     }
 

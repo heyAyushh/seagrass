@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer handler member types from assignment expressions that initialize
+  existing local bindings.
 - lsp: infer typed member access directly from indexed and unwrapped iterable
   expressions in Anchor handlers.
 - lsp: infer typed member access from indexed and unwrapped iterable element
