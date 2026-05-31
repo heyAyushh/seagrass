@@ -21,6 +21,8 @@ keep future entries aligned with release-plz output.
   `map_or_else` output values.
 - lsp: infer handler member types through standard `Option`/`Result` fallback
   and error-mapping wrapper methods.
+- lsp: infer handler member types from match and if-let branch outputs that use
+  pattern-bound values.
 - lsp: infer handler member types from `if`, `match`, and block expression
   results when every branch resolves to the same shallow type.
 - lsp: infer handler member types from assignment expressions that initialize

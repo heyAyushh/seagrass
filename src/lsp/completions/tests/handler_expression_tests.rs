@@ -73,6 +73,91 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn completes_members_after_match_arm_pattern_output() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    let selected = match maybe_record {
+        Some(record) => record.metadata(),
+        None => SampleMetadata { real_authority: Pubkey::default() },
+    };
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "selected.real_"))
+        .expect("match-arm pattern output member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_authority"),
+        "match-arm pattern output should complete: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_if_let_pattern_output() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {
+    let selected = if let Some(record) = maybe_record {
+        record.metadata()
+    } else {
+        SampleMetadata { real_authority: Pubkey::default() }
+    };
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub real_mint: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "selected.real_"))
+        .expect("if-let pattern output member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_authority"),
+        "if-let pattern output should complete: {items:#?}"
+    );
+}
+
+#[test]
 fn completes_members_after_block_expression_infers_type() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -167,6 +252,53 @@ pub struct Run<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated if-expression inferred member should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_match_pattern_output_members(
+        field_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, maybe_record: Option<SampleRecord>) -> Result<()> {{
+    let selected = match maybe_record {{
+        Some(record) => record.metadata(),
+        None => SampleMetadata {{ {field}: Pubkey::default() }},
+    }};
+    selected.real_
+}}
+
+pub struct SampleRecord {{
+    pub source: Pubkey,
+}}
+
+impl SampleRecord {{
+    pub fn metadata(&self) -> SampleMetadata {{
+        SampleMetadata {{ {field}: Pubkey::default() }}
+    }}
+}}
+
+pub struct SampleMetadata {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "selected.real_"))
+            .expect("generated match-pattern output member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated match-pattern output should complete; items: {items:#?}"
         );
     }
 }

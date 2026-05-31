@@ -43,6 +43,24 @@ pub(super) fn method_return_type_name(
     })
 }
 
+pub(super) fn method_return_type_name_for_receiver_type(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    receiver_type: &str,
+    method_name: &str,
+) -> Option<String> {
+    local_method_return_type_name(document, receiver_type, method_name, ReturnMode::Direct).or_else(
+        || {
+            workspace_method_return_type_name(
+                workspace_index,
+                receiver_type,
+                method_name,
+                ReturnMode::Direct,
+            )
+        },
+    )
+}
+
 pub(super) fn try_method_return_type_name(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
