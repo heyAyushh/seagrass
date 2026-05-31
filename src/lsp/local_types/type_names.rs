@@ -1,9 +1,10 @@
 use {
     super::account_loader,
-    syn::{GenericArgument, PathArguments, Type, TypePath},
+    syn::{GenericArgument, PathArguments, ReturnType, Type, TypePath},
 };
 
 const TRANSPARENT_LOCAL_TYPE_WRAPPERS: &[&str] = &["Box"];
+const TRY_UNWRAP_RETURN_TYPE_WRAPPERS: &[&str] = &["Result"];
 const ACCOUNT_DATA_TYPE_WRAPPERS: &[&str] = &[
     "Account",
     "InterfaceAccount",
@@ -128,4 +129,34 @@ pub(crate) fn shallow_type_name(ty: &Type) -> Option<String> {
         return Some(type_name);
     };
     shallow_type_name(inner).or(Some(type_name))
+}
+
+pub(super) fn return_type_name(output: &ReturnType) -> Option<String> {
+    let ReturnType::Type(_, ty) = output else {
+        return None;
+    };
+    local_value_type_name(ty)
+}
+
+pub(super) fn try_return_type_name(output: &ReturnType) -> Option<String> {
+    let ReturnType::Type(_, ty) = output else {
+        return None;
+    };
+    try_unwrapped_return_type_name(ty)
+}
+
+fn try_unwrapped_return_type_name(ty: &Type) -> Option<String> {
+    let Type::Path(type_path) = transparent_type_path(ty) else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    let wrapper = segment.ident.to_string();
+    if !TRY_UNWRAP_RETURN_TYPE_WRAPPERS.contains(&wrapper.as_str()) {
+        return None;
+    }
+    first_type_argument_type(&segment.arguments).and_then(local_value_type_name)
+}
+
+fn local_value_type_name(ty: &Type) -> Option<String> {
+    account_loader::local_type_name_from_type(ty).or_else(|| shallow_type_name(ty))
 }

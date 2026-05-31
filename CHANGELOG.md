@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer same-file helper function return types for handler member
+  completions and diagnostics, including `Result<T>` values after `?`.
 - lsp: carry handler account-data member types through transparent `as_ref`
   and deref aliases backed by Anchor account traits.
 - lsp: resolve `AccountLoader<'info, T>` in handler member access as a loader
