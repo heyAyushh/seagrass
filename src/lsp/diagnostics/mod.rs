@@ -82,7 +82,9 @@ pub(crate) fn collect_hot_with_input(input: DiagnosticInput<'_>) -> Vec<Diagnost
 pub fn diagnostic_from_parse_error_with_source(err: syn::Error, source: &str) -> Diagnostic {
     let parser_message = err.to_string();
     let corrected_range = parse_error_range_in_source(&err, source, &parser_message);
-    diagnostic_from_syn_error_with_range(err, corrected_range)
+    let range = corrected_range.unwrap_or_else(|| range_from_span(err.span()));
+    handler_scope::parse_error_unresolved_identifier_diagnostic(source, range)
+        .unwrap_or_else(|| diagnostic_from_syn_error_with_range(err, Some(range)))
 }
 
 pub(crate) fn diagnostic_from_syn_error(err: syn::Error) -> Diagnostic {

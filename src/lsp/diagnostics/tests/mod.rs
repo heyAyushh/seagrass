@@ -388,6 +388,64 @@ pub fn handler() -> Result<()> {
 }
 
 #[test]
+fn parse_error_reports_unresolved_identifier_inside_anchor_handler() {
+    let source = r#"use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<CloseBundledPosition>, bundle_index: u16) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle = position_bundle  sd ;
+    Ok(())
+}
+"#;
+
+    let err = syn::parse_file(source).unwrap_err();
+    let diagnostic = diagnostic_from_parse_error_with_source(err, source);
+
+    assert!(
+        diagnostic.message.contains("`sd` does not resolve"),
+        "parse error should recover handler-scope semantics: {diagnostic:#?}"
+    );
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|reason| reason.as_str()),
+        Some("unresolved-handler-identifier")
+    );
+}
+
+#[test]
+fn parse_error_scope_recovery_does_not_bind_current_let_lhs() {
+    let source = r#"use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<CloseBundledPosition>, bundle_index: u16) -> Result<()> {
+    let current = bundle_index  missing_value ;
+    Ok(())
+}
+"#;
+
+    let err = syn::parse_file(source).unwrap_err();
+    let diagnostic = diagnostic_from_parse_error_with_source(err, source);
+    let candidates = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("candidates"))
+        .and_then(|value| value.as_array())
+        .expect("expected recovered scope candidates");
+
+    assert!(diagnostic
+        .message
+        .contains("`missing_value` does not resolve"));
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate.as_str() == Some("bundle_index")));
+    assert!(!candidates
+        .iter()
+        .any(|candidate| candidate.as_str() == Some("current")));
+}
+
+#[test]
 fn parser_ordering_and_conflict_diagnostics_are_actionable() {
     let ordering_source = r#"
 #[derive(Accounts)]

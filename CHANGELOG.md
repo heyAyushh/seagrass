@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: recover unresolved handler identifiers from syntax-error spans so
+  malformed Anchor handlers still flag random bare values semantically.
 - lsp: keep missing-semicolon parser range recovery near the parse error so
   malformed handler statements do not get reported on previous account attrs.
 - lsp: propagate shallow handler types through local aliases and resolved

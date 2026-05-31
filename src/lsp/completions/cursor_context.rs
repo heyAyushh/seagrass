@@ -568,23 +568,7 @@ fn has_enclosing_anchor_context(source: &str, offset: usize) -> bool {
 }
 
 pub(crate) fn last_function_keyword_before(source: &str) -> Option<usize> {
-    source
-        .rmatch_indices("fn")
-        .find_map(|(idx, _)| function_keyword_at(source, idx).then_some(idx))
-}
-
-fn function_keyword_at(source: &str, idx: usize) -> bool {
-    let end = idx + "fn".len();
-    let has_leading_boundary = source[..idx]
-        .chars()
-        .next_back()
-        .is_none_or(|ch| !is_identifier_char(ch));
-    let has_trailing_whitespace = source[end..]
-        .chars()
-        .next()
-        .is_some_and(char::is_whitespace);
-
-    has_leading_boundary && has_trailing_whitespace
+    crate::lsp::scope::last_function_keyword_before(source)
 }
 
 fn has_anchor_framework_hint(source: &str, offset: usize) -> bool {

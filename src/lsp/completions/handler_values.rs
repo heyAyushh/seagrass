@@ -2,7 +2,7 @@ use {
     super::{cursor_context, ResolvedCursorContext},
     crate::{
         document::{ParsedDocument, SymbolRange},
-        lsp::scope::collect_pattern_bindings,
+        lsp::scope::{collect_pattern_bindings, TextHandlerBinding, TextHandlerScope},
         workspace::{WorkspaceContextField, WorkspaceIndex},
     },
     std::collections::BTreeMap,
@@ -419,108 +419,24 @@ impl VisibleBindingCollector<'_> {
 }
 
 fn text_visible_value_candidates(source: &str, position: Position) -> Vec<ValueCandidate> {
-    let Some(offset) = crate::range::byte_offset_at(source, position) else {
+    let Some(scope) = TextHandlerScope::at_position(source, position) else {
         return Vec::new();
     };
-    let before_cursor = &source[..offset.min(source.len())];
-    let Some(function_start) = cursor_context::last_function_keyword_before(before_cursor) else {
-        return Vec::new();
-    };
-    let function_prefix = &before_cursor[function_start..];
-    let mut candidates = text_function_input_candidates(function_prefix);
-    if let Some((_, body_prefix)) = function_prefix.split_once('{') {
-        let completed_body_lines = body_prefix
-            .rsplit_once('\n')
-            .map_or("", |(completed_lines, _)| completed_lines);
-        candidates.extend(text_local_binding_candidates(completed_body_lines));
-    }
-    candidates
+    scope.bindings().iter().map(text_value_candidate).collect()
 }
 
-fn text_function_input_candidates(function_prefix: &str) -> Vec<ValueCandidate> {
-    let signature = function_prefix
-        .split_once('{')
-        .map_or(function_prefix, |(signature, _)| signature);
-    let Some(open) = signature.find('(') else {
-        return Vec::new();
-    };
-    let Some(close) = signature[open..].rfind(')').map(|idx| open + idx) else {
-        return Vec::new();
-    };
-    split_top_level_commas(&signature[open + '('.len_utf8()..close])
-        .into_iter()
-        .filter_map(text_function_input_candidate)
-        .collect()
-}
-
-fn text_function_input_candidate(input: &str) -> Option<ValueCandidate> {
-    let (name, ty) = input.trim().split_once(':')?;
-    let name = name.trim();
-    if !is_identifier(name) {
-        return None;
-    }
-    let ty = ty.trim();
-    Some(ValueCandidate {
-        label: name.to_string(),
-        insert_text: name.to_string(),
-        detail: if ty.is_empty() {
-            "Anchor handler value".to_string()
-        } else {
-            format!("Anchor handler value: `{ty}`")
-        },
+fn text_value_candidate(binding: &TextHandlerBinding) -> ValueCandidate {
+    ValueCandidate {
+        label: binding.name.clone(),
+        insert_text: binding.name.clone(),
+        detail: binding
+            .type_display
+            .as_ref()
+            .map(|ty| format!("Anchor handler value: `{ty}`"))
+            .unwrap_or_else(|| "Anchor handler local value".to_string()),
         kind: CompletionItemKind::VARIABLE,
         rank: LOCAL_VALUE_RANK,
-    })
-}
-
-fn text_local_binding_candidate(line: &str) -> Option<ValueCandidate> {
-    let trimmed = line.trim();
-    let rest = trimmed.strip_prefix("let ")?;
-    let (left, _) = rest.split_once('=')?;
-    let left = left.trim().strip_prefix("mut ").unwrap_or(left.trim());
-    let name = left.split_once(':').map_or(left, |(name, _)| name).trim();
-    is_identifier(name).then(|| ValueCandidate {
-        label: name.to_string(),
-        insert_text: name.to_string(),
-        detail: "Anchor handler local value".to_string(),
-        kind: CompletionItemKind::VARIABLE,
-        rank: LOCAL_VALUE_RANK,
-    })
-}
-
-fn text_local_binding_candidates(body_prefix: &str) -> Vec<ValueCandidate> {
-    let mut depth = 0usize;
-    let mut candidates = Vec::new();
-    for line in body_prefix.lines() {
-        if depth == 0 {
-            candidates.extend(text_local_binding_candidate(line));
-        }
-        depth = line.chars().fold(depth, |depth, ch| match ch {
-            '{' => depth + 1,
-            '}' => depth.saturating_sub(1),
-            _ => depth,
-        });
     }
-    candidates
-}
-
-fn split_top_level_commas(text: &str) -> Vec<&str> {
-    let mut parts = Vec::new();
-    let mut start = 0usize;
-    let mut depth = 0usize;
-    for (idx, ch) in text.char_indices() {
-        match ch {
-            '<' | '(' | '[' => depth += 1,
-            '>' | ')' | ']' => depth = depth.saturating_sub(1),
-            ',' if depth == 0 => {
-                parts.push(text[start..idx].trim());
-                start = idx + ch.len_utf8();
-            }
-            _ => {}
-        }
-    }
-    parts.push(text[start..].trim());
-    parts
 }
 
 impl<'ast> Visit<'ast> for VisibleBindingCollector<'_> {

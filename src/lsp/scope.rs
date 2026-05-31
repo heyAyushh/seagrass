@@ -1,4 +1,10 @@
-use syn::{GenericArgument, Pat, PathArguments, Type};
+use {
+    crate::range::byte_offset_at,
+    syn::{GenericArgument, Pat, PathArguments, Type},
+    tower_lsp::lsp_types::Position,
+};
+
+const FUNCTION_CONTEXT_NEEDLE: &str = "Context<";
 
 pub(crate) fn collect_pattern_bindings(pat: &Pat, names: &mut Vec<String>) {
     match pat {
@@ -52,6 +58,55 @@ pub(crate) fn item_fn_has_anchor_context_arg(item_fn: &syn::ItemFn) -> bool {
     })
 }
 
+pub(crate) fn last_function_keyword_before(source: &str) -> Option<usize> {
+    source
+        .rmatch_indices("fn")
+        .find_map(|(idx, _)| function_keyword_at(source, idx).then_some(idx))
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TextHandlerBinding {
+    pub name: String,
+    pub type_display: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct TextHandlerScope {
+    has_anchor_context: bool,
+    bindings: Vec<TextHandlerBinding>,
+}
+
+impl TextHandlerScope {
+    pub(crate) fn at_position(source: &str, position: Position) -> Option<Self> {
+        let offset = byte_offset_at(source, position)?;
+        Self::before_offset(source, offset)
+    }
+
+    pub(crate) fn before_offset(source: &str, offset: usize) -> Option<Self> {
+        let before = source.get(..offset.min(source.len()))?;
+        let function_start = last_function_keyword_before(before)?;
+        let function_prefix = before.get(function_start..)?;
+        let (signature, body_prefix) = function_prefix.split_once('{')?;
+        let has_anchor_context = signature.contains(FUNCTION_CONTEXT_NEEDLE);
+        let mut bindings = text_function_input_bindings(signature);
+        bindings.extend(text_local_binding_bindings(completed_body_lines(
+            body_prefix,
+        )));
+        Some(Self {
+            has_anchor_context,
+            bindings,
+        })
+    }
+
+    pub(crate) const fn has_anchor_context(&self) -> bool {
+        self.has_anchor_context
+    }
+
+    pub(crate) fn bindings(&self) -> &[TextHandlerBinding] {
+        &self.bindings
+    }
+}
+
 pub(crate) fn type_has_anchor_context_arg(ty: &Type) -> bool {
     let ty = match ty {
         Type::Reference(reference) => reference.elem.as_ref(),
@@ -71,6 +126,118 @@ pub(crate) fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident(name))
 }
 
+fn completed_body_lines(body_prefix: &str) -> &str {
+    body_prefix
+        .rsplit_once('\n')
+        .map_or("", |(completed_lines, _)| completed_lines)
+}
+
+fn function_keyword_at(source: &str, idx: usize) -> bool {
+    let end = idx + "fn".len();
+    let has_leading_boundary = source[..idx]
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_identifier_char(ch));
+    let has_trailing_whitespace = source[end..]
+        .chars()
+        .next()
+        .is_some_and(char::is_whitespace);
+
+    has_leading_boundary && has_trailing_whitespace
+}
+
+fn text_function_input_bindings(signature: &str) -> Vec<TextHandlerBinding> {
+    let Some(open) = signature.find('(') else {
+        return Vec::new();
+    };
+    let Some(close) = matching_close_delimiter(signature, open, '(', ')') else {
+        return Vec::new();
+    };
+    split_top_level_commas(&signature[open + '('.len_utf8()..close])
+        .into_iter()
+        .filter_map(text_function_input_binding)
+        .collect()
+}
+
+fn text_function_input_binding(input: &str) -> Option<TextHandlerBinding> {
+    let (name, ty) = input.trim().split_once(':')?;
+    let name = name.trim().strip_prefix("mut ").unwrap_or(name.trim());
+    is_identifier(name).then(|| TextHandlerBinding {
+        name: name.to_string(),
+        type_display: (!ty.trim().is_empty()).then(|| ty.trim().to_string()),
+    })
+}
+
+fn text_local_binding_bindings(body_prefix: &str) -> Vec<TextHandlerBinding> {
+    let mut depth = 0usize;
+    let mut bindings = Vec::new();
+    for line in body_prefix.lines() {
+        if depth == 0 {
+            bindings.extend(text_local_binding_binding(line));
+        }
+        depth = line.chars().fold(depth, |depth, ch| match ch {
+            '{' => depth + 1,
+            '}' => depth.saturating_sub(1),
+            _ => depth,
+        });
+    }
+    bindings
+}
+
+fn text_local_binding_binding(line: &str) -> Option<TextHandlerBinding> {
+    let trimmed = line.trim();
+    let rest = trimmed.strip_prefix("let ")?;
+    let (left, _) = rest.split_once('=')?;
+    let left = left.trim().strip_prefix("mut ").unwrap_or(left.trim());
+    let (name, ty) = left
+        .split_once(':')
+        .map_or((left, None), |(name, ty)| (name.trim(), Some(ty.trim())));
+    is_identifier(name).then(|| TextHandlerBinding {
+        name: name.to_string(),
+        type_display: ty.filter(|ty| !ty.is_empty()).map(str::to_string),
+    })
+}
+
+fn split_top_level_commas(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut start = 0usize;
+    let mut depth = 0usize;
+    for (idx, ch) in text.char_indices() {
+        match ch {
+            '<' | '(' | '[' => depth += 1,
+            '>' | ')' | ']' => depth = depth.saturating_sub(1),
+            ',' if depth == 0 => {
+                parts.push(text[start..idx].trim());
+                start = idx + ch.len_utf8();
+            }
+            _ => {}
+        }
+    }
+    parts.push(text[start..].trim());
+    parts
+}
+
+fn matching_close_delimiter(
+    source: &str,
+    open: usize,
+    open_char: char,
+    close_char: char,
+) -> Option<usize> {
+    let mut depth = 0usize;
+    for (idx, ch) in source.get(open..)?.char_indices() {
+        let absolute = open + idx;
+        if ch == open_char {
+            depth += 1;
+        } else if ch == close_char {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                return Some(absolute);
+            }
+        }
+    }
+    None
+}
+
 fn context_type_has_account_argument(arguments: &PathArguments) -> bool {
     let PathArguments::AngleBracketed(args) = arguments else {
         return false;
@@ -78,4 +245,16 @@ fn context_type_has_account_argument(arguments: &PathArguments) -> bool {
     args.args
         .iter()
         .any(|arg| matches!(arg, GenericArgument::Type(Type::Path(_))))
+}
+
+fn is_identifier(text: &str) -> bool {
+    let mut chars = text.chars();
+    chars
+        .next()
+        .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+        && chars.all(is_identifier_char)
+}
+
+fn is_identifier_char(ch: char) -> bool {
+    ch.is_ascii_alphanumeric() || ch == '_'
 }

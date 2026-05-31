@@ -6,24 +6,51 @@ use {
     },
     crate::{
         document::ParsedDocument,
-        lsp::scope::{has_attr, item_fn_has_anchor_context_arg},
-        range::range_from_span,
+        lsp::scope::{has_attr, item_fn_has_anchor_context_arg, TextHandlerScope},
+        range::{byte_offset_at, range_from_span},
     },
     std::collections::{BTreeSet, HashSet},
     syn::{
         visit::{self, Visit},
         ExprCall, ExprPath, FnArg, ItemFn, ItemMod, Pat, PathArguments,
     },
-    tower_lsp::lsp_types::{Diagnostic, Range},
+    tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
 
 const TOPIC: &str = "seagrass/anchor.account.usage";
 const REASON: &str = "unresolved-handler-identifier";
 const EVIDENCE_SOURCE: &str = "parsed-anchor-handler-scope";
+const RECOVERED_EVIDENCE_SOURCE: &str = "recovered-anchor-handler-scope";
 const KNOWN_SINGLE_SEGMENT_VALUES: &[&str] = &["self", "crate", "super"];
 
 pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
     run_lint_visitor(document, HandlerScopeVisitor::new(document))
+}
+
+pub(super) fn parse_error_unresolved_identifier_diagnostic(
+    source: &str,
+    range: Range,
+) -> Option<Diagnostic> {
+    if !crate::solana::frameworks::source_has_anchor_framework_hint(source) {
+        return None;
+    }
+    let identifier = parse_error_identifier(source, range)?;
+    if !identifier_should_be_resolved(&identifier)
+        || !parse_error_identifier_is_value(source, range)
+    {
+        return None;
+    }
+    let scope = RecoveredHandlerScope::at_position(source, range.start)?;
+    if scope.identifier_resolves(&identifier) {
+        return None;
+    }
+
+    Some(unresolved_handler_identifier_diagnostic(
+        &identifier,
+        range,
+        scope.visible_candidates(),
+        RECOVERED_EVIDENCE_SOURCE,
+    ))
 }
 
 struct HandlerScopeVisitor {
@@ -71,22 +98,13 @@ impl HandlerScopeVisitor {
             return;
         }
 
-        self.diagnostics.push(diagnostic_from_range(
-            range,
-            AnchorDiagnosticKind::AnchorAccountUsage,
-            format!(
-                "`{identifier}` does not resolve in this Anchor handler; declare a local, add an argument, or import the value before using it."
-            ),
-            Some(serde_json::json!({
-                "topic": TOPIC,
-                "reason": REASON,
-                "identifier": identifier,
-                "candidates": self.visible_candidates(),
-                "evidenceSource": EVIDENCE_SOURCE,
-                "confidence": Confidence::Derived.as_str(),
-                "applicability": Applicability::Unspecified.as_str(),
-            })),
-        ));
+        self.diagnostics
+            .push(unresolved_handler_identifier_diagnostic(
+                identifier,
+                range,
+                self.visible_candidates(),
+                EVIDENCE_SOURCE,
+            ));
     }
 
     fn identifier_resolves(&self, identifier: &str) -> bool {
@@ -187,6 +205,30 @@ impl<'ast> Visit<'ast> for HandlerScopeVisitor {
     }
 }
 
+fn unresolved_handler_identifier_diagnostic(
+    identifier: &str,
+    range: Range,
+    candidates: Vec<String>,
+    evidence_source: &str,
+) -> Diagnostic {
+    diagnostic_from_range(
+        range,
+        AnchorDiagnosticKind::AnchorAccountUsage,
+        format!(
+            "`{identifier}` does not resolve in this Anchor handler; declare a local, add an argument, or import the value before using it."
+        ),
+        Some(serde_json::json!({
+            "topic": TOPIC,
+            "reason": REASON,
+            "identifier": identifier,
+            "candidates": candidates,
+            "evidenceSource": evidence_source,
+            "confidence": Confidence::Derived.as_str(),
+            "applicability": Applicability::Unspecified.as_str(),
+        })),
+    )
+}
+
 #[derive(Default)]
 struct ScopeStack {
     scopes: Vec<HashSet<String>>,
@@ -242,6 +284,112 @@ fn global_values(document: &ParsedDocument) -> HashSet<String> {
     values
 }
 
+struct RecoveredHandlerScope {
+    names: BTreeSet<String>,
+}
+
+impl RecoveredHandlerScope {
+    fn at_position(source: &str, position: Position) -> Option<Self> {
+        let text_scope = TextHandlerScope::at_position(source, position)?;
+        if !text_scope.has_anchor_context() {
+            return None;
+        }
+
+        let mut names = text_scope
+            .bindings()
+            .iter()
+            .map(|binding| binding.name.clone())
+            .collect::<BTreeSet<_>>();
+        names.extend(
+            KNOWN_SINGLE_SEGMENT_VALUES
+                .iter()
+                .map(|name| name.to_string()),
+        );
+        Some(Self { names })
+    }
+
+    fn identifier_resolves(&self, identifier: &str) -> bool {
+        self.names.contains(identifier)
+    }
+
+    fn visible_candidates(&self) -> Vec<String> {
+        self.names.iter().cloned().collect()
+    }
+}
+
+fn parse_error_identifier(source: &str, range: Range) -> Option<String> {
+    let offset = byte_offset_at(source, range.start)?;
+    let (start, end) = identifier_bounds_at(source, offset)?;
+    source.get(start..end).map(str::to_string)
+}
+
+fn parse_error_identifier_is_value(source: &str, range: Range) -> bool {
+    let Some(offset) = byte_offset_at(source, range.start) else {
+        return false;
+    };
+    let Some((start, end)) = identifier_bounds_at(source, offset) else {
+        return false;
+    };
+    if previous_non_whitespace(source, start).is_some_and(|ch| matches!(ch, '.' | ':')) {
+        return false;
+    }
+    if next_non_whitespace(source, end).is_some_and(|ch| matches!(ch, '(' | '!' | ':')) {
+        return false;
+    }
+    !previous_word(source, start).is_some_and(|word| matches!(word, "fn" | "let" | "struct"))
+}
+
+fn identifier_bounds_at(source: &str, offset: usize) -> Option<(usize, usize)> {
+    let byte = source.as_bytes().get(offset).copied()?;
+    if !is_identifier_byte(byte) {
+        return None;
+    }
+
+    let mut start = offset;
+    while start > 0
+        && source
+            .as_bytes()
+            .get(start - 1)
+            .is_some_and(|byte| is_identifier_byte(*byte))
+    {
+        start -= 1;
+    }
+
+    let mut end = offset;
+    while source
+        .as_bytes()
+        .get(end)
+        .is_some_and(|byte| is_identifier_byte(*byte))
+    {
+        end += 1;
+    }
+
+    Some((start, end))
+}
+
+fn previous_non_whitespace(source: &str, offset: usize) -> Option<char> {
+    source
+        .get(..offset)?
+        .chars()
+        .rev()
+        .find(|ch| !ch.is_whitespace())
+}
+
+fn next_non_whitespace(source: &str, offset: usize) -> Option<char> {
+    source.get(offset..)?.chars().find(|ch| !ch.is_whitespace())
+}
+
+fn previous_word(source: &str, offset: usize) -> Option<&str> {
+    let before = source.get(..offset)?.trim_end();
+    let end = before.len();
+    let start = before
+        .char_indices()
+        .rev()
+        .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx + ch.len_utf8()))
+        .unwrap_or(0);
+    before.get(start..end).filter(|word| !word.is_empty())
+}
+
 fn bare_value_identifier(path: &ExprPath) -> Option<String> {
     if path.qself.is_some() || path.path.segments.len() != 1 {
         return None;
@@ -258,6 +406,14 @@ fn identifier_should_be_resolved(identifier: &str) -> bool {
         .chars()
         .next()
         .is_some_and(|ch| ch.is_ascii_lowercase())
+}
+
+fn is_identifier_char(ch: char) -> bool {
+    ch == '_' || ch.is_ascii_alphanumeric()
+}
+
+fn is_identifier_byte(byte: u8) -> bool {
+    byte == b'_' || byte.is_ascii_alphanumeric()
 }
 
 #[cfg(test)]
@@ -437,6 +593,44 @@ pub mod demo {{
                     .all(|diagnostic| !diagnostic.message.contains(&format!("`{local}` does not resolve"))
                         && !diagnostic.message.contains(&format!("`{argument}` does not resolve"))),
                 "bound generated identifiers should stay quiet: {diagnostics:#?}"
+            );
+        }
+
+        #[test]
+        fn recovers_generated_parse_error_identifiers(
+            missing in generated_ident(),
+            local in generated_ident(),
+            argument in generated_ident(),
+        ) {
+            prop_assume!(missing != local && missing != argument);
+            prop_assume!(local != "ctx" && argument != "ctx" && missing != "ctx");
+            let source = format!(
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>, {argument}: u16) -> Result<()> {{
+    let {local} = {argument};
+    {local} = {local}  {missing} ;
+    Ok(())
+}}
+"#
+            );
+
+            let err = syn::parse_file(&source).unwrap_err();
+            let diagnostic =
+                crate::diagnostics::diagnostic_from_parse_error_with_source(err, &source);
+
+            prop_assert!(
+                diagnostic.message.contains(&format!("`{missing}` does not resolve")),
+                "expected parse-error semantic recovery for `{missing}`, got {diagnostic:#?}"
+            );
+            prop_assert_eq!(
+                diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("reason"))
+                    .and_then(|reason| reason.as_str()),
+                Some("unresolved-handler-identifier")
             );
         }
     }
