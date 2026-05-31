@@ -582,6 +582,46 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn reports_unknown_member_after_as_ref_alias() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub position_bundle: Account<'info, PositionBundle>,
+}
+
+pub fn run(ctx: Context<Run>) -> Result<()> {
+    let position_bundle = ctx.accounts.position_bundle.as_ref();
+    position_bundle.fake;
+    Ok(())
+}
+
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .message
+                .contains("`position_bundle.fake` does not resolve")
+                && diagnostic
+                    .message
+                    .contains("`PositionBundle` has no field `fake`")
+        }),
+        "missing as_ref account-data member diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn accepts_loaded_account_loader_member() {
     let document = ParsedDocument::parse(
         r#"

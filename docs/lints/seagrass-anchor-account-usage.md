@@ -9,6 +9,8 @@ Source: `seagrass`
 Anchor account mutability, account-data member usage, and shallow handler scope
 diagnostics. `AccountLoader<'info, T>` fields are treated as loader values until
 Anchor's zero-copy `load`, `load_mut`, or `load_init` methods produce `T`.
+`Account<'info, T>` aliases created through `as_ref()` or deref still resolve
+to `T` when Seagrass can prove the account data type.
 
 Seagrass should emit this topic only when parsed Anchor, Solana, workspace, or
 artifact evidence proves this specific invariant. The diagnostic must not be

@@ -325,6 +325,40 @@ pub struct Position {
 }
 
 #[test]
+fn editor_ux_completes_account_members_after_as_ref() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub position_bundle: Account<'info, PositionBundle>,
+}
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let position_bundle = ctx.accounts.position_bundle.as_ref();
+    position_bundle.position_
+}
+
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    );
+
+    let items = completions::completions(
+        &document,
+        position_after(document.source(), "position_bundle.position_"),
+    )
+    .expect("editor-visible as_ref account completions");
+
+    assert!(items
+        .iter()
+        .any(|item| item.label == "position_bundle_mint"));
+}
+
+#[test]
 fn editor_ux_flags_unknown_context_bump_member() {
     let document = ParsedDocument::parse_or_empty(
         r#"

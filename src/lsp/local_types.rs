@@ -16,6 +16,8 @@ use {
 mod account_loader;
 mod type_names;
 
+const TRANSPARENT_RECEIVER_METHODS: &[&str] = &["as_ref", "deref", "deref_mut"];
+
 pub(crate) use type_names::{
     account_data_type_name_from_parts, account_data_type_name_from_text,
     context_type_name_from_text, context_type_name_from_type, shallow_type_name,
@@ -308,7 +310,25 @@ pub(crate) fn expression_type_name_with_context_scope(
             scope_type_name,
             context_type_name,
         )
+        .or_else(|| {
+            transparent_receiver_method_type_name(
+                document,
+                workspace_index,
+                method_call,
+                scope_type_name,
+                context_type_name,
+            )
+        })
         .or_else(|| constructed_type_name(expr)),
+        Expr::Unary(unary) if matches!(unary.op, syn::UnOp::Deref(_)) => {
+            transparent_deref_type_name(
+                document,
+                workspace_index,
+                unary,
+                scope_type_name,
+                context_type_name,
+            )
+        }
         Expr::Reference(reference) => expression_type_name_with_context_scope(
             document,
             workspace_index,
@@ -349,6 +369,47 @@ fn account_loader_loaded_method_type_name(
         context_type_name,
     )?;
     account_loader::loaded_method_return_type(method_call, &receiver_type)
+}
+
+fn transparent_receiver_method_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    method_call: &syn::ExprMethodCall,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    if !method_call.args.is_empty()
+        || !TRANSPARENT_RECEIVER_METHODS.contains(&method_call.method.to_string().as_str())
+        || context_account_access(&method_call.receiver).is_none()
+    {
+        return None;
+    }
+    let receiver_type = expression_type_name_with_context_scope(
+        document,
+        workspace_index,
+        &method_call.receiver,
+        scope_type_name,
+        context_type_name,
+    )?;
+    account_members::resolved_struct_members(document, workspace_index, &receiver_type)
+        .map(|_| receiver_type)
+}
+
+fn transparent_deref_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    unary: &syn::ExprUnary,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+) -> Option<String> {
+    context_account_access(&unary.expr)?;
+    expression_type_name_with_context_scope(
+        document,
+        workspace_index,
+        &unary.expr,
+        scope_type_name,
+        context_type_name,
+    )
 }
 
 fn context_account_field_type_name_from_expr(

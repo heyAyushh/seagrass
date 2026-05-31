@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: carry handler account-data member types through transparent `as_ref`
+  and deref aliases backed by Anchor account traits.
 - lsp: resolve `AccountLoader<'info, T>` in handler member access as a loader
   until `load`, `load_mut`, or `load_init` produces the zero-copy account data.
 - lsp: complete inherent account-data methods in handler member access from
