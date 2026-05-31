@@ -730,4 +730,8 @@ impl TypedScopeStack {
 mod call_return_tests;
 
 #[cfg(test)]
+#[path = "handler_members/method_return_tests.rs"]
+mod method_return_tests;
+
+#[cfg(test)]
 mod tests;

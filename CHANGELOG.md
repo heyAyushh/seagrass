@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer same-file inherent method return types for handler member
+  completions and diagnostics, including `Result<T>` values after `?`.
 - lsp: infer same-file helper function return types for handler member
   completions and diagnostics, including `Result<T>` values after `?`.
 - lsp: carry handler account-data member types through transparent `as_ref`

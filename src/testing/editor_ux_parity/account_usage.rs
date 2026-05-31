@@ -391,6 +391,44 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn editor_ux_completes_members_from_result_method_return() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>, bundle: PositionBundle) -> Result<()> {
+    let metadata = bundle.metadata()?;
+    metadata.position_
+}
+
+pub struct PositionBundle {
+    pub value: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn metadata(&self) -> Result<BundleMetadata> {
+        unreachable!()
+    }
+}
+
+pub struct BundleMetadata {
+    pub position_bundle_mint: Pubkey,
+}
+"#,
+    );
+
+    let items = completions::completions(
+        &document,
+        position_after(document.source(), "metadata.position_"),
+    )
+    .expect("editor-visible method return completions");
+
+    assert!(items
+        .iter()
+        .any(|item| item.label == "position_bundle_mint"));
+}
+
+#[test]
 fn editor_ux_flags_unknown_context_bump_member() {
     let document = ParsedDocument::parse_or_empty(
         r#"

@@ -15,6 +15,7 @@ use {
 
 mod account_loader;
 mod call_returns;
+mod method_returns;
 mod type_names;
 
 const TRANSPARENT_RECEIVER_METHODS: &[&str] = &["as_ref", "deref", "deref_mut"];
@@ -297,16 +298,23 @@ pub(crate) fn expression_type_name_with_context_scope(
                 context_type_name,
             )
         }),
-        Expr::Try(expr_try) => call_returns::try_call_return_type_name(document, &expr_try.expr)
-            .or_else(|| {
-                expression_type_name_with_context_scope(
-                    document,
-                    workspace_index,
-                    &expr_try.expr,
-                    scope_type_name,
-                    context_type_name,
-                )
-            }),
+        Expr::Try(expr_try) => method_returns::try_method_return_type_name(
+            document,
+            workspace_index,
+            &expr_try.expr,
+            scope_type_name,
+            context_type_name,
+        )
+        .or_else(|| call_returns::try_call_return_type_name(document, &expr_try.expr))
+        .or_else(|| {
+            expression_type_name_with_context_scope(
+                document,
+                workspace_index,
+                &expr_try.expr,
+                scope_type_name,
+                context_type_name,
+            )
+        }),
         Expr::Call(call) => call_returns::call_return_type_name(document, call)
             .or_else(|| constructed_type_name(expr)),
         Expr::MethodCall(method_call) => account_loader_loaded_method_type_name(
@@ -318,6 +326,15 @@ pub(crate) fn expression_type_name_with_context_scope(
         )
         .or_else(|| {
             transparent_receiver_method_type_name(
+                document,
+                workspace_index,
+                method_call,
+                scope_type_name,
+                context_type_name,
+            )
+        })
+        .or_else(|| {
+            method_returns::method_return_type_name(
                 document,
                 workspace_index,
                 method_call,
