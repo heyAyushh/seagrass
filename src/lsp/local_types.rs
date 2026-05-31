@@ -8,7 +8,7 @@ use {
     syn::{
         spanned::Spanned,
         visit::{self, Visit},
-        Expr, ExprField, FnArg, ItemFn, Member, Pat, Stmt, Type,
+        BinOp, Expr, ExprField, FnArg, ItemFn, Member, Pat, Stmt, Type,
     },
     tower_lsp::lsp_types::Position,
 };
@@ -16,13 +16,18 @@ use {
 mod account_loader;
 mod call_returns;
 mod method_returns;
+mod patterns;
+mod text_inference;
 mod type_names;
 
 const TRANSPARENT_RECEIVER_METHODS: &[&str] = &["as_ref", "deref", "deref_mut"];
 
-pub(crate) use type_names::{
-    account_data_type_name_from_parts, account_data_type_name_from_text,
-    context_type_name_from_text, context_type_name_from_type, shallow_type_name,
+pub(crate) use {
+    patterns::typed_pattern_bindings,
+    type_names::{
+        account_data_type_name_from_parts, account_data_type_name_from_text,
+        context_type_name_from_text, context_type_name_from_type, shallow_type_name,
+    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,7 +100,7 @@ pub(crate) fn text_visible_typed_values_at_with_workspace(
     };
     let mut values = Vec::new();
     for (idx, binding) in scope.bindings().iter().enumerate() {
-        if let Some(value) = text_typed_value_from_binding(
+        if let Some(value) = text_inference::typed_value_from_binding(
             document,
             workspace_index,
             &values,
@@ -496,108 +501,6 @@ fn field_expression_type_name(
     )
 }
 
-fn text_typed_value_from_binding(
-    document: &ParsedDocument,
-    workspace_index: Option<&WorkspaceIndex>,
-    visible_values: &[TypedLocalValue],
-    visible_bindings: &[TextHandlerBinding],
-    binding: &TextHandlerBinding,
-) -> Option<TypedLocalValue> {
-    let type_name = binding
-        .type_display
-        .as_deref()
-        .and_then(type_name_from_text)
-        .or_else(|| {
-            binding.initializer_text.as_deref().and_then(|initializer| {
-                let expr = syn::parse_str::<syn::Expr>(initializer).ok()?;
-                text_context_account_type_name(document, workspace_index, visible_bindings, &expr)
-            })
-        })
-        .or_else(|| {
-            binding
-                .initializer_text
-                .as_deref()
-                .and_then(text_constructed_type_name)
-        })
-        .or_else(|| {
-            binding.initializer_text.as_deref().and_then(|initializer| {
-                text_inferred_type_name(
-                    document,
-                    workspace_index,
-                    visible_values,
-                    visible_bindings,
-                    initializer,
-                )
-            })
-        })?;
-
-    Some(TypedLocalValue {
-        name: binding.name.clone(),
-        type_name,
-    })
-}
-
-fn type_name_from_text(text: &str) -> Option<String> {
-    let ty = syn::parse_str::<syn::Type>(text).ok()?;
-    local_value_type_name_from_type(&ty)
-}
-
-fn text_constructed_type_name(initializer: &str) -> Option<String> {
-    initializer
-        .split_once('{')
-        .map(|(head, _)| head.trim())
-        .filter(|head| is_identifier_path(head))?
-        .rsplit("::")
-        .next()
-        .map(str::to_string)
-}
-
-fn text_inferred_type_name(
-    document: &ParsedDocument,
-    workspace_index: Option<&WorkspaceIndex>,
-    visible_values: &[TypedLocalValue],
-    visible_bindings: &[TextHandlerBinding],
-    initializer: &str,
-) -> Option<String> {
-    let expr = syn::parse_str::<syn::Expr>(initializer).ok()?;
-    expression_type_name_with_context_scope(
-        document,
-        workspace_index,
-        &expr,
-        &|name| {
-            visible_values
-                .iter()
-                .rev()
-                .find(|value| value.name == name)
-                .map(|value| value.type_name.clone())
-        },
-        &|name| {
-            visible_bindings
-                .iter()
-                .rev()
-                .find(|binding| binding.name == name)
-                .and_then(|binding| {
-                    binding
-                        .type_display
-                        .as_deref()
-                        .and_then(context_type_name_from_text)
-                })
-        },
-    )
-}
-
-fn is_identifier_path(value: &str) -> bool {
-    !value.is_empty() && value.split("::").all(is_identifier)
-}
-
-fn is_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-}
-
 struct VisibleTypedValueCollector<'a> {
     document: &'a ParsedDocument,
     workspace_index: Option<&'a WorkspaceIndex>,
@@ -669,6 +572,7 @@ impl VisibleTypedValueCollector<'_> {
             }
             Expr::If(if_expr) => {
                 if self.span_contains_cursor(if_expr.then_branch.span()) {
+                    self.collect_condition_pattern_candidates(&if_expr.cond);
                     return self.collect_block_bindings(&if_expr.then_branch);
                 }
                 if let Some((_, else_branch)) = &if_expr.else_branch {
@@ -680,11 +584,26 @@ impl VisibleTypedValueCollector<'_> {
                 self.collect_block_bindings(&loop_expr.body)
             }
             Expr::While(while_expr) if self.span_contains_cursor(while_expr.body.span()) => {
+                self.collect_condition_pattern_candidates(&while_expr.cond);
                 self.collect_block_bindings(&while_expr.body)
             }
             Expr::Match(match_expr) => {
+                let scrutinee_type = self.expression_type_name(&match_expr.expr);
                 for arm in &match_expr.arms {
+                    if arm
+                        .guard
+                        .as_ref()
+                        .is_some_and(|(_, guard)| self.span_contains_cursor(guard.span()))
+                    {
+                        if let Some(type_name) = scrutinee_type.as_deref() {
+                            self.add_typed_pattern_candidates(&arm.pat, type_name);
+                        }
+                        return true;
+                    }
                     if self.span_contains_cursor(arm.body.span()) {
+                        if let Some(type_name) = scrutinee_type.as_deref() {
+                            self.add_typed_pattern_candidates(&arm.pat, type_name);
+                        }
                         return self.collect_bindings_inside_expr(&arm.body);
                     }
                 }
@@ -705,6 +624,38 @@ impl VisibleTypedValueCollector<'_> {
             return;
         };
         self.add_pattern_candidate(&local.pat, type_name);
+    }
+
+    fn collect_condition_pattern_candidates(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Let(expr_let) => {
+                if let Some(type_name) = self.expression_type_name(&expr_let.expr) {
+                    self.add_typed_pattern_candidates(&expr_let.pat, &type_name);
+                }
+            }
+            Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
+                self.collect_condition_pattern_candidates(&binary.left);
+                self.collect_condition_pattern_candidates(&binary.right);
+            }
+            Expr::Group(group) => self.collect_condition_pattern_candidates(&group.expr),
+            Expr::Paren(paren) => self.collect_condition_pattern_candidates(&paren.expr),
+            _ => {}
+        }
+    }
+
+    fn expression_type_name(&self, expr: &Expr) -> Option<String> {
+        expression_type_name_with_context_scope(
+            self.document,
+            self.workspace_index,
+            expr,
+            &|name| self.visible_type_name(name),
+            &|name| self.visible_context_type_name(name),
+        )
+    }
+
+    fn add_typed_pattern_candidates(&mut self, pat: &Pat, type_name: &str) {
+        self.values
+            .extend(patterns::typed_pattern_bindings(pat, type_name));
     }
 
     fn add_pattern_candidate(&mut self, pat: &Pat, type_name: String) {

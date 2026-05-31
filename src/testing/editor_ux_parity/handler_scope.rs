@@ -93,3 +93,43 @@ pub struct Close<'info> {
         Some("position_bundle")
     );
 }
+
+#[test]
+fn editor_ux_resolves_typed_if_let_pattern_members() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub optional_bundle: Option<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    if let Some(bundle) = ctx.accounts.optional_bundle.as_ref() {
+        bundle.asset_
+    }
+    Ok(())
+}
+
+#[account]
+pub struct PositionBundle {
+    pub asset_mint: Pubkey,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = diagnostics::collect(&document);
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("`bundle` does not resolve")),
+        "typed if-let binding should stay resolved: {diagnostics:#?}"
+    );
+
+    let items = completions::completions(&document, super::position_after(source, "bundle.asset_"))
+        .expect("editor-visible typed if-let member completions");
+    assert_eq!(
+        items.first().map(|item| item.label.as_str()),
+        Some("asset_mint")
+    );
+}

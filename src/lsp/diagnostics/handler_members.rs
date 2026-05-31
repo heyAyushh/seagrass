@@ -21,7 +21,7 @@ use {
     std::collections::{HashMap, HashSet},
     syn::{
         visit::{self, Visit},
-        Expr, ExprField, ExprMethodCall, FnArg, ItemFn, ItemMod, Member,
+        BinOp, Expr, ExprField, ExprMethodCall, FnArg, ItemFn, ItemMod, Member,
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
@@ -150,6 +150,34 @@ impl<'a> HandlerMemberVisitor<'a> {
         self.push_diagnostic_once(diagnostic);
     }
 
+    fn visit_condition_with_typed_pattern_scope(&mut self, expr: &Expr) {
+        match expr {
+            Expr::Let(expr_let) => {
+                self.visit_expr(&expr_let.expr);
+                if let Some(type_name) = self.expression_type_name(&expr_let.expr) {
+                    self.scopes.declare_typed_pattern(&expr_let.pat, &type_name);
+                }
+            }
+            Expr::Binary(binary) if matches!(binary.op, BinOp::And(_)) => {
+                self.visit_condition_with_typed_pattern_scope(&binary.left);
+                self.visit_condition_with_typed_pattern_scope(&binary.right);
+            }
+            Expr::Group(group) => self.visit_condition_with_typed_pattern_scope(&group.expr),
+            Expr::Paren(paren) => self.visit_condition_with_typed_pattern_scope(&paren.expr),
+            _ => self.visit_expr(expr),
+        }
+    }
+
+    fn expression_type_name(&self, expr: &Expr) -> Option<String> {
+        local_types::expression_type_name_with_context_scope(
+            self.document,
+            self.workspace_index,
+            expr,
+            &|name| self.scopes.get(name),
+            &|name| self.scopes.get_context(name),
+        )
+    }
+
     fn push_diagnostic_once(&mut self, diagnostic: Diagnostic) {
         let key = (
             diagnostic.range.start.line,
@@ -209,6 +237,39 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
             &|name| self.scopes.get_context(name),
         ) {
             self.scopes.declare_pat(&node.pat, type_name);
+        }
+    }
+
+    fn visit_expr_if(&mut self, node: &'ast syn::ExprIf) {
+        self.scopes.push();
+        self.visit_condition_with_typed_pattern_scope(&node.cond);
+        self.visit_block(&node.then_branch);
+        self.scopes.pop();
+        if let Some((_, else_branch)) = &node.else_branch {
+            self.visit_expr(else_branch);
+        }
+    }
+
+    fn visit_expr_while(&mut self, node: &'ast syn::ExprWhile) {
+        self.scopes.push();
+        self.visit_condition_with_typed_pattern_scope(&node.cond);
+        self.visit_block(&node.body);
+        self.scopes.pop();
+    }
+
+    fn visit_expr_match(&mut self, node: &'ast syn::ExprMatch) {
+        self.visit_expr(&node.expr);
+        let scrutinee_type = self.expression_type_name(&node.expr);
+        for arm in &node.arms {
+            self.scopes.push();
+            if let Some(type_name) = scrutinee_type.as_deref() {
+                self.scopes.declare_typed_pattern(&arm.pat, type_name);
+            }
+            if let Some((_, guard)) = &arm.guard {
+                self.visit_expr(guard);
+            }
+            self.visit_expr(&arm.body);
+            self.scopes.pop();
         }
     }
 
@@ -672,6 +733,15 @@ impl TypedScopeStack {
         }
     }
 
+    fn declare_typed_pattern(&mut self, pat: &syn::Pat, type_name: &str) {
+        let Some(scope) = self.scopes.last_mut() else {
+            return;
+        };
+        for value in local_types::typed_pattern_bindings(pat, type_name) {
+            scope.insert(value.name, value.type_name);
+        }
+    }
+
     fn get(&self, name: &str) -> Option<String> {
         self.scopes
             .iter()
@@ -698,6 +768,10 @@ mod method_return_tests;
 #[cfg(test)]
 #[path = "handler_members/method_call_tests.rs"]
 mod method_call_tests;
+
+#[cfg(test)]
+#[path = "handler_members/pattern_tests.rs"]
+mod pattern_tests;
 
 #[cfg(test)]
 mod tests;

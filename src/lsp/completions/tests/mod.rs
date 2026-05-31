@@ -10,6 +10,7 @@ mod handler_call_return_tests;
 mod handler_member_tests;
 mod handler_method_return_tests;
 mod handler_method_tests;
+mod handler_pattern_tests;
 mod handler_transparent_tests;
 mod handler_value_tests;
 mod mint_decimals_tests;

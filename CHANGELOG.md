@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer shallow types for pattern-bound Anchor account values so `if let`
+  bindings drive handler member diagnostics and completions.
 - lsp: resolve Rust pattern bindings from `if let`, `while let`, and `match`
   arms in Anchor handler diagnostics and value completions.
 - lsp: flag unresolved lower-case handler call identifiers using the same
