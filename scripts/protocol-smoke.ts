@@ -1472,12 +1472,12 @@ try {
     throw new Error("completion provider was not advertised");
   }
   const completionTriggers = initializeResult.capabilities.completionProvider.triggerCharacters ?? [];
-  for (const character of ["s", "S", "_", " ", ".", "<", ",", "="]) {
+  for (const character of ["s", "S", "_", " ", ".", "<", ",", "=", "["]) {
     if (!completionTriggers.includes(character)) {
       throw new Error(`fast Anchor completion trigger ${JSON.stringify(character)} was not advertised`);
     }
   }
-  for (const punctuation of ["#", "[", "(", ":"]) {
+  for (const punctuation of ["#", "(", ":"]) {
     if (completionTriggers.includes(punctuation)) {
       throw new Error(`noisy completion trigger ${JSON.stringify(punctuation)} was advertised`);
     }
