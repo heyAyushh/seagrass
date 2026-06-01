@@ -3,8 +3,8 @@ use {
     crate::{
         document::{ParsedDocument, SymbolRange},
         lsp::scope::{
-            collect_condition_pattern_bindings, collect_pattern_bindings, TextHandlerBinding,
-            TextHandlerScope,
+            collect_condition_pattern_bindings, collect_pattern_bindings,
+            program_module_value_names_from_document, TextHandlerBinding, TextHandlerScope,
         },
         workspace::{WorkspaceContextField, WorkspaceIndex},
     },
@@ -183,6 +183,17 @@ fn global_value_candidates(document: &ParsedDocument) -> Vec<ValueCandidate> {
                     label: item.name.clone(),
                     insert_text: item.name.clone(),
                     detail: "File value item".to_string(),
+                    kind: CompletionItemKind::VALUE,
+                    rank: GLOBAL_VALUE_RANK,
+                }),
+        )
+        .chain(
+            program_module_value_names_from_document(document.source(), &document.syntax().items)
+                .into_iter()
+                .map(|name| ValueCandidate {
+                    label: name.clone(),
+                    insert_text: name,
+                    detail: "Anchor program module value".to_string(),
                     kind: CompletionItemKind::VALUE,
                     rank: GLOBAL_VALUE_RANK,
                 }),

@@ -27,6 +27,37 @@ fn verify_bundle(_bundle_index: u16) {}
     assert_completion_contains(&document, source, "return ", "receiver_key");
 }
 
+#[test]
+fn editor_ux_completes_program_module_handler_values() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    const EXPECTED_LIMIT: u16 = 16;
+
+    pub fn handler(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let selected = EXPECTED_
+    }
+}
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    assert_completion_contains(
+        &document,
+        source,
+        "let selected = EXPECTED_",
+        "EXPECTED_LIMIT",
+    );
+}
+
 fn assert_completion_contains(
     document: &ParsedDocument,
     source: &str,

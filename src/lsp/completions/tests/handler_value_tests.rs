@@ -65,6 +65,44 @@ pub fn handler(ctx: Context<Close>) -> Result<()> {
 }
 
 #[test]
+fn completes_program_module_values_inside_anchor_handlers() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    const EXPECTED_LIMIT: u16 = 16;
+
+    pub fn handler(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let selected = EXPECTED_
+    }
+}
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(
+        &document,
+        position_after(source, "let selected = EXPECTED_"),
+    )
+    .expect("expected program module value completions");
+    let expected_limit = items
+        .iter()
+        .find(|item| item.label == "EXPECTED_LIMIT")
+        .unwrap_or_else(|| panic!("missing program module const completion: {items:#?}"));
+
+    assert_eq!(
+        expected_limit.insert_text.as_deref(),
+        Some("EXPECTED_LIMIT")
+    );
+}
+
+#[test]
 fn completes_empty_handler_values_after_assignment_rhs() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -521,6 +559,42 @@ pub fn handler(ctx: Context<Close>) -> Result<()> {{
         prop_assert!(
             items.iter().any(|item| item.label == account),
             "expected generated account field completion, got {items:#?}",
+        );
+    }
+
+    #[test]
+    fn completes_generated_program_module_values_without_hardcoded_names(
+        value_tail in "[A-Z][A-Z0-9_]{1,8}",
+    ) {
+        let value = format!("PROGRAM_VALUE_{value_tail}");
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {{
+    use super::*;
+
+    const {value}: u16 = 16;
+
+    pub fn handler(ctx: Context<Close>, bundle_index: u16) -> Result<()> {{
+        let selected = PROGRAM_VALUE_
+    }}
+}}
+
+#[derive(Accounts)]
+pub struct Close<'info> {{
+    pub receiver: AccountInfo<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "let selected = PROGRAM_VALUE_"))
+            .expect("expected generated program module value completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == value),
+            "generated program module value should complete; items: {items:#?}"
         );
     }
 }

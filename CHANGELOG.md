@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: complete handler expression values declared inside Anchor
+  `#[program]` modules.
 - lsp: flag unresolved const-like handler identifiers such as
   `EXPECTED_LIMIT` typos using the shared handler scope model.
 - lsp: complete and diagnose Rust struct literal and pattern fields in Anchor

@@ -329,7 +329,7 @@ impl ScopeStack {
 }
 
 fn global_values(document: &ParsedDocument) -> HashSet<String> {
-    use crate::lsp::scope::program_module_value_names;
+    use crate::lsp::scope::program_module_value_names_from_document as module_values;
     let mut values = document
         .symbols()
         .value_items
@@ -338,7 +338,7 @@ fn global_values(document: &ParsedDocument) -> HashSet<String> {
         .chain(document.symbols().imported_names.iter())
         .map(|item| item.name.clone())
         .collect::<HashSet<_>>();
-    values.extend(program_module_value_names(&document.syntax().items));
+    values.extend(module_values(document.source(), &document.syntax().items));
     if document.symbols().declared_program_id.is_some() {
         values.insert("ID".to_string());
     }

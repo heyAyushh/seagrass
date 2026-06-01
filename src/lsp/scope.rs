@@ -6,6 +6,18 @@ use {
 };
 
 const FUNCTION_CONTEXT_NEEDLE: &str = "Context<";
+const PROGRAM_ATTRIBUTE_NEEDLE: &str = "#[program]";
+const MODULE_KEYWORD: &str = "mod";
+const VALUE_DECLARATION_PREFIXES: &[&str] = &[
+    "const ",
+    "pub const ",
+    "pub(crate) const ",
+    "static ",
+    "pub static ",
+    "pub(crate) static ",
+    "fn ",
+    "pub fn ",
+];
 
 pub(crate) fn collect_pattern_bindings(pat: &Pat, names: &mut Vec<String>) {
     match pat {
@@ -84,6 +96,17 @@ pub(crate) fn program_module_value_names(items: &[syn::Item]) -> Vec<String> {
         })
         .flat_map(|items| items.iter().flat_map(item_value_names))
         .collect()
+}
+
+pub(crate) fn program_module_value_names_from_document(
+    source: &str,
+    items: &[syn::Item],
+) -> Vec<String> {
+    let mut names = program_module_value_names(items);
+    names.extend(text_program_module_value_names(source));
+    names.sort();
+    names.dedup();
+    names
 }
 
 pub(crate) fn item_fn_has_anchor_context_arg(item_fn: &syn::ItemFn) -> bool {
@@ -194,6 +217,68 @@ fn collect_use_tree_names(tree: &syn::UseTree, names: &mut Vec<String>) {
         }
         syn::UseTree::Glob(_) => {}
     }
+}
+
+fn text_program_module_value_names(source: &str) -> Vec<String> {
+    text_program_module_bodies(source)
+        .into_iter()
+        .flat_map(text_top_level_value_names)
+        .collect()
+}
+
+fn text_program_module_bodies(source: &str) -> Vec<&str> {
+    let mut bodies = Vec::new();
+    let mut search_start = 0usize;
+    while let Some(attribute_offset) = source[search_start..].find(PROGRAM_ATTRIBUTE_NEEDLE) {
+        let attribute = search_start + attribute_offset;
+        let Some(module_offset) = source[attribute..].find(MODULE_KEYWORD) else {
+            break;
+        };
+        let module_start = attribute + module_offset;
+        let Some(open_offset) = source[module_start..].find('{') else {
+            break;
+        };
+        let open = module_start + open_offset;
+        let Some(close) = matching_close_delimiter(source, open, '{', '}') else {
+            break;
+        };
+        if let Some(body) = source.get(open + '{'.len_utf8()..close) {
+            bodies.push(body);
+        }
+        search_start = close + '}'.len_utf8();
+    }
+    bodies
+}
+
+fn text_top_level_value_names(body: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut depth = 0usize;
+    for line in body.lines() {
+        if depth == 0 {
+            if let Some(name) = text_value_declaration_name(line) {
+                names.push(name);
+            }
+        }
+        depth = line.chars().fold(depth, |depth, ch| match ch {
+            '{' => depth + 1,
+            '}' => depth.saturating_sub(1),
+            _ => depth,
+        });
+    }
+    names
+}
+
+fn text_value_declaration_name(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let declaration = VALUE_DECLARATION_PREFIXES
+        .iter()
+        .find_map(|prefix| trimmed.strip_prefix(prefix))?;
+    let name_end = declaration
+        .char_indices()
+        .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx))
+        .unwrap_or(declaration.len());
+    let name = declaration.get(..name_end)?;
+    is_identifier(name).then(|| name.to_string())
 }
 
 fn completed_body_lines(body_prefix: &str) -> &str {
