@@ -18,6 +18,7 @@ mod handler_return_usage;
 mod handler_scope;
 mod handler_struct_literals;
 mod handler_tuple_patterns;
+mod handler_value_completions;
 mod handler_wrapper_outputs;
 mod proactive_assists;
 

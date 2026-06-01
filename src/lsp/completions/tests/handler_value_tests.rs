@@ -65,6 +65,91 @@ pub fn handler(ctx: Context<Close>) -> Result<()> {
 }
 
 #[test]
+fn completes_empty_handler_values_after_assignment_rhs() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+    let position_bundle = &ctx.accounts.receiver;
+    let selected =
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "let selected ="))
+        .expect("expected empty assignment value completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "position_bundle"),
+        "empty assignment value slot should include visible locals: {items:#?}"
+    );
+    assert!(
+        items.iter().any(|item| item.label == "bundle_index"),
+        "empty assignment value slot should include handler arguments: {items:#?}"
+    );
+    assert!(
+        items.iter().any(|item| item.label == "receiver"),
+        "empty assignment value slot should include account fields: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_empty_handler_values_inside_call_arguments() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+    let copied_index = bundle_index;
+    verify_bundle(
+}
+
+fn verify_bundle(_bundle_index: u16) {}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "verify_bundle("))
+        .expect("expected empty call argument completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "copied_index"),
+        "empty call argument slot should include visible locals: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_empty_handler_values_after_return_keyword() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>) -> Result<Pubkey> {
+    let receiver_key = ctx.accounts.receiver.key();
+    return /*cursor*/
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "return "))
+        .expect("expected empty return value completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "receiver_key"),
+        "empty return value slot should include visible locals: {items:#?}"
+    );
+}
+
+#[test]
 fn handler_value_completion_stays_quiet_on_let_lhs() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -97,6 +182,28 @@ fn helper() {
     assert!(!should_offer_completion(
         source,
         position_after(source, "let selected = pos")
+    ));
+}
+
+#[test]
+fn handler_value_completion_stays_quiet_on_blank_handler_line() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>) -> Result<()> {
+    let done = 1;
+/*cursor*/
+}
+"#;
+
+    assert!(!should_offer_completion(
+        source,
+        position_after(source, "let done = 1;\n")
     ));
 }
 
@@ -377,6 +484,43 @@ pub fn handler(ctx: Context<Close>, bundles: Vec<Pubkey>) -> Result<()> {{
         prop_assert!(
             items.iter().any(|item| item.label == pattern),
             "generated for-loop pattern should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_empty_assignment_values_without_hardcoded_names(
+        local_tail in rust_identifier(),
+        account_tail in rust_identifier(),
+    ) {
+        let local = format!("empty_slot_local_{local_tail}");
+        let account = format!("empty_slot_account_{account_tail}");
+        prop_assume!(local != account);
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {{
+    pub {account}: AccountInfo<'info>,
+}}
+
+pub fn handler(ctx: Context<Close>) -> Result<()> {{
+    let {local} = ctx.accounts.{account}.key();
+    let selected =
+}}
+"#,
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "let selected ="))
+            .expect("expected generated empty assignment completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == local),
+            "expected generated local completion, got {items:#?}",
+        );
+        prop_assert!(
+            items.iter().any(|item| item.label == account),
+            "expected generated account field completion, got {items:#?}",
         );
     }
 }

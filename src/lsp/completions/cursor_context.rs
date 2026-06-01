@@ -161,6 +161,11 @@ pub(crate) struct ResolvedCpiSiteHandle {
     pub range: Range,
 }
 
+const HANDLER_EMPTY_VALUE_SLOT_CHARS: &[char] = &[
+    '(', '[', ',', '=', '>', '<', '&', '|', '!', '+', '-', '*', '/', '%',
+];
+const HANDLER_EMPTY_VALUE_SLOT_KEYWORDS: &[&str] = &["return", "break", "if", "while", "match"];
+
 impl CursorContext {
     pub(crate) fn classify_document(document: &ParsedDocument, position: Position) -> Self {
         let account_cursor = document.account_attribute_cursor(position);
@@ -678,14 +683,23 @@ fn handler_value_typed_prefix<'a>(
 }
 
 fn empty_handler_value_prefix_allowed(source: &str, offset: usize, line_prefix: &str) -> bool {
-    if !crate::lsp::assertion_macros::has_open_expression_assertion_macro(source, offset) {
-        return false;
+    if crate::lsp::assertion_macros::has_open_expression_assertion_macro(source, offset)
+        && line_prefix
+            .chars()
+            .rev()
+            .find(|ch| !ch.is_whitespace())
+            .is_none_or(|ch| matches!(ch, '(' | ',' | '!' | '=' | '>' | '<' | '&' | '|'))
+    {
+        return true;
     }
-    line_prefix
-        .chars()
-        .rev()
-        .find(|ch| !ch.is_whitespace())
-        .is_none_or(|ch| matches!(ch, '(' | ',' | '!' | '=' | '>' | '<' | '&' | '|'))
+
+    let Some(previous) = previous_non_whitespace_char(line_prefix) else {
+        return false;
+    };
+    HANDLER_EMPTY_VALUE_SLOT_CHARS.contains(&previous)
+        || HANDLER_EMPTY_VALUE_SLOT_KEYWORDS
+            .iter()
+            .any(|keyword| line_prefix_ends_with_keyword(line_prefix, keyword))
 }
 
 fn handler_member_typed_prefix<'a>(
@@ -749,4 +763,19 @@ pub(crate) fn matching_close_brace(source: &str, open: usize) -> Option<usize> {
         }
     }
     None
+}
+
+fn previous_non_whitespace_char(text: &str) -> Option<char> {
+    text.chars().rev().find(|ch| !ch.is_whitespace())
+}
+
+fn line_prefix_ends_with_keyword(line_prefix: &str, keyword: &str) -> bool {
+    let trimmed = line_prefix.trim_end();
+    let Some(before_keyword) = trimmed.strip_suffix(keyword) else {
+        return false;
+    };
+    before_keyword
+        .chars()
+        .next_back()
+        .is_none_or(|ch| !is_identifier_char(ch))
 }
