@@ -111,14 +111,7 @@ impl VisibleTypedValueCollector<'_> {
             if let Some(item_type) = item_type.as_deref() {
                 self.add_iterable_pattern_candidate(&pat_type.pat, item_type.to_string());
             }
-            let Some(type_name) = super::local_value_type_name_from_type(&pat_type.ty) else {
-                continue;
-            };
-            self.add_typed_pattern_candidates_with_wrapped_item(
-                &pat_type.pat,
-                &type_name,
-                item_type.as_deref(),
-            );
+            self.add_typed_pattern_candidates_from_type(&pat_type.pat, &pat_type.ty);
         }
     }
 
@@ -292,14 +285,7 @@ impl VisibleTypedValueCollector<'_> {
             if let Some(item_type) = item_type.as_deref() {
                 self.add_iterable_pattern_candidate(input, item_type.to_string());
             }
-            let Some(type_name) = super::explicit_pattern_type_name(input) else {
-                continue;
-            };
-            self.add_typed_pattern_candidates_with_wrapped_item(
-                input,
-                &type_name,
-                item_type.as_deref(),
-            );
+            self.add_explicit_typed_pattern_candidates(input);
         }
     }
 
@@ -336,6 +322,9 @@ impl VisibleTypedValueCollector<'_> {
             .and_then(|init| self.expression_optional_item_type_name(&init.expr));
         if let Some(item_type) = item_type.as_deref() {
             self.add_iterable_pattern_candidate(&local.pat, item_type.to_string());
+        }
+        if self.add_explicit_typed_pattern_candidates(&local.pat) {
+            return;
         }
         let type_name = super::local_type_name_with_item_scope(
             self.document,
@@ -451,6 +440,27 @@ impl VisibleTypedValueCollector<'_> {
                 type_name,
                 wrapped_item_type_name,
             ));
+    }
+
+    fn add_typed_pattern_candidates_from_type(&mut self, pat: &Pat, ty: &syn::Type) -> bool {
+        let values = patterns::typed_pattern_bindings_from_type(
+            self.document,
+            self.workspace_index,
+            pat,
+            ty,
+        );
+        let added = !values.is_empty();
+        self.values.extend(values);
+        added
+    }
+
+    fn add_explicit_typed_pattern_candidates(&mut self, pat: &Pat) -> bool {
+        match pat {
+            Pat::Type(typed) => self.add_typed_pattern_candidates_from_type(&typed.pat, &typed.ty),
+            Pat::Reference(reference) => self.add_explicit_typed_pattern_candidates(&reference.pat),
+            Pat::Paren(paren) => self.add_explicit_typed_pattern_candidates(&paren.pat),
+            _ => false,
+        }
     }
 
     fn add_context_pattern_candidate(&mut self, pat: &Pat, type_name: String) {

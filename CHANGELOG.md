@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: infer handler member types from typed Rust tuple destructuring in
+  handler arguments and local bindings.
 - lsp: carry handler member types through standard Iterator item-preserving
   adapters and `next`/`nth`/`find` unwrapping.
 - lsp: infer Iterator `map` closure inputs and mapped output member types in

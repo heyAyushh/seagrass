@@ -15,6 +15,7 @@ mod handler_constructor_wrappers;
 mod handler_match_outputs;
 mod handler_return_usage;
 mod handler_scope;
+mod handler_tuple_patterns;
 mod handler_wrapper_outputs;
 mod proactive_assists;
 

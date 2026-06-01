@@ -52,6 +52,48 @@ impl TypedScopeStack {
         );
     }
 
+    pub(super) fn declare_typed_pattern_from_type(
+        &mut self,
+        document: &ParsedDocument,
+        workspace_index: Option<&WorkspaceIndex>,
+        pat: &syn::Pat,
+        ty: &syn::Type,
+    ) {
+        let Some(scope) = self.scopes.last_mut() else {
+            return;
+        };
+        for value in
+            local_types::typed_pattern_bindings_from_type(document, workspace_index, pat, ty)
+        {
+            scope.insert(value.name, value.type_name);
+        }
+    }
+
+    pub(super) fn declare_explicit_typed_pattern(
+        &mut self,
+        document: &ParsedDocument,
+        workspace_index: Option<&WorkspaceIndex>,
+        pat: &syn::Pat,
+    ) {
+        match pat {
+            syn::Pat::Type(typed) => {
+                self.declare_typed_pattern_from_type(
+                    document,
+                    workspace_index,
+                    &typed.pat,
+                    &typed.ty,
+                );
+            }
+            syn::Pat::Reference(reference) => {
+                self.declare_explicit_typed_pattern(document, workspace_index, &reference.pat);
+            }
+            syn::Pat::Paren(paren) => {
+                self.declare_explicit_typed_pattern(document, workspace_index, &paren.pat);
+            }
+            _ => {}
+        }
+    }
+
     pub(super) fn declare_typed_pattern_with_wrapped_item(
         &mut self,
         document: &ParsedDocument,

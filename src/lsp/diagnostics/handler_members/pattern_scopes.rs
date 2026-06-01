@@ -18,15 +18,11 @@ impl HandlerMemberVisitor<'_> {
                 self.scopes
                     .declare_iterable_pat(&pat_type.pat, item_type.to_string());
             }
-            let Some(type_name) = local_types::local_value_type_name_from_type(&pat_type.ty) else {
-                continue;
-            };
-            self.scopes.declare_typed_pattern_with_wrapped_item(
+            self.scopes.declare_typed_pattern_from_type(
                 self.document,
                 self.workspace_index,
                 &pat_type.pat,
-                &type_name,
-                item_type.as_deref(),
+                &pat_type.ty,
             );
         }
     }

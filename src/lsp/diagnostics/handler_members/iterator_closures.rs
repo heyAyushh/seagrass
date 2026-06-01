@@ -46,14 +46,8 @@ impl HandlerMemberVisitor<'_> {
             if let Some(item_type) = local_types::explicit_pattern_iterable_item_type_name(input) {
                 self.scopes.declare_iterable_pat(input, item_type);
             }
-            if let Some(type_name) = local_types::explicit_pattern_type_name(input) {
-                self.scopes.declare_typed_pattern(
-                    self.document,
-                    self.workspace_index,
-                    input,
-                    &type_name,
-                );
-            }
+            self.scopes
+                .declare_explicit_typed_pattern(self.document, self.workspace_index, input);
         }
         self.visit_expr(&closure.body);
         self.scopes.pop();

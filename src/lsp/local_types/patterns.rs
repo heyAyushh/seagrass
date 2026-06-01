@@ -1,7 +1,7 @@
 use {
-    super::{type_names::ValueWrapperKind, TypedLocalValue},
+    super::{iterable_item_type_name_from_type, type_names::ValueWrapperKind, TypedLocalValue},
     crate::{account_members, document::ParsedDocument, workspace::WorkspaceIndex},
-    syn::{Member, Pat},
+    syn::{Member, Pat, Type},
 };
 
 pub(crate) fn typed_pattern_bindings(
@@ -32,11 +32,85 @@ pub(crate) fn typed_pattern_bindings_with_wrapped_item(
     values
 }
 
+pub(crate) fn typed_pattern_bindings_from_type(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    pat: &Pat,
+    ty: &Type,
+) -> Vec<TypedLocalValue> {
+    let mut values = Vec::new();
+    collect_typed_pattern_bindings_from_type(document, workspace_index, pat, ty, &mut values);
+    values
+}
+
 pub(crate) fn wrapper_type_name(pat: &Pat) -> Option<&'static str> {
     let Pat::TupleStruct(tuple) = pat else {
         return None;
     };
     wrapper_pattern_type(tuple).map(ValueWrapperKind::type_name)
+}
+
+fn collect_typed_pattern_bindings_from_type(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    pat: &Pat,
+    ty: &Type,
+    values: &mut Vec<TypedLocalValue>,
+) {
+    match (pat, ty) {
+        (Pat::Tuple(tuple), Type::Tuple(tuple_type)) => {
+            for (pat, ty) in tuple.elems.iter().zip(tuple_type.elems.iter()) {
+                collect_typed_pattern_bindings_from_type(
+                    document,
+                    workspace_index,
+                    pat,
+                    ty,
+                    values,
+                );
+            }
+        }
+        (Pat::Reference(reference), _) => {
+            collect_typed_pattern_bindings_from_type(
+                document,
+                workspace_index,
+                &reference.pat,
+                ty,
+                values,
+            );
+        }
+        (Pat::Paren(paren), _) => {
+            collect_typed_pattern_bindings_from_type(
+                document,
+                workspace_index,
+                &paren.pat,
+                ty,
+                values,
+            );
+        }
+        (Pat::Type(typed), _) => {
+            collect_typed_pattern_bindings_from_type(
+                document,
+                workspace_index,
+                &typed.pat,
+                &typed.ty,
+                values,
+            );
+        }
+        _ => {
+            let Some(type_name) = super::local_value_type_name_from_type(ty) else {
+                return;
+            };
+            let wrapped_item_type_name = iterable_item_type_name_from_type(ty);
+            collect_typed_pattern_bindings(
+                document,
+                workspace_index,
+                pat,
+                &type_name,
+                wrapped_item_type_name.as_deref(),
+                values,
+            );
+        }
+    }
 }
 
 fn collect_typed_pattern_bindings(

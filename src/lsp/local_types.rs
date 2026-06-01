@@ -28,6 +28,7 @@ pub(crate) use {
         expression_iterable_item_type_name_with_item_scope, iterator_method_closure_item_type_name,
     },
     patterns::typed_pattern_bindings,
+    patterns::typed_pattern_bindings_from_type,
     patterns::typed_pattern_bindings_with_wrapped_item,
     type_names::{
         account_data_type_name_from_parts, account_data_type_name_from_text,

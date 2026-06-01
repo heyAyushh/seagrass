@@ -250,6 +250,8 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         ) {
             self.scopes.declare_iterable_pat(&node.pat, item_type);
         }
+        self.scopes
+            .declare_explicit_typed_pattern(self.document, self.workspace_index, &node.pat);
         let wrapped_item_type = node
             .init
             .as_ref()
@@ -720,6 +722,10 @@ mod method_call_tests;
 #[cfg(test)]
 #[path = "handler_members/pattern_tests.rs"]
 mod pattern_tests;
+
+#[cfg(test)]
+#[path = "handler_members/tuple_pattern_tests.rs"]
+mod tuple_pattern_tests;
 
 #[cfg(test)]
 #[path = "handler_members/wrapper_pattern_tests.rs"]
