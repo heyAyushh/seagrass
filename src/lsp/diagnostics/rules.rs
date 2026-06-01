@@ -2,8 +2,8 @@ use {
     super::{
         account_references, account_usage, anchor_syn, artifacts, check_cfg, code_quality,
         constraint_expressions, constraint_shape, context_accounts, ecosystem, handler_members,
-        handler_scope, initialization, instruction_attributes, pda, project_identity, security,
-        spl_semantics,
+        handler_scope, handler_struct_literals, initialization, instruction_attributes, pda,
+        project_identity, security, spl_semantics,
     },
     crate::{diagnostics::engine::DiagnosticInput, solana::frameworks::FrameworkSet},
     tower_lsp::lsp_types::Diagnostic,
@@ -29,7 +29,7 @@ pub fn registry() -> &'static [DiagnosticRule] {
     &RULES
 }
 
-static RULES: [DiagnosticRule; 18] = [
+static RULES: [DiagnosticRule; 19] = [
     DiagnosticRule {
         id: "anchor-syn",
         phase: DiagnosticPhase::Syntax,
@@ -65,6 +65,12 @@ static RULES: [DiagnosticRule; 18] = [
         phase: DiagnosticPhase::AnchorStructure,
         frameworks: FrameworkSet::ANCHOR,
         collector: collect_handler_members,
+    },
+    DiagnosticRule {
+        id: "handler-struct-literals",
+        phase: DiagnosticPhase::AnchorStructure,
+        frameworks: FrameworkSet::ANCHOR,
+        collector: collect_handler_struct_literals,
     },
     DiagnosticRule {
         id: "account-references",
@@ -182,6 +188,10 @@ fn collect_handler_scope(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
 
 fn collect_handler_members(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
     handler_members::collect_with_workspace(input.document, input.workspace_index)
+}
+
+fn collect_handler_struct_literals(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
+    handler_struct_literals::collect_with_workspace(input.document, input.workspace_index)
 }
 
 fn collect_security(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {

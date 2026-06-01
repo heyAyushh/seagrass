@@ -151,9 +151,13 @@ impl AnchorDiagnosticKind {
     }
 
     pub fn docs_url_for_data(self, data: Option<&Value>) -> Option<Url> {
-        data.and_then(diagnostic_constraint_key)
-            .and_then(constraint_catalog::documentation_url_for_key)
+        data.and_then(diagnostic_docs_url)
             .and_then(parse_url)
+            .or_else(|| {
+                data.and_then(diagnostic_constraint_key)
+                    .and_then(constraint_catalog::documentation_url_for_key)
+                    .and_then(parse_url)
+            })
             .or_else(|| self.docs_url())
     }
 
@@ -426,6 +430,10 @@ fn diagnostic_constraint_key(data: &Value) -> Option<&str> {
     .find_map(|key| data.get(key).and_then(Value::as_str))
 }
 
+fn diagnostic_docs_url(data: &Value) -> Option<&str> {
+    data.get("docsUrl").and_then(Value::as_str)
+}
+
 fn parse_url(url: &str) -> Option<Url> {
     Url::parse(url).ok()
 }
@@ -461,5 +469,20 @@ mod tests {
 
             assert_eq!(actual_url.as_deref(), Some(expected_url));
         }
+    }
+
+    #[test]
+    fn docs_url_can_use_rule_specific_reference_from_data() {
+        let data = serde_json::json!({
+            "docsUrl": "https://doc.rust-lang.org/reference/expressions/struct-expr.html"
+        });
+        let actual_url = AnchorDiagnosticKind::AnchorMissingAccountReference
+            .docs_url_for_data(Some(&data))
+            .map(|url| url.to_string());
+
+        assert_eq!(
+            actual_url.as_deref(),
+            Some("https://doc.rust-lang.org/reference/expressions/struct-expr.html")
+        );
     }
 }

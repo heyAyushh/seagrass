@@ -5,6 +5,7 @@ mod account_paths;
 mod constraint_values;
 mod cursor_context;
 mod handler_members;
+mod handler_struct_fields;
 mod handler_values;
 mod instruction_attributes;
 #[cfg(test)]
@@ -76,6 +77,9 @@ pub fn completions_with_workspace(
         ),
         CursorContextKind::HandlerMember { .. } => {
             handler_members::completions(document, position, workspace_index)
+        }
+        CursorContextKind::HandlerStructField { context } => {
+            handler_struct_fields::completions(document, position, workspace_index, context)
         }
         CursorContextKind::NotAnchor => None,
     }?;

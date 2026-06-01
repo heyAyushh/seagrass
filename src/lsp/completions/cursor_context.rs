@@ -17,6 +17,7 @@ pub enum CompletionSignatureKind {
     AccountsField,
     HandlerValue,
     HandlerMember,
+    HandlerStructField,
 }
 
 impl CompletionSignatureKind {
@@ -30,6 +31,7 @@ impl CompletionSignatureKind {
             Self::AccountsField => "accountsField",
             Self::HandlerValue => "handlerValue",
             Self::HandlerMember => "handlerMember",
+            Self::HandlerStructField => "handlerStructField",
         }
     }
 }
@@ -100,6 +102,9 @@ pub(crate) enum CursorContextKind {
     },
     HandlerMember {
         prefix: String,
+    },
+    HandlerStructField {
+        context: super::handler_struct_fields::StructLiteralFieldContext,
     },
     NotAnchor,
 }
@@ -254,6 +259,14 @@ impl CursorContext {
             };
         }
 
+        if has_enclosing_anchor_context(source, offset)
+            && !has_enclosing_function_signature(source, offset)
+        {
+            if let Some(context) = super::handler_struct_fields::context_at(source, offset) {
+                return CursorContextKind::HandlerStructField { context };
+            }
+        }
+
         if let Some(prefix) = handler_value_typed_prefix(source, offset, line_prefix) {
             return CursorContextKind::HandlerValue {
                 prefix: prefix.to_string(),
@@ -305,6 +318,10 @@ impl CursorContext {
                 kind: CursorContextKind::HandlerMember { prefix },
                 ..
             } => (CompletionSignatureKind::HandlerMember, prefix),
+            Self {
+                kind: CursorContextKind::HandlerStructField { context },
+                ..
+            } => (CompletionSignatureKind::HandlerStructField, &context.prefix),
             Self {
                 kind: CursorContextKind::NotAnchor,
                 ..

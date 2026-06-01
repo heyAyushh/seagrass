@@ -35,6 +35,7 @@ impl<'a> RankingContext<'a> {
             | CursorContextKind::HandlerValue { prefix }
             | CursorContextKind::HandlerMember { prefix } => Some(prefix.as_str()),
             CursorContextKind::AccountConstraintKey { context } => Some(context.prefix.as_str()),
+            CursorContextKind::HandlerStructField { context } => Some(context.prefix.as_str()),
             CursorContextKind::NotAnchor => None,
         }
         .filter(|prefix| !prefix.is_empty())

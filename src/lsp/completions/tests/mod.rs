@@ -15,6 +15,7 @@ mod handler_member_tests;
 mod handler_method_return_tests;
 mod handler_method_tests;
 mod handler_pattern_tests;
+mod handler_struct_literal_tests;
 mod handler_transparent_tests;
 mod handler_tuple_pattern_tests;
 mod handler_value_tests;

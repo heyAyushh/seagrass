@@ -12,6 +12,7 @@ mod ecosystem;
 mod engine;
 mod handler_members;
 mod handler_scope;
+mod handler_struct_literals;
 mod initialization;
 mod instruction_attributes;
 pub(crate) mod lint;
