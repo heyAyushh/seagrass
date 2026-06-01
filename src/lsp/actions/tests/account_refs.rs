@@ -556,3 +556,56 @@ fn verify_bundle(bundle_index: u16) -> Result<()> {
         Some("replace-handler-identifier")
     );
 }
+
+#[test]
+fn offers_unresolved_const_like_handler_identifier_replacement_from_scope() {
+    let source = r#"
+#[program]
+pub mod demo {
+    const EXPECTED_LIMIT: u16 = 16;
+
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let _selected = bundle_index < EXPECTED_LIMTI;
+        Ok(())
+    }
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = crate::diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic_code(diagnostic) == Some("anchor-account-usage")
+                && diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("identifier"))
+                    .and_then(|value| value.as_str())
+                    == Some("EXPECTED_LIMTI")
+        })
+        .unwrap_or_else(|| {
+            panic!("missing unresolved const-like handler identifier: {diagnostics:#?}")
+        });
+    let actions = code_actions(
+        &document,
+        Url::parse("file:///tmp/lib.rs").unwrap(),
+        diagnostic.range,
+        std::slice::from_ref(diagnostic),
+    );
+
+    let action = actions
+        .iter()
+        .find(|action| action.title == "Replace `EXPECTED_LIMTI` with `EXPECTED_LIMIT`")
+        .unwrap_or_else(|| {
+            panic!("missing const-like handler identifier replacement action: {actions:#?}")
+        });
+
+    assert_eq!(
+        action
+            .data
+            .as_ref()
+            .and_then(|data| data.get("anchorAction"))
+            .and_then(|value| value.as_str()),
+        Some("replace-handler-identifier")
+    );
+}

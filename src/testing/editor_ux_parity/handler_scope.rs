@@ -54,6 +54,42 @@ pub struct Close<'info> {
 }
 
 #[test]
+fn editor_ux_flags_unresolved_const_like_handler_identifier() {
+    let document = ParsedDocument::parse_or_empty(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+    let _selected = FAKE_BUMP;
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub authority: Signer<'info>,
+}
+"#,
+    );
+
+    let diagnostics = diagnostics::collect(&document);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("`FAKE_BUMP` does not resolve"))
+        .unwrap_or_else(|| {
+            panic!("missing unresolved const-like handler diagnostic: {diagnostics:#?}")
+        });
+
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|value| value.as_str()),
+        Some("unresolved-handler-identifier")
+    );
+}
+
+#[test]
 fn editor_ux_resolves_if_let_pattern_values_in_anchor_handlers() {
     let source = r#"
 use anchor_lang::prelude::*;

@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: flag unresolved const-like handler identifiers such as
+  `EXPECTED_LIMIT` typos using the shared handler scope model.
 - lsp: complete and diagnose Rust struct literal and pattern fields in Anchor
   handlers from resolved struct members, with typo quick fixes.
 - lsp: offer handler value completions in empty Rust expression slots such as

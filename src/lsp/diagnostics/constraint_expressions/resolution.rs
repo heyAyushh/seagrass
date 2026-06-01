@@ -1,5 +1,8 @@
 use {
-    crate::{document::ParsedDocument, evidence::AccountSetEvidence, workspace::WorkspaceIndex},
+    crate::{
+        document::ParsedDocument, evidence::AccountSetEvidence,
+        lsp::scope::is_const_like_identifier, workspace::WorkspaceIndex,
+    },
     std::collections::BTreeSet,
     syn::ExprPath,
     tower_lsp::lsp_types::SymbolKind,
@@ -205,12 +208,4 @@ fn document_has_imported_name(document: &ParsedDocument, name: &str) -> bool {
         .imported_names
         .iter()
         .any(|import| import.name == name)
-}
-
-fn is_const_like_identifier(identifier: &str) -> bool {
-    identifier.contains('_')
-        && identifier.chars().any(|ch| ch.is_ascii_alphabetic())
-        && identifier
-            .chars()
-            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
 }

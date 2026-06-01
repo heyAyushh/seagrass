@@ -329,6 +329,7 @@ impl ScopeStack {
 }
 
 fn global_values(document: &ParsedDocument) -> HashSet<String> {
+    use crate::lsp::scope::program_module_value_names;
     let mut values = document
         .symbols()
         .value_items
@@ -337,6 +338,7 @@ fn global_values(document: &ParsedDocument) -> HashSet<String> {
         .chain(document.symbols().imported_names.iter())
         .map(|item| item.name.clone())
         .collect::<HashSet<_>>();
+    values.extend(program_module_value_names(&document.syntax().items));
     if document.symbols().declared_program_id.is_some() {
         values.insert("ID".to_string());
     }
@@ -461,10 +463,8 @@ fn bare_value_identifier(path: &ExprPath) -> Option<String> {
 }
 
 fn identifier_should_be_resolved(identifier: &str) -> bool {
-    identifier
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_lowercase())
+    matches!(identifier.as_bytes().first(), Some(b'a'..=b'z'))
+        || crate::lsp::scope::is_const_like_identifier(identifier)
 }
 
 fn is_identifier_char(ch: char) -> bool {

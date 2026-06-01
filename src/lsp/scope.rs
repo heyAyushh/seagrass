@@ -65,6 +65,27 @@ pub(crate) fn pattern_binding_name(pat: &Pat) -> Option<String> {
     }
 }
 
+pub(crate) fn is_const_like_identifier(identifier: &str) -> bool {
+    identifier.chars().count() > 1
+        && identifier.chars().any(|ch| ch.is_ascii_alphabetic())
+        && identifier
+            .chars()
+            .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
+}
+
+pub(crate) fn program_module_value_names(items: &[syn::Item]) -> Vec<String> {
+    items
+        .iter()
+        .filter_map(|item| match item {
+            syn::Item::Mod(item_mod) if has_attr(&item_mod.attrs, "program") => {
+                item_mod.content.as_ref().map(|(_, items)| items)
+            }
+            _ => None,
+        })
+        .flat_map(|items| items.iter().flat_map(item_value_names))
+        .collect()
+}
+
 pub(crate) fn item_fn_has_anchor_context_arg(item_fn: &syn::ItemFn) -> bool {
     item_fn.sig.inputs.iter().any(|input| match input {
         syn::FnArg::Typed(pat_type) => type_has_anchor_context_arg(pat_type.ty.as_ref()),
@@ -142,6 +163,37 @@ pub(crate) fn type_has_anchor_context_arg(ty: &Type) -> bool {
 
 pub(crate) fn has_attr(attrs: &[syn::Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident(name))
+}
+
+fn item_value_names(item: &syn::Item) -> Vec<String> {
+    match item {
+        syn::Item::Const(item_const) => vec![item_const.ident.to_string()],
+        syn::Item::Fn(item_fn) => vec![item_fn.sig.ident.to_string()],
+        syn::Item::Static(item_static) => vec![item_static.ident.to_string()],
+        syn::Item::Use(item_use) => {
+            let mut names = Vec::new();
+            collect_use_tree_names(&item_use.tree, &mut names);
+            names
+        }
+        _ => Vec::new(),
+    }
+}
+
+fn collect_use_tree_names(tree: &syn::UseTree, names: &mut Vec<String>) {
+    match tree {
+        syn::UseTree::Name(name) => names.push(name.ident.to_string()),
+        syn::UseTree::Rename(rename) => names.push(rename.rename.to_string()),
+        syn::UseTree::Path(path) => {
+            names.push(path.ident.to_string());
+            collect_use_tree_names(&path.tree, names);
+        }
+        syn::UseTree::Group(group) => {
+            for tree in &group.items {
+                collect_use_tree_names(tree, names);
+            }
+        }
+        syn::UseTree::Glob(_) => {}
+    }
 }
 
 fn completed_body_lines(body_prefix: &str) -> &str {
