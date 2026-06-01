@@ -785,6 +785,10 @@ mod expression_value_tests;
 mod expression_value_generated_tests;
 
 #[cfg(test)]
+#[path = "constraint_expressions/associated_path_tests.rs"]
+mod associated_path_tests;
+
+#[cfg(test)]
 #[path = "constraint_expressions/method_tests.rs"]
 mod method_tests;
 

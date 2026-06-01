@@ -5,6 +5,9 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: reduce false positives for trait-style handler method calls, qualified
+  struct literals and patterns, and bogus module-qualified associated values in
+  Anchor constraint expressions.
 - lsp: wake account constraint value completions after `seeds = [` and include
   same-file Rust values plus const-like imports in constraint expression
   completions.
