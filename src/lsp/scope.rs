@@ -114,6 +114,15 @@ pub(crate) fn program_module_value_names_from_document(
     names
 }
 
+pub(crate) fn text_file_value_names(source: &str) -> Vec<String> {
+    let mut names = text_block_item_value_names(source);
+    names.extend(text_imported_value_names(source));
+    names.extend(text_program_module_value_names(source));
+    names.sort();
+    names.dedup();
+    names
+}
+
 pub(crate) fn block_item_value_names(block: &syn::Block) -> Vec<String> {
     block
         .stmts
@@ -247,6 +256,33 @@ fn collect_use_tree_names(tree: &syn::UseTree, names: &mut Vec<String>) {
         }
         syn::UseTree::Glob(_) => {}
     }
+}
+
+fn text_imported_value_names(source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut depth = 0usize;
+    for line in source.lines() {
+        if depth == 0 {
+            collect_line_imported_value_names(line, &mut names);
+        }
+        depth = line.chars().fold(depth, |depth, ch| match ch {
+            '{' => depth + 1,
+            '}' => depth.saturating_sub(1),
+            _ => depth,
+        });
+    }
+    names
+}
+
+fn collect_line_imported_value_names(line: &str, names: &mut Vec<String>) {
+    let trimmed = line.trim();
+    if !trimmed.starts_with("use ") {
+        return;
+    }
+    let Ok(item) = syn::parse_str::<syn::ItemUse>(trimmed) else {
+        return;
+    };
+    collect_use_tree_names(&item.tree, names);
 }
 
 fn text_program_module_value_names(source: &str) -> Vec<String> {

@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: keep imported helpers, file constants/statics, and program handlers
+  resolved during broken-buffer handler-scope diagnostic recovery.
 - lsp: reduce false positives for trait-style handler method calls, qualified
   struct literals and patterns, and bogus module-qualified associated values in
   Anchor constraint expressions.
