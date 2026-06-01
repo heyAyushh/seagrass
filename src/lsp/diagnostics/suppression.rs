@@ -11,6 +11,7 @@ use {
 const LINE_ALLOW_MARKER: &str = "seagrass-allow:";
 const FILE_ALLOW_MARKER: &str = "seagrass-allow-file:";
 const LINE_IGNORE_MARKER: &str = "seagrass-ignore";
+const LINE_COMMENT_DELIMITER: &str = "//";
 const ANY_SUPPRESSION_PATTERN: &str = "*";
 const NEXT_LINE_OFFSET: u32 = 1;
 const CODE_RULE_SEPARATOR: &str = ".";
@@ -204,17 +205,37 @@ fn normalized_config_pattern(pattern: String) -> Option<String> {
 }
 
 fn line_comment<'a>(source: &str, line: &'a str, line_number: u32) -> Option<&'a str> {
-    line.match_indices("//").find_map(|(offset, _)| {
-        let character = u32::try_from(line[..offset].chars().count()).ok()?;
-        (!range::is_in_comment_or_string(
-            source,
-            tower_lsp::lsp_types::Position {
-                line: line_number,
-                character,
-            },
-        ))
-        .then_some(&line[offset + "//".len()..])
-    })
+    line_comment_delimiter_offsets(line)
+        .into_iter()
+        .find_map(|offset| {
+            let character = u32::try_from(line[..offset].chars().count()).ok()?;
+            (!range::is_in_comment_or_string(
+                source,
+                tower_lsp::lsp_types::Position {
+                    line: line_number,
+                    character,
+                },
+            ))
+            .then_some(&line[offset + LINE_COMMENT_DELIMITER.len()..])
+        })
+}
+
+fn line_comment_delimiter_offsets(line: &str) -> Vec<usize> {
+    let mut offsets = Vec::new();
+    let mut previous_slash_offset = None;
+
+    for (offset, ch) in line.char_indices() {
+        if ch == '/' {
+            if let Some(start) = previous_slash_offset {
+                offsets.push(start);
+            }
+            previous_slash_offset = Some(offset);
+        } else {
+            previous_slash_offset = None;
+        }
+    }
+
+    offsets
 }
 
 fn comment_patterns(comment: &str, marker: &str) -> Option<Vec<String>> {
