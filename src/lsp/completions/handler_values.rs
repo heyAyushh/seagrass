@@ -5,7 +5,7 @@ use {
         lsp::scope::{
             block_item_value_names, collect_condition_pattern_bindings, collect_pattern_bindings,
             program_module_value_names_from_document, text_block_item_value_names,
-            TextHandlerBinding, TextHandlerScope,
+            text_enclosing_function_body, TextHandlerBinding, TextHandlerScope,
         },
         workspace::{WorkspaceContextField, WorkspaceIndex},
     },
@@ -503,18 +503,6 @@ fn text_enclosing_block_item_candidates(source: &str, position: Position) -> Vec
             rank: LOCAL_VALUE_RANK,
         })
         .collect()
-}
-
-fn text_enclosing_function_body(source: &str, position: Position) -> Option<&str> {
-    let offset = crate::range::byte_offset_at(source, position)?;
-    let before_cursor = source.get(..offset.min(source.len()))?;
-    let function_start = cursor_context::last_function_keyword_before(before_cursor)?;
-    let open = function_start + source.get(function_start..)?.find('{')?;
-    if open > offset {
-        return None;
-    }
-    let close = cursor_context::matching_close_brace(source, open).unwrap_or(source.len());
-    source.get(open + '{'.len_utf8()..close)
 }
 
 fn text_value_candidate(binding: &TextHandlerBinding) -> ValueCandidate {

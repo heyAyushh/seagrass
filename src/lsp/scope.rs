@@ -187,6 +187,18 @@ impl TextHandlerScope {
     }
 }
 
+pub(crate) fn text_enclosing_function_body(source: &str, position: Position) -> Option<&str> {
+    let offset = byte_offset_at(source, position)?;
+    let before_cursor = source.get(..offset.min(source.len()))?;
+    let function_start = last_function_keyword_before(before_cursor)?;
+    let open = function_start + source.get(function_start..)?.find('{')?;
+    if open > offset {
+        return None;
+    }
+    let close = matching_close_delimiter(source, open, '{', '}').unwrap_or(source.len());
+    source.get(open + '{'.len_utf8()..close)
+}
+
 pub(crate) fn type_has_anchor_context_arg(ty: &Type) -> bool {
     let ty = match ty {
         Type::Reference(reference) => reference.elem.as_ref(),
@@ -269,12 +281,19 @@ fn text_program_module_bodies(source: &str) -> Vec<&str> {
 }
 
 pub(crate) fn text_block_item_value_names(body: &str) -> Vec<String> {
+    text_block_item_value_bindings(body)
+        .into_iter()
+        .map(|binding| binding.name)
+        .collect()
+}
+
+pub(crate) fn text_block_item_value_bindings(body: &str) -> Vec<TextHandlerBinding> {
     let mut names = Vec::new();
     let mut depth = 0usize;
     for line in body.lines() {
         if depth == 0 {
-            if let Some(name) = text_value_declaration_name(line) {
-                names.push(name);
+            if let Some(binding) = text_value_declaration_binding(line) {
+                names.push(binding);
             }
         }
         depth = line.chars().fold(depth, |depth, ch| match ch {
@@ -287,27 +306,40 @@ pub(crate) fn text_block_item_value_names(body: &str) -> Vec<String> {
 }
 
 fn text_block_item_bindings(body_prefix: &str) -> Vec<TextHandlerBinding> {
-    text_block_item_value_names(body_prefix)
-        .into_iter()
-        .map(|name| TextHandlerBinding {
-            name,
-            type_display: None,
-            initializer_text: None,
-        })
-        .collect()
+    text_block_item_value_bindings(body_prefix)
 }
 
-fn text_value_declaration_name(line: &str) -> Option<String> {
+fn text_value_declaration_binding(line: &str) -> Option<TextHandlerBinding> {
     let trimmed = line.trim();
-    let declaration = VALUE_DECLARATION_PREFIXES
-        .iter()
-        .find_map(|prefix| trimmed.strip_prefix(prefix))?;
+    let (prefix, declaration) = VALUE_DECLARATION_PREFIXES.iter().find_map(|prefix| {
+        trimmed
+            .strip_prefix(prefix)
+            .map(|declaration| (*prefix, declaration))
+    })?;
     let name_end = declaration
         .char_indices()
         .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx))
         .unwrap_or(declaration.len());
     let name = declaration.get(..name_end)?;
-    is_identifier(name).then(|| name.to_string())
+    is_identifier(name).then(|| TextHandlerBinding {
+        name: name.to_string(),
+        type_display: text_value_declaration_type(prefix, &declaration[name_end..]),
+        initializer_text: None,
+    })
+}
+
+fn text_value_declaration_type(prefix: &str, declaration_after_name: &str) -> Option<String> {
+    if !prefix.contains("const") && !prefix.contains("static") {
+        return None;
+    }
+    let typed = declaration_after_name.trim_start().strip_prefix(':')?;
+    let ty = typed
+        .split_once('=')
+        .map_or(typed, |(ty, _)| ty)
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+    (!ty.is_empty()).then(|| ty.to_string())
 }
 
 fn completed_body_lines(body_prefix: &str) -> &str {

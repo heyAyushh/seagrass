@@ -613,6 +613,42 @@ pub struct PositionBundle {
 }
 
 #[test]
+fn editor_ux_resolves_block_item_const_members() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    LOCAL_BUNDLE.position_bundle_m/*caret:completion*/;
+    LOCAL_BUNDLE.fake_member;
+
+    const LOCAL_BUNDLE: PositionBundle = PositionBundle {
+        position_bundle_mint: Pubkey::default(),
+        position_bitmap: [0; 32],
+    };
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#;
+    let marked = super::strip_markers(source);
+    let document = ParsedDocument::parse_or_empty(&marked.source);
+    let items = completions::completions(&document, marked.positions["completion"])
+        .expect("block item const member completions");
+
+    assert_eq!(items[0].label, "position_bundle_mint");
+
+    let diagnostics = diagnostics::collect(&document);
+    assert!(
+        diagnostics
+            .iter()
+            .any(|diagnostic| diagnostic.message.contains("fake_member")),
+        "unknown block item const member should be flagged: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn editor_ux_flags_unknown_member_on_typed_handler_alias() {
     let document = ParsedDocument::parse_or_empty(
         r#"

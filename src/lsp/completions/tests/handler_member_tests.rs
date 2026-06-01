@@ -129,6 +129,36 @@ pub struct InnerBundle {
 }
 
 #[test]
+fn completes_block_item_const_members_declared_after_cursor() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    LOCAL_BUNDLE.position_bundle_m
+
+    const LOCAL_BUNDLE: PositionBundle = PositionBundle {
+        position_bundle_mint: Pubkey::default(),
+        position_bitmap: [0; 32],
+    };
+}
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(
+        &document,
+        position_after(source, "LOCAL_BUNDLE.position_bundle_m"),
+    )
+    .expect("block item const member completions");
+
+    assert_eq!(items[0].label, "position_bundle_mint");
+}
+
+#[test]
 fn completes_typed_handler_member_after_context_account_alias() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -539,6 +569,43 @@ pub struct {owner} {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "expected generated field completion, got {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_block_item_members_declared_after_cursor(
+        declaration in prop_oneof![Just("const"), Just("static")],
+        local in "[A-Z][A-Z0-9_]{1,10}",
+        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        field in rust_identifier(),
+    ) {
+        let prefix = field.chars().next().unwrap_or_default().to_string();
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {{
+    {local}.{prefix}
+
+    {declaration} {local}: {owner} = {owner} {{
+        {field}: Pubkey::default(),
+    }};
+}}
+
+pub struct {owner} {{
+    pub {field}: Pubkey,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let completion_line = format!("{local}.{prefix}");
+
+        let items = completions(&document, position_after(&source, &completion_line))
+            .expect("generated block item member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "expected generated block item field completion, got {items:#?}"
         );
     }
 
