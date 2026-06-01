@@ -9,6 +9,8 @@ keep future entries aligned with release-plz output.
   handlers from resolved struct members, with typo quick fixes.
 - lsp: offer handler value completions in empty Rust expression slots such as
   assignment RHS, call arguments, and `return` values.
+- lsp: diagnose account-data fields called as methods and mistyped
+  `AccountLoader` load methods inside Anchor constraint expressions.
 - lsp: resolve handler identifiers and account-data members inside common Rust
   and Anchor assertion macros such as `assert!` and `require!`.
 - lsp: keep raw-account security evidence limited to runtime assertions so

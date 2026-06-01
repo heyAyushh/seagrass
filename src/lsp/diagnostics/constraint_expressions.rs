@@ -117,6 +117,19 @@ enum ConstraintExpressionIssue {
         owner_type: String,
         candidates: Vec<String>,
     },
+    FieldCalledAsMethod {
+        constraint_key: String,
+        receiver: String,
+        field: String,
+        owner_type: String,
+    },
+    UnknownMethod {
+        constraint_key: String,
+        receiver: String,
+        method: String,
+        owner_type: String,
+        candidates: Vec<String>,
+    },
     UnexpectedType {
         constraint_key: String,
         expression: String,
@@ -173,6 +186,50 @@ impl ConstraintExpressionIssue {
                     "ownerType": owner_type,
                     "candidates": candidates,
                     "quickfix": REPLACE_CONSTRAINT_EXPRESSION_MEMBER_QUICKFIX,
+                })),
+            ),
+            Self::FieldCalledAsMethod {
+                constraint_key,
+                receiver,
+                field,
+                owner_type,
+            } => diagnostic_from_range(
+                expression_token_range(document, constraint, field)
+                    .unwrap_or_else(|| value_range(document, constraint, constraint_key, field)),
+                AnchorDiagnosticKind::AnchorConstraintExpression,
+                format!(
+                    "`{receiver}.{field}()` calls `{field}` as a method, but `{owner_type}` exposes `{field}` as a field; use `{receiver}.{field}`."
+                ),
+                Some(serde_json::json!({
+                    "constraint": constraint_key,
+                    "reason": "constraint-field-called-as-method",
+                    "receiver": receiver,
+                    "field": field,
+                    "accountsStruct": accounts.accounts.name,
+                    "ownerType": owner_type,
+                })),
+            ),
+            Self::UnknownMethod {
+                constraint_key,
+                receiver,
+                method,
+                owner_type,
+                candidates,
+            } => diagnostic_from_range(
+                expression_token_range(document, constraint, method)
+                    .unwrap_or_else(|| value_range(document, constraint, constraint_key, method)),
+                AnchorDiagnosticKind::AnchorConstraintExpression,
+                format!(
+                    "`{receiver}.{method}()` does not resolve; `{owner_type}` has no method `{method}`."
+                ),
+                Some(serde_json::json!({
+                    "constraint": constraint_key,
+                    "reason": "unknown-constraint-method",
+                    "receiver": receiver,
+                    "method": method,
+                    "accountsStruct": accounts.accounts.name,
+                    "ownerType": owner_type,
+                    "candidates": candidates,
                 })),
             ),
             Self::UnexpectedType {
@@ -300,6 +357,13 @@ impl<'ast> Visit<'ast> for ConstraintExpressionVisitor<'_, '_> {
         }
         visit::visit_expr_field(self, field);
     }
+
+    fn visit_expr_method_call(&mut self, call: &'ast ExprMethodCall) {
+        if let Some(access) = method_call_access(call) {
+            self.validate_method(&access);
+        }
+        visit::visit_expr_method_call(self, call);
+    }
 }
 
 impl ConstraintExpressionVisitor<'_, '_> {
@@ -361,6 +425,58 @@ impl ConstraintExpressionVisitor<'_, '_> {
         }
     }
 
+    fn validate_method(&mut self, access: &MethodAccess) {
+        let Some(field) = self
+            .accounts
+            .accounts
+            .fields
+            .iter()
+            .find(|field| field.name == access.receiver)
+        else {
+            return;
+        };
+        let Some(members) = account_members::resolved_field_chain_members(
+            self.document,
+            self.workspace_index,
+            self.accounts.accounts,
+            field,
+            access.access,
+            &access.member_chain,
+        ) else {
+            return;
+        };
+        let method_candidates = method_candidates(&members);
+        if method_candidates
+            .iter()
+            .any(|method| method == &access.method)
+        {
+            return;
+        }
+        if members
+            .members
+            .iter()
+            .any(|member| member.name == access.method)
+        {
+            self.issues
+                .push(ConstraintExpressionIssue::FieldCalledAsMethod {
+                    constraint_key: self.constraint_key.clone(),
+                    receiver: access.receiver_path.clone(),
+                    field: access.method.clone(),
+                    owner_type: members.owner_type,
+                });
+            return;
+        }
+        if !method_candidates.is_empty() {
+            self.issues.push(ConstraintExpressionIssue::UnknownMethod {
+                constraint_key: self.constraint_key.clone(),
+                receiver: access.receiver_path.clone(),
+                method: access.method.clone(),
+                owner_type: members.owner_type,
+                candidates: method_candidates,
+            });
+        }
+    }
+
     fn has_issue_for_identifier(&self, identifier: &str) -> bool {
         self.issues.iter().any(|issue| match issue {
             ConstraintExpressionIssue::UnresolvedIdentifier {
@@ -369,6 +485,8 @@ impl ConstraintExpressionVisitor<'_, '_> {
                 candidates: _,
             } => existing == identifier,
             ConstraintExpressionIssue::UnknownMember { .. }
+            | ConstraintExpressionIssue::FieldCalledAsMethod { .. }
+            | ConstraintExpressionIssue::UnknownMethod { .. }
             | ConstraintExpressionIssue::UnexpectedType { .. } => false,
         })
     }
@@ -383,6 +501,8 @@ impl ConstraintExpressionVisitor<'_, '_> {
                 candidates: _,
             } => existing_receiver == receiver && existing_member == member,
             ConstraintExpressionIssue::UnresolvedIdentifier { .. }
+            | ConstraintExpressionIssue::FieldCalledAsMethod { .. }
+            | ConstraintExpressionIssue::UnknownMethod { .. }
             | ConstraintExpressionIssue::UnexpectedType { .. } => false,
         })
     }
@@ -393,6 +513,8 @@ impl ConstraintExpressionVisitor<'_, '_> {
                 issue,
                 ConstraintExpressionIssue::UnresolvedIdentifier { .. }
                     | ConstraintExpressionIssue::UnknownMember { .. }
+                    | ConstraintExpressionIssue::FieldCalledAsMethod { .. }
+                    | ConstraintExpressionIssue::UnknownMethod { .. }
             )
         })
     }
@@ -404,6 +526,14 @@ struct MemberAccess {
     access: AccountMemberAccess,
 }
 
+struct MethodAccess {
+    receiver: String,
+    receiver_path: String,
+    member_chain: Vec<String>,
+    access: AccountMemberAccess,
+    method: String,
+}
+
 fn named_field_access(field: &ExprField) -> Option<MemberAccess> {
     let Member::Named(member) = &field.member else {
         return None;
@@ -413,6 +543,21 @@ fn named_field_access(field: &ExprField) -> Option<MemberAccess> {
         return Some(access);
     }
     None
+}
+
+fn method_call_access(call: &ExprMethodCall) -> Option<MethodAccess> {
+    let access = field_access_base(call.receiver.as_ref())?;
+    let receiver_path = std::iter::once(access.receiver.as_str())
+        .chain(access.member_chain.iter().map(String::as_str))
+        .collect::<Vec<_>>()
+        .join(".");
+    Some(MethodAccess {
+        receiver: access.receiver,
+        receiver_path,
+        member_chain: access.member_chain,
+        access: access.access,
+        method: call.method.to_string(),
+    })
 }
 
 fn field_access_base(expr: &Expr) -> Option<MemberAccess> {
@@ -440,6 +585,23 @@ fn nested_field_access_base(expr: &Expr) -> Option<MemberAccess> {
         Expr::Reference(reference) => field_access_base(&reference.expr),
         _ => None,
     }
+}
+
+fn method_candidates(members: &account_members::ResolvedAccountMembers) -> Vec<String> {
+    members
+        .members
+        .iter()
+        .filter(|member| member.completion_kind == tower_lsp::lsp_types::CompletionItemKind::METHOD)
+        .filter_map(|member| method_name_from_completion(&member.name))
+        .collect()
+}
+
+fn method_name_from_completion(label: &str) -> Option<String> {
+    label
+        .split_once('(')
+        .map(|(name, _)| name)
+        .filter(|name| !name.is_empty())
+        .map(str::to_string)
 }
 
 fn direct_field_receiver(expr: &Expr) -> Option<String> {
@@ -583,6 +745,10 @@ mod expression_value_tests;
 #[cfg(test)]
 #[path = "constraint_expressions/expression_value_generated_tests.rs"]
 mod expression_value_generated_tests;
+
+#[cfg(test)]
+#[path = "constraint_expressions/method_tests.rs"]
+mod method_tests;
 
 #[cfg(test)]
 #[path = "constraint_expressions/tests.rs"]
