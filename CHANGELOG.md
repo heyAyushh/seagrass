@@ -5,6 +5,7 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: resolve and complete Rust block item values inside Anchor handlers.
 - lsp: complete handler expression values declared inside Anchor
   `#[program]` modules.
 - lsp: flag unresolved const-like handler identifiers such as

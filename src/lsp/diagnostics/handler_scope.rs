@@ -35,7 +35,7 @@ pub(super) fn parse_error_unresolved_identifier_diagnostic(
         return None;
     }
     let identifier = parse_error_identifier(source, range)?;
-    if !identifier_should_be_resolved(&identifier)
+    if !crate::lsp::scope::handler_identifier_should_be_resolved(&identifier)
         || !parse_error_identifier_is_value(source, range)
     {
         return None;
@@ -111,7 +111,9 @@ impl HandlerScopeVisitor {
         let Some(identifier) = bare_value_identifier(path) else {
             return;
         };
-        if identifier_should_be_resolved(&identifier) && !self.identifier_resolves(&identifier) {
+        if crate::lsp::scope::handler_identifier_should_be_resolved(&identifier)
+            && !self.identifier_resolves(&identifier)
+        {
             self.report_unresolved_identifier(
                 &identifier,
                 range_from_span(path.path.segments[0].ident.span()),
@@ -181,6 +183,9 @@ impl<'ast> Visit<'ast> for HandlerScopeVisitor {
 
     fn visit_block(&mut self, node: &'ast syn::Block) {
         self.scopes.push();
+        for name in crate::lsp::scope::block_item_value_names(node) {
+            self.scopes.declare(&name);
+        }
         visit::visit_block(self, node);
         self.scopes.pop();
     }
@@ -460,11 +465,6 @@ fn bare_value_identifier(path: &ExprPath) -> Option<String> {
         return None;
     }
     Some(segment.ident.to_string())
-}
-
-fn identifier_should_be_resolved(identifier: &str) -> bool {
-    matches!(identifier.as_bytes().first(), Some(b'a'..=b'z'))
-        || crate::lsp::scope::is_const_like_identifier(identifier)
 }
 
 fn is_identifier_char(ch: char) -> bool {

@@ -85,6 +85,11 @@ pub(crate) fn is_const_like_identifier(identifier: &str) -> bool {
             .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
 }
 
+pub(crate) fn handler_identifier_should_be_resolved(identifier: &str) -> bool {
+    matches!(identifier.as_bytes().first(), Some(b'a'..=b'z'))
+        || is_const_like_identifier(identifier)
+}
+
 pub(crate) fn program_module_value_names(items: &[syn::Item]) -> Vec<String> {
     items
         .iter()
@@ -107,6 +112,18 @@ pub(crate) fn program_module_value_names_from_document(
     names.sort();
     names.dedup();
     names
+}
+
+pub(crate) fn block_item_value_names(block: &syn::Block) -> Vec<String> {
+    block
+        .stmts
+        .iter()
+        .filter_map(|stmt| match stmt {
+            syn::Stmt::Item(item) => Some(item_value_names(item)),
+            _ => None,
+        })
+        .flatten()
+        .collect()
 }
 
 pub(crate) fn item_fn_has_anchor_context_arg(item_fn: &syn::ItemFn) -> bool {
@@ -151,6 +168,7 @@ impl TextHandlerScope {
         bindings.extend(text_active_pattern_bindings(completed_body_lines(
             body_prefix,
         )));
+        bindings.extend(text_block_item_bindings(completed_body_lines(body_prefix)));
         bindings.extend(text_local_binding_bindings(completed_body_lines(
             body_prefix,
         )));
@@ -222,7 +240,7 @@ fn collect_use_tree_names(tree: &syn::UseTree, names: &mut Vec<String>) {
 fn text_program_module_value_names(source: &str) -> Vec<String> {
     text_program_module_bodies(source)
         .into_iter()
-        .flat_map(text_top_level_value_names)
+        .flat_map(text_block_item_value_names)
         .collect()
 }
 
@@ -250,7 +268,7 @@ fn text_program_module_bodies(source: &str) -> Vec<&str> {
     bodies
 }
 
-fn text_top_level_value_names(body: &str) -> Vec<String> {
+pub(crate) fn text_block_item_value_names(body: &str) -> Vec<String> {
     let mut names = Vec::new();
     let mut depth = 0usize;
     for line in body.lines() {
@@ -266,6 +284,17 @@ fn text_top_level_value_names(body: &str) -> Vec<String> {
         });
     }
     names
+}
+
+fn text_block_item_bindings(body_prefix: &str) -> Vec<TextHandlerBinding> {
+    text_block_item_value_names(body_prefix)
+        .into_iter()
+        .map(|name| TextHandlerBinding {
+            name,
+            type_display: None,
+            initializer_text: None,
+        })
+        .collect()
 }
 
 fn text_value_declaration_name(line: &str) -> Option<String> {
