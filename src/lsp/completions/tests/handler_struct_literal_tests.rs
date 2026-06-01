@@ -71,6 +71,37 @@ pub fn handler(ctx: Context<Run>, signer: Signer<'_>) -> Result<()> {
 }
 
 #[test]
+fn completes_handler_struct_pattern_fields_from_resolved_type() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let PositionBundle { position_ } = bundle;
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(
+        &document,
+        position_after(source, "PositionBundle { position_"),
+    )
+    .expect("struct pattern field completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"position_bundle_mint"));
+    assert!(labels.contains(&"position_bitmap"));
+}
+
+#[test]
 fn wakes_handler_struct_literal_fields_in_empty_field_slot() {
     let source = r#"
 use anchor_lang::prelude::*;

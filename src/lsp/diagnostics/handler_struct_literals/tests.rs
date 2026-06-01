@@ -90,6 +90,84 @@ pub fn handler(ctx: Context<Run>, position_bitmap: [u8; 32]) -> Result<()> {
 }
 
 #[test]
+fn reports_unknown_handler_struct_pattern_field() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let PositionBundle {
+        position_bundel_mint,
+        position_bitmap,
+    } = bundle;
+    Ok(())
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.message.contains("position_bundel_mint"))
+        .unwrap_or_else(|| panic!("missing struct pattern field diagnostic: {diagnostics:#?}"));
+
+    assert!(diagnostic
+        .message
+        .contains("`PositionBundle` has no struct pattern field"));
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|value| value.as_str()),
+        Some("unknown-struct-pattern-field")
+    );
+    assert_eq!(
+        diagnostic
+            .code_description
+            .as_ref()
+            .map(|description| description.href.as_str()),
+        Some("https://doc.rust-lang.org/reference/patterns.html#struct-patterns")
+    );
+}
+
+#[test]
+fn accepts_known_handler_struct_pattern_fields_and_aliases() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let PositionBundle {
+        position_bundle_mint: mint,
+        position_bitmap,
+    } = bundle;
+    Ok(())
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+
+    assert!(
+        diagnostics.is_empty(),
+        "known struct pattern fields should not diagnose: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn ignores_unknown_external_struct_literal_type() {
     let document = ParsedDocument::parse(
         r#"
@@ -110,5 +188,29 @@ pub fn handler(ctx: Context<Run>) -> Result<()> {
     assert!(
         diagnostics.is_empty(),
         "unknown external struct literal types stay outside shallow resolver: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn ignores_unknown_external_struct_pattern_type() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: ExternalBundle) -> Result<()> {
+    let ExternalBundle {
+        position_bundel_mint,
+    } = bundle;
+    Ok(())
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+
+    assert!(
+        diagnostics.is_empty(),
+        "unknown external struct pattern types stay outside shallow resolver: {diagnostics:#?}"
     );
 }

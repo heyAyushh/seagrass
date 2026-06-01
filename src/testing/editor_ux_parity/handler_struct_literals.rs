@@ -107,6 +107,14 @@ pub fn handler(ctx: Context<Run>) -> Result<()> {
         position_/*caret:literal-field*/bitmap: [0; 32],
         position_bundle_mint: position_/*caret:literal-value*/,
     };
+    let PositionBundle {
+        position_/*caret:pattern-field*/bundle_mint,
+        ..
+    } = bundle;
+    let PositionBundle {
+        position_bundel_mint,
+        ..
+    } = bundle;
     bundle.position_bundle_m/*caret:member*/;
     random_handler_value;
     let _typo = PositionBundle {
@@ -126,6 +134,7 @@ pub fn handler(ctx: Context<Run>) -> Result<()> {
         "literal-value",
         "position_bundle_mint_value",
     );
+    assert_completion_contains(&document, &marked, "pattern-field", "position_bundle_mint");
     assert_completion_contains(&document, &marked, "member", "position_bundle_mint");
     assert_completion_contains(
         &document,
@@ -145,10 +154,24 @@ pub fn handler(ctx: Context<Run>) -> Result<()> {
         "unknown-struct-literal-field",
         "position_bundel_mint",
     );
+    assert_diagnostic_reason(
+        &diagnostics,
+        "unknown-struct-pattern-field",
+        "position_bundel_mint",
+    );
     assert_diagnostic_code(
         &diagnostics,
         "anchor-constraint-expression",
         "random_constraint_value",
+    );
+
+    let uri = Url::parse("file:///editor-semantic-sweep.rs").unwrap();
+    assert_quickfix_for_reason(
+        &document,
+        uri,
+        &diagnostics,
+        "unknown-struct-pattern-field",
+        "position_bundle_mint",
     );
 }
 
@@ -195,6 +218,25 @@ fn assert_diagnostic_code(diagnostics: &[Diagnostic], code: &str, message: &str)
                 && diagnostic.message.contains(message)
         }),
         "missing diagnostic code `{code}` containing `{message}`: {diagnostics:#?}"
+    );
+}
+
+fn assert_quickfix_for_reason(
+    document: &ParsedDocument,
+    uri: Url,
+    diagnostics: &[Diagnostic],
+    reason: &str,
+    title: &str,
+) {
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic_data_str(diagnostic, "reason") == Some(reason))
+        .unwrap_or_else(|| panic!("missing diagnostic reason `{reason}`: {diagnostics:#?}"));
+    let actions = actions::code_actions(document, uri, diagnostic.range, diagnostics);
+
+    assert!(
+        actions.iter().any(|action| action.title.contains(title)),
+        "missing quick fix containing `{title}` for `{reason}`: {actions:#?}"
     );
 }
 

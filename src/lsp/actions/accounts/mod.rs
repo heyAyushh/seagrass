@@ -89,6 +89,7 @@ fn replace_handler_member_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<C
                         "unknown-handler-member"
                             | "unknown-handler-method"
                             | "unknown-struct-literal-field"
+                            | "unknown-struct-pattern-field"
                     )
                 })
         })
@@ -101,8 +102,11 @@ fn replace_handler_member_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<C
                 .and_then(|value| value.as_str())?;
             let replacement = closest_candidate(data, missing)?;
             let edit = single_text_edit(diagnostic.range, replacement.to_string());
-            let anchor_action = if reason == "unknown-struct-literal-field" {
-                "replace-struct-literal-field"
+            let anchor_action = if matches!(
+                reason,
+                "unknown-struct-literal-field" | "unknown-struct-pattern-field"
+            ) {
+                "replace-struct-record-field"
             } else {
                 "replace-handler-member"
             };

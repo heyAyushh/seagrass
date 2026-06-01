@@ -5,8 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
-- lsp: complete and diagnose Rust struct literal fields in Anchor handlers
-  from resolved struct members, with typo quick fixes.
+- lsp: complete and diagnose Rust struct literal and pattern fields in Anchor
+  handlers from resolved struct members, with typo quick fixes.
 - lsp: resolve handler identifiers and account-data members inside common Rust
   and Anchor assertion macros such as `assert!` and `require!`.
 - lsp: keep raw-account security evidence limited to runtime assertions so
