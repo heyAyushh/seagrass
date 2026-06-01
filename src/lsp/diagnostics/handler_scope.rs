@@ -256,6 +256,12 @@ impl<'ast> Visit<'ast> for HandlerScopeVisitor {
     fn visit_expr_path(&mut self, node: &'ast ExprPath) {
         self.report_unresolved_path_identifier(node);
     }
+
+    fn visit_macro(&mut self, node: &'ast syn::Macro) {
+        for expression in super::macro_expressions::assertion_macro_arguments(node) {
+            self.visit_expr(&expression);
+        }
+    }
 }
 
 fn unresolved_handler_identifier_diagnostic(
@@ -472,6 +478,10 @@ fn is_identifier_byte(byte: u8) -> bool {
 #[cfg(test)]
 #[path = "handler_scope/pattern_tests.rs"]
 mod pattern_tests;
+
+#[cfg(test)]
+#[path = "handler_scope/macro_tests.rs"]
+mod macro_tests;
 
 #[cfg(test)]
 mod tests {

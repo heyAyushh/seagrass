@@ -108,6 +108,31 @@ pub mod demo {
 }
 
 #[test]
+fn flags_raw_account_data_when_owner_check_only_in_debug_assert() {
+    let diagnostics = security_diagnostics(
+        r#"
+#[derive(Accounts)]
+pub struct ReadRaw<'info> {
+    user: AccountInfo<'info>,
+}
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn handler(ctx: Context<ReadRaw>) -> ProgramResult {
+        debug_assert!(ctx.accounts.user.owner == &crate::ID);
+        let data = ctx.accounts.user.data.borrow();
+        Ok(())
+    }
+}
+"#,
+    );
+
+    assert_has_code(&diagnostics, ANCHOR_SECURITY_OWNER_CHECK_CODE);
+}
+
+#[test]
 fn flags_raw_account_data_when_owner_check_is_unrelated() {
     let diagnostics = security_diagnostics(
         r#"

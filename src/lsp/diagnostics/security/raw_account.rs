@@ -1,9 +1,6 @@
 use {
     crate::document::ParsedDocument,
-    syn::{
-        parse::Parser,
-        visit::{self, Visit},
-    },
+    syn::visit::{self, Visit},
 };
 
 #[derive(Default)]
@@ -166,39 +163,10 @@ impl<'ast> Visit<'ast> for RawAccountFunctionVisitor<'_> {
     }
 
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        if !is_raw_account_evidence_macro(node) {
-            return;
-        }
-        if let Ok(expressions) =
-            syn::punctuated::Punctuated::<syn::Expr, syn::Token![,]>::parse_terminated
-                .parse2(node.tokens.clone())
-        {
-            for expression in expressions {
-                self.visit_expr(&expression);
-            }
+        for expression in super::super::macro_expressions::runtime_assertion_macro_arguments(node) {
+            self.visit_expr(&expression);
         }
     }
-}
-
-fn is_raw_account_evidence_macro(node: &syn::Macro) -> bool {
-    node.path
-        .segments
-        .last()
-        .is_some_and(|segment| is_raw_account_evidence_macro_name(&segment.ident))
-}
-
-fn is_raw_account_evidence_macro_name(ident: &syn::Ident) -> bool {
-    matches!(
-        ident.to_string().as_str(),
-        "assert"
-            | "assert_eq"
-            | "assert_ne"
-            | "require"
-            | "require_eq"
-            | "require_keys_eq"
-            | "require_keys_neq"
-            | "require_neq"
-    )
 }
 
 fn context_argument_names_for_accounts(item_fn: &syn::ItemFn, accounts_name: &str) -> Vec<String> {

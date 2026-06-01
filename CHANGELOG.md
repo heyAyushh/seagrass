@@ -5,6 +5,10 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: resolve handler identifiers and account-data members inside common Rust
+  and Anchor assertion macros such as `assert!` and `require!`.
+- lsp: keep raw-account security evidence limited to runtime assertions so
+  `debug_assert!` checks do not mask missing owner checks.
 - lsp: infer handler member types from typed Rust tuple destructuring in
   handler arguments and local bindings.
 - lsp: carry handler member types through standard Iterator item-preserving

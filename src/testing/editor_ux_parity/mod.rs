@@ -12,6 +12,7 @@ use {
 
 mod account_usage;
 mod handler_constructor_wrappers;
+mod handler_macro_expressions;
 mod handler_match_outputs;
 mod handler_return_usage;
 mod handler_scope;

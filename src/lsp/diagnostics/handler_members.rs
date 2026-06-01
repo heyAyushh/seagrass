@@ -371,6 +371,12 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         }
         visit::visit_expr_method_call(self, node);
     }
+
+    fn visit_macro(&mut self, node: &'ast syn::Macro) {
+        for expression in super::macro_expressions::assertion_macro_arguments(node) {
+            self.visit_expr(&expression);
+        }
+    }
 }
 
 fn unknown_member_diagnostic(
@@ -750,6 +756,10 @@ mod iterator_tests;
 #[cfg(test)]
 #[path = "handler_members/combinator_tests.rs"]
 mod combinator_tests;
+
+#[cfg(test)]
+#[path = "handler_members/macro_tests.rs"]
+mod macro_tests;
 
 #[cfg(test)]
 mod tests;
