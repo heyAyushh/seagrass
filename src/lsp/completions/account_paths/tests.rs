@@ -363,8 +363,8 @@ proptest! {
     ) {
         prop_assume!(alias != "ctx" && alias != account_field && alias != data_field && account_field != data_field);
         let member_prefix = data_field.chars().next().unwrap_or_default().to_string();
-        let mutability = mutable.then_some("mut ").unwrap_or_default();
-        let reference = reference.then_some("&").unwrap_or_default();
+        let mutability = if mutable { "mut " } else { "" };
+        let reference = if reference { "&" } else { "" };
         let source = format!(
             "use anchor_lang::prelude::*;\n\npub fn handler(ctx: Context<Run>) -> Result<()> {{\n    let {alias} = {reference}{mutability}ctx.accounts.{account_field};\n    {alias}.{member_prefix}\n    Ok(())\n}}\n"
         );

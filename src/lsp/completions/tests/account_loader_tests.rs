@@ -105,6 +105,7 @@ proptest! {
         field in rust_identifier(),
     ) {
         prop_assume!(account_field != alias);
+        prop_assume!(account_field != field);
         prop_assume!(alias != field);
         prop_assume!(field != "load" && field != "load_mut" && field != "load_init");
         let prefix = field.chars().next().unwrap_or_default().to_string();
@@ -148,6 +149,7 @@ pub struct {owner} {{
         field in rust_identifier(),
     ) {
         prop_assume!(account_field != alias);
+        prop_assume!(account_field != field);
         prop_assume!(alias != field);
         prop_assume!(field != "load" && field != "load_mut" && field != "load_init");
         let prefix = field.chars().next().unwrap_or_default().to_string();

@@ -10,6 +10,22 @@ prop_compose! {
     }
 }
 
+fn reference_token(reference: bool) -> &'static str {
+    if reference {
+        "&"
+    } else {
+        ""
+    }
+}
+
+fn mutability_token(reference: &str, mutable: bool) -> &'static str {
+    if !reference.is_empty() && mutable {
+        "mut "
+    } else {
+        ""
+    }
+}
+
 proptest! {
     #[test]
     fn reports_generated_missing_account_data_field_through_alias(
@@ -22,10 +38,8 @@ proptest! {
     ) {
         prop_assume!(alias != "ctx" && alias != account_field);
         prop_assume!(known_field != missing_field);
-        let reference = reference.then_some("&").unwrap_or_default();
-        let mutability = (!reference.is_empty() && mutable)
-            .then_some("mut ")
-            .unwrap_or_default();
+        let reference = reference_token(reference);
+        let mutability = mutability_token(reference, mutable);
         let source = format!(
             r#"
 #[program]
@@ -76,10 +90,8 @@ pub struct AccountData {{
         reference in any::<bool>(),
     ) {
         prop_assume!(alias != "ctx" && alias != account_field);
-        let reference = reference.then_some("&").unwrap_or_default();
-        let mutability = (!reference.is_empty() && mutable)
-            .then_some("mut ")
-            .unwrap_or_default();
+        let reference = reference_token(reference);
+        let mutability = mutability_token(reference, mutable);
         let source = format!(
             r#"
 #[program]

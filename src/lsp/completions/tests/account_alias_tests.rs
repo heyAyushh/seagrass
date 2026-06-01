@@ -83,8 +83,8 @@ proptest! {
         reference in any::<bool>(),
     ) {
         prop_assume!(alias != "ctx" && alias != account);
-        let mutability = mutable.then_some("mut ").unwrap_or_default();
-        let reference = reference.then_some("&").unwrap_or_default();
+        let mutability = if mutable { "mut " } else { "" };
+        let reference = if reference { "&" } else { "" };
         let source = format!(
             "use anchor_lang::prelude::*;\n\npub fn run(ctx: Context<Run>) -> Result<()> {{\n    let {alias} = {reference}{mutability}ctx.accounts.{account};\n    {alias}.{member_prefix}\n}}\n"
         );

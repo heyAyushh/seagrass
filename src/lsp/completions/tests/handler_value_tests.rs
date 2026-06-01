@@ -266,7 +266,7 @@ pub fn handler(ctx: Context<Close>, {argument}: u64) -> Result<()> {{
         );
         let document = ParsedDocument::parse_or_empty(&source);
         let cursor = "let selected = shared_";
-        let items = completions(&document, position_after(&source, &cursor))
+        let items = completions(&document, position_after(&source, cursor))
             .expect("expected generated handler value completions");
 
         prop_assert!(
