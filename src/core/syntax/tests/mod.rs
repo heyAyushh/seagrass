@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashSet;
 
 #[test]
 fn parses_incomplete_rust_with_errors() {
