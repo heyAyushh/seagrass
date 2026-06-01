@@ -42,3 +42,37 @@ pub struct RunParams {
         "unknown instruction argument member should be flagged: {diagnostics:#?}"
     );
 }
+
+#[test]
+fn editor_ux_wakes_instruction_argument_members_after_dot() {
+    let marked = strip_markers(
+        r#"
+#[program]
+pub mod demo {
+    pub fn run(ctx: Context<Run>, params: RunParams) -> Result<()> { Ok(()) }
+}
+
+#[derive(Accounts)]
+#[instruction(params: RunParams)]
+pub struct Run<'info> {
+    #[account(constraint = params./*caret:completion*/ == mint.key())]
+    pub mint: AccountInfo<'info>,
+}
+
+pub struct RunParams {
+    pub position_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#,
+    );
+    let document = ParsedDocument::parse_or_empty(&marked.source);
+    let completions = completions::completions(&document, marked.positions["completion"])
+        .expect("empty-prefix instruction argument member completions");
+    let labels = completions
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"position_mint"));
+    assert!(labels.contains(&"position_bitmap"));
+}

@@ -1,6 +1,9 @@
 use {
     super::*,
-    crate::{document::ParsedDocument, lsp::completions::proptest_support::rust_identifier},
+    crate::{
+        document::ParsedDocument,
+        lsp::completions::{proptest_support::rust_identifier, should_offer_completion},
+    },
     proptest::prelude::*,
 };
 
@@ -29,6 +32,41 @@ pub struct RunParams {
         .expect("instruction argument member completions");
 
     assert_eq!(completions[0].label, "position_mint");
+}
+
+#[test]
+fn wakes_and_completes_instruction_argument_struct_members_after_dot() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn run(ctx: Context<Run>, params: RunParams) -> Result<()> { Ok(()) }
+}
+
+#[derive(Accounts)]
+#[instruction(params: RunParams)]
+pub struct Run<'info> {
+    #[account(constraint = params.)]
+    pub mint: AccountInfo<'info>,
+}
+
+pub struct RunParams {
+    pub position_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+"#;
+    let position = position_after(source, "params.");
+    assert!(should_offer_completion(source, position));
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let completions =
+        completions(&document, position).expect("instruction argument member completions");
+    let labels = completions
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"position_mint"));
+    assert!(labels.contains(&"position_bitmap"));
 }
 
 proptest! {

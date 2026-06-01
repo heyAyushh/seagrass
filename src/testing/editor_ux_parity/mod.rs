@@ -10,6 +10,7 @@ use {
     tower_lsp::lsp_types::{Diagnostic, NumberOrString, Position, Url},
 };
 
+mod account_member_wakeup;
 mod account_usage;
 mod constraint_expressions;
 mod handler_constructor_wrappers;

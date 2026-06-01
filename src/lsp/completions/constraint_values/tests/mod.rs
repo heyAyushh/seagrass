@@ -10,6 +10,7 @@ use {
 
 mod catalog_tests;
 mod core_tests;
+mod expression_scope_tests;
 mod instruction_arg_member_tests;
 mod semantic_tests;
 

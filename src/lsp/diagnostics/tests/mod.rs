@@ -121,6 +121,25 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
 }
 
 #[test]
+fn suppression_marker_inside_string_does_not_filter_diagnostic() {
+    let source = r#"
+use pinocchio::program_error::ProgramError;
+
+fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
+    let _marker = "// seagrass-ignore";
+    Ok(amount - fee)
+}
+"#;
+
+    let diagnostics = collect(&ParsedDocument::parse(source).unwrap());
+
+    assert!(
+        diagnostics.iter().any(is_unchecked_arithmetic),
+        "string contents must not suppress unchecked arithmetic diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn file_suppression_filters_diagnostic_by_code() {
     let source = r#"
 // seagrass-allow-file: solana-code-quality

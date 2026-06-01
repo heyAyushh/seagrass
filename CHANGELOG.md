@@ -5,6 +5,11 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: wake account constraint value completions after `seeds = [` and include
+  same-file Rust values plus const-like imports in constraint expression
+  completions.
+- lsp: ignore `seagrass-ignore` and `seagrass-allow` text inside Rust string
+  literals when filtering diagnostics.
 - lsp: resolve typed instruction-argument member access in account constraint
   expressions and completions.
 - lsp: infer typed members from handler-local `const` and `static` block items,

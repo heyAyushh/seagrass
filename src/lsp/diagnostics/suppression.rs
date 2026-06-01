@@ -1,5 +1,5 @@
 use {
-    crate::{constraint_ranges, document::ParsedDocument},
+    crate::{constraint_ranges, document::ParsedDocument, range},
     quote::ToTokens,
     serde::Deserialize,
     std::collections::HashMap,
@@ -93,10 +93,13 @@ impl SuppressionIndex {
             let Ok(line_number) = u32::try_from(index) else {
                 continue;
             };
-            if let Some(patterns) = comment_patterns(line, FILE_ALLOW_MARKER) {
+            let Some(comment) = line_comment(source, line, line_number) else {
+                continue;
+            };
+            if let Some(patterns) = comment_patterns(comment, FILE_ALLOW_MARKER) {
                 self.file_patterns.extend(patterns);
             }
-            if let Some(patterns) = comment_patterns(line, LINE_ALLOW_MARKER) {
+            if let Some(patterns) = comment_patterns(comment, LINE_ALLOW_MARKER) {
                 self.line_patterns
                     .entry(line_number)
                     .or_default()
@@ -106,7 +109,7 @@ impl SuppressionIndex {
                     .or_default()
                     .extend(patterns);
             }
-            if comment_has_marker(line, LINE_IGNORE_MARKER) {
+            if comment_has_marker(comment, LINE_IGNORE_MARKER) {
                 self.line_patterns
                     .entry(line_number)
                     .or_default()
@@ -200,15 +203,27 @@ fn normalized_config_pattern(pattern: String) -> Option<String> {
     (!pattern.is_empty()).then(|| pattern.to_string())
 }
 
-fn comment_patterns(line: &str, marker: &str) -> Option<Vec<String>> {
-    let comment = line.split_once("//")?.1;
+fn line_comment<'a>(source: &str, line: &'a str, line_number: u32) -> Option<&'a str> {
+    line.match_indices("//").find_map(|(offset, _)| {
+        let character = u32::try_from(line[..offset].chars().count()).ok()?;
+        (!range::is_in_comment_or_string(
+            source,
+            tower_lsp::lsp_types::Position {
+                line: line_number,
+                character,
+            },
+        ))
+        .then_some(&line[offset + "//".len()..])
+    })
+}
+
+fn comment_patterns(comment: &str, marker: &str) -> Option<Vec<String>> {
     let patterns = comment.split_once(marker)?.1.trim();
     Some(suppression_patterns(patterns))
 }
 
-fn comment_has_marker(line: &str, marker: &str) -> bool {
-    line.split_once("//")
-        .is_some_and(|(_, comment)| comment.contains(marker))
+fn comment_has_marker(comment: &str, marker: &str) -> bool {
+    comment.contains(marker)
 }
 
 fn suppression_patterns(text: &str) -> Vec<String> {
@@ -391,5 +406,42 @@ fn handler() {
         };
 
         assert!(index.suppresses(&diagnostic));
+    }
+
+    #[test]
+    fn seagrass_ignore_inside_string_does_not_suppress() {
+        let source = r#"
+fn handler() {
+    let marker = "// seagrass-ignore";
+    let amount = 1 - 2;
+}
+"#;
+        let document = ParsedDocument::parse(source).unwrap();
+        let index = SuppressionIndex::from_document(&document, None);
+        let diagnostic = Diagnostic {
+            range: Range {
+                start: tower_lsp::lsp_types::Position {
+                    line: 3,
+                    character: 8,
+                },
+                end: tower_lsp::lsp_types::Position {
+                    line: 3,
+                    character: 14,
+                },
+            },
+            severity: None,
+            code: Some(NumberOrString::String("solana-code-quality".to_string())),
+            code_description: None,
+            source: None,
+            message: "unchecked arithmetic".to_string(),
+            related_information: None,
+            tags: None,
+            data: Some(serde_json::json!({
+                "topic": "seagrass/solana.code-quality.unchecked-arithmetic",
+                "rule": "unchecked-arithmetic",
+            })),
+        };
+
+        assert!(!index.suppresses(&diagnostic));
     }
 }

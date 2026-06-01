@@ -86,7 +86,7 @@ const RECENT_LOG_LIMIT: usize = 200;
 const COLD_DIAGNOSTICS_DEBOUNCE_MILLIS: u64 = 700;
 const TYPING_DIAGNOSTIC_SUPPRESSION_MILLIS: u64 = 250;
 const IDENTIFIER_COMPLETION_TRIGGER_CHARS: &str =
-    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_ .<,=";
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_ .<,=[";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DocumentUpdateKind {
