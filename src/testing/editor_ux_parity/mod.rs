@@ -11,6 +11,7 @@ use {
 };
 
 mod account_usage;
+mod constraint_expressions;
 mod handler_constructor_wrappers;
 mod handler_macro_expressions;
 mod handler_match_outputs;

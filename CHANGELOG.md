@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: resolve typed instruction-argument member access in account constraint
+  expressions and completions.
 - lsp: infer typed members from handler-local `const` and `static` block items,
   including mid-edit member completions before the item declaration.
 - lsp: resolve and complete Rust block item values inside Anchor handlers.
