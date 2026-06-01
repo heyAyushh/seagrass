@@ -25,6 +25,8 @@ keep future entries aligned with release-plz output.
   pattern-bound values.
 - lsp: infer handler member types through `if`/`match` branches that diverge
   with `return`, `break`, `continue`, or standard panic-style macros.
+- lsp: infer handler member types from block-local `let` bindings that feed a
+  block expression tail value.
 - lsp: infer handler member types from `if`, `match`, and block expression
   results when every branch resolves to the same shallow type.
 - lsp: infer handler member types from assignment expressions that initialize

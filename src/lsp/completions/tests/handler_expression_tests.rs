@@ -316,6 +316,81 @@ pub struct Run<'info> {
 }
 
 #[test]
+fn completes_members_after_block_local_tail_value() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let selected = {
+        let metadata = SampleMetadata { real_authority: Pubkey::default() };
+        metadata
+    };
+    selected.real_
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "selected.real_"))
+        .expect("block-local tail value member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_authority"),
+        "block-local tail value should complete: {items:#?}"
+    );
+}
+
+#[test]
+fn completes_members_after_block_local_method_output() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let selected = {
+        let record = SampleRecord { source: Pubkey::default() };
+        let metadata = record.metadata();
+        metadata
+    };
+    selected.real_
+}
+
+pub struct SampleRecord {
+    pub source: Pubkey,
+}
+
+impl SampleRecord {
+    pub fn metadata(&self) -> SampleMetadata {
+        SampleMetadata { real_authority: Pubkey::default() }
+    }
+}
+
+pub struct SampleMetadata {
+    pub real_authority: Pubkey,
+}
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub signer: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "selected.real_"))
+        .expect("block-local method output member completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "real_authority"),
+        "block-local method output should complete: {items:#?}"
+    );
+}
+
+#[test]
 fn completes_members_on_direct_if_expression() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -473,6 +548,43 @@ pub struct Run<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == field),
             "generated match return arm should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_block_local_tail_members(
+        field_tail in rust_identifier(),
+    ) {
+        let field = format!("real_{field_tail}");
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {{
+    let selected = {{
+        let metadata = SampleMetadata {{ {field}: Pubkey::default() }};
+        metadata
+    }};
+    selected.real_
+}}
+
+pub struct SampleMetadata {{
+    pub {field}: Pubkey,
+}}
+
+#[derive(Accounts)]
+pub struct Run<'info> {{
+    pub signer: Signer<'info>,
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "selected.real_"))
+            .expect("generated block-local tail member completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == field),
+            "generated block-local tail should complete; items: {items:#?}"
         );
     }
 }

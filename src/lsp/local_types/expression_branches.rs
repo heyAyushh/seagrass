@@ -1,7 +1,8 @@
 use {
     super::{
-        expression_optional_item_type_name_with_item_scope, expression_type_name_with_item_scope,
-        method_returns, typed_pattern_bindings_with_wrapped_item, TypedLocalValue,
+        explicit_pattern_type_name, expression_optional_item_type_name_with_item_scope,
+        expression_type_name_with_item_scope, method_returns,
+        typed_pattern_bindings_with_wrapped_item, wrapper_pattern_type_name, TypedLocalValue,
     },
     crate::{account_members, document::ParsedDocument, workspace::WorkspaceIndex},
     syn::{BinOp, Expr, Member, Stmt},
@@ -24,13 +25,11 @@ pub(super) fn block_type_name(
     context_type_name: &impl Fn(&str) -> Option<String>,
     scope_item_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    let Stmt::Expr(expr, None) = block.stmts.last()? else {
-        return None;
-    };
-    expression_type_name_with_item_scope(
+    scoped_block_type_name(
         document,
         workspace_index,
-        expr,
+        block,
+        &[],
         scope_type_name,
         context_type_name,
         scope_item_type_name,
@@ -239,14 +238,25 @@ fn scoped_block_type_name(
     context_type_name: &impl Fn(&str) -> Option<String>,
     scope_item_type_name: &impl Fn(&str) -> Option<String>,
 ) -> Option<String> {
-    let Stmt::Expr(expr, None) = block.stmts.last()? else {
+    let (tail, leading_statements) = block.stmts.split_last()?;
+    let Stmt::Expr(expr, None) = tail else {
         return None;
     };
+    let mut block_values = values.to_vec();
+    collect_block_local_values(
+        document,
+        workspace_index,
+        leading_statements,
+        &mut block_values,
+        scope_type_name,
+        context_type_name,
+        scope_item_type_name,
+    );
     scoped_expression_type_name(
         document,
         workspace_index,
         expr,
-        values,
+        &block_values,
         scope_type_name,
         context_type_name,
         scope_item_type_name,
@@ -295,6 +305,58 @@ fn scoped_expression_branch_outcome(
     )
     .map(BranchOutcome::Value)
     .unwrap_or_else(|| diverging_expression_outcome(expr))
+}
+
+fn collect_block_local_values(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    statements: &[Stmt],
+    values: &mut Vec<TypedLocalValue>,
+    scope_type_name: &impl Fn(&str) -> Option<String>,
+    context_type_name: &impl Fn(&str) -> Option<String>,
+    scope_item_type_name: &impl Fn(&str) -> Option<String>,
+) {
+    for statement in statements {
+        let Stmt::Local(local) = statement else {
+            continue;
+        };
+        let wrapped_item_type = local.init.as_ref().and_then(|init| {
+            expression_optional_item_type_name_with_item_scope(
+                document,
+                workspace_index,
+                &init.expr,
+                &|name| scoped_value_type_name(values, name).or_else(|| scope_type_name(name)),
+                context_type_name,
+                scope_item_type_name,
+            )
+        });
+        let type_name = explicit_pattern_type_name(&local.pat)
+            .or_else(|| {
+                local.init.as_ref().and_then(|init| {
+                    scoped_expression_type_name(
+                        document,
+                        workspace_index,
+                        &init.expr,
+                        values,
+                        scope_type_name,
+                        context_type_name,
+                        scope_item_type_name,
+                    )
+                })
+            })
+            .or_else(|| wrapper_pattern_type_name(&local.pat).map(str::to_string));
+        let Some(type_name) = type_name else {
+            continue;
+        };
+        let new_values = typed_pattern_bindings_with_wrapped_item(
+            document,
+            workspace_index,
+            &local.pat,
+            &type_name,
+            wrapped_item_type.as_deref(),
+        );
+        values.extend(new_values);
+    }
 }
 
 fn scoped_expression_type_name(
