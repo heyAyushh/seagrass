@@ -10,6 +10,7 @@ mod handler_call_return_tests;
 mod handler_combinator_tests;
 mod handler_expression_tests;
 mod handler_iterator_tests;
+mod handler_macro_tests;
 mod handler_member_tests;
 mod handler_method_return_tests;
 mod handler_method_tests;

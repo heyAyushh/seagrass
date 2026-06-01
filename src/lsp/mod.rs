@@ -1,4 +1,5 @@
 pub(crate) mod actions;
+pub(crate) mod assertion_macros;
 pub(crate) mod assists;
 pub(crate) mod code_lens;
 pub(crate) mod completions;

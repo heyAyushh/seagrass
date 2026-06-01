@@ -15,7 +15,6 @@ mod handler_scope;
 mod initialization;
 mod instruction_attributes;
 pub(crate) mod lint;
-mod macro_expressions;
 mod pda;
 pub(crate) mod project_identity;
 mod registry;

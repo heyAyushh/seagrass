@@ -373,7 +373,7 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
     }
 
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        for expression in super::macro_expressions::assertion_macro_arguments(node) {
+        for expression in crate::lsp::assertion_macros::assertion_macro_arguments(node) {
             self.visit_expr(&expression);
         }
     }

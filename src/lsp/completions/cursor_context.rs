@@ -642,7 +642,7 @@ fn handler_value_typed_prefix<'a>(
         .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx + ch.len_utf8()))
         .unwrap_or(0);
     let prefix = &line_prefix[tail_start..];
-    if prefix.is_empty() {
+    if prefix.is_empty() && !empty_handler_value_prefix_allowed(source, offset, line_prefix) {
         return None;
     }
     let previous = line_prefix[..tail_start].chars().next_back();
@@ -658,6 +658,17 @@ fn handler_value_typed_prefix<'a>(
     }
 
     Some(prefix)
+}
+
+fn empty_handler_value_prefix_allowed(source: &str, offset: usize, line_prefix: &str) -> bool {
+    if !crate::lsp::assertion_macros::has_open_expression_assertion_macro(source, offset) {
+        return false;
+    }
+    line_prefix
+        .chars()
+        .rev()
+        .find(|ch| !ch.is_whitespace())
+        .is_none_or(|ch| matches!(ch, '(' | ',' | '!' | '=' | '>' | '<' | '&' | '|'))
 }
 
 fn handler_member_typed_prefix<'a>(

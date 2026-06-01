@@ -163,7 +163,7 @@ impl<'ast> Visit<'ast> for RawAccountFunctionVisitor<'_> {
     }
 
     fn visit_macro(&mut self, node: &'ast syn::Macro) {
-        for expression in super::super::macro_expressions::runtime_assertion_macro_arguments(node) {
+        for expression in crate::lsp::assertion_macros::runtime_assertion_macro_arguments(node) {
             self.visit_expr(&expression);
         }
     }
