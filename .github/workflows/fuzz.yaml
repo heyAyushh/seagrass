@@ -42,12 +42,10 @@ jobs:
           toolchain: nightly
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: cargo +stable install cargo-fuzz --locked
       - name: Build fuzz targets
-        working-directory: lsp
         run: cargo fuzz build
       - name: Fuzz target shard
-        working-directory: lsp
         run: |
           mkdir -p "fuzz/artifacts/${{ matrix.target }}"
           cargo fuzz run "${{ matrix.target }}" -- -max_total_time="${FUZZ_SECONDS_PER_SHARD}" -artifact_prefix="fuzz/artifacts/${{ matrix.target }}/shard-${{ matrix.shard }}-"
@@ -55,7 +53,7 @@ jobs:
         if: always()
         run: |
           tar -czf "fuzz-corpus-${GITHUB_SHA}-${{ matrix.target }}-${{ matrix.shard }}.tar.gz" \
-            -C lsp \
+            -C . \
             fuzz/corpus \
             fuzz/artifacts
       - name: Upload fuzz artifacts

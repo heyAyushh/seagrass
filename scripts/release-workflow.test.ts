@@ -6,6 +6,7 @@ import { expectedReleaseAssets } from "./package-release.ts";
 import { repoRoot } from "./release-evidence.ts";
 
 const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/release.yaml");
+const releasePlzWorkflowPath = resolve(repoRoot, ".github/workflows/release-plz.yaml");
 const prWorkflowPath = resolve(repoRoot, ".github/workflows/pr.yaml");
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
 const packageReleasePath = resolve(repoRoot, "scripts/package-release.ts");
@@ -174,6 +175,31 @@ describe("release workflow packaging", () => {
 
     expect(failures).toEqual([]);
   });
+
+  test("runs workflow commands from the standalone repository root", () => {
+    const failures = seagrassWorkflowPaths.flatMap((path) =>
+      staleOverlayPathReferences(path, readFileSync(resolve(repoRoot, path), "utf8")),
+    );
+
+    expect(failures).toEqual([]);
+  });
+
+  test("installs cargo-fuzz with stable cargo before nightly fuzzing", () => {
+    const fuzzWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/fuzz.yaml"), "utf8");
+    const releaseWorkflow = readFileSync(releaseWorkflowPath, "utf8");
+
+    expect(fuzzWorkflow).toContain("cargo +stable install cargo-fuzz --locked");
+    expect(releaseWorkflow).toContain("cargo +stable install cargo-fuzz --locked");
+    expect(fuzzWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
+    expect(releaseWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
+  });
+
+  test("keeps release-plz on the repository default branch", () => {
+    const workflow = readFileSync(releasePlzWorkflowPath, "utf8");
+
+    expect(workflow).toContain("branches: [master]");
+    expect(workflow).not.toContain("branches: [main]");
+  });
 });
 
 function workflowSection(contents: string, start: string, end: string): string {
@@ -198,5 +224,16 @@ function unpinnedActionReferences(path: string, contents: string): string[] {
         return [];
       }
       return [`${path}:${index + 1} uses ${match[1]}`];
+    });
+}
+
+function staleOverlayPathReferences(path: string, contents: string): string[] {
+  return contents
+    .split(/\r?\n/)
+    .flatMap((line, index) => {
+      if (line.includes("working-directory: lsp") || /\s-C\s+lsp\b/.test(line)) {
+        return [`${path}:${index + 1} uses stale lsp/ overlay path`];
+      }
+      return [];
     });
 }

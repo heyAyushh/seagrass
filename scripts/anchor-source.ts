@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { resolve } from "node:path";
@@ -35,10 +36,16 @@ export function resolveAnchorSourcePath(repoRoot: string): string {
     return cargoGitCheckout;
   }
 
+  fetchLockedCargoDependencies(repoRoot);
+  const fetchedCargoGitCheckout = resolveCargoGitAnchorSourcePath(repoRoot);
+  if (fetchedCargoGitCheckout) {
+    return fetchedCargoGitCheckout;
+  }
+
   fail(
     [
       "Could not find a supported Anchor source checkout.",
-      "Set SEAGRASS_ANCHOR_PATH to an explicit Anchor checkout, or run cargo once so the pinned Anchor git dependency exists in Cargo's git checkout cache.",
+      "Set SEAGRASS_ANCHOR_PATH to an explicit Anchor checkout, or verify `cargo fetch --locked` can fetch the pinned Anchor git dependency.",
     ].join("\n"),
   );
 }
@@ -77,6 +84,23 @@ function resolveCargoGitAnchorSourcePath(repoRoot: string): string | undefined {
   }
 
   return undefined;
+}
+
+function fetchLockedCargoDependencies(repoRoot: string): void {
+  const manifestPath = resolve(repoRoot, "Cargo.toml");
+  if (!existsSync(manifestPath)) {
+    return;
+  }
+  const result = spawnSync("cargo", ["fetch", "--locked", "--manifest-path", manifestPath], {
+    cwd: repoRoot,
+    stdio: "inherit",
+  });
+  if (result.error) {
+    fail(`cargo fetch failed to start while resolving Anchor source: ${result.error.message}`);
+  }
+  if (result.status !== 0) {
+    fail(`cargo fetch failed while resolving Anchor source with exit code ${result.status}`);
+  }
 }
 
 function anchorCommitFromCargoLock(repoRoot: string): string | undefined {
