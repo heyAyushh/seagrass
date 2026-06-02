@@ -255,13 +255,27 @@ fixtures.
 
 ### OpenCode
 
-OpenCode should be started at the repository root. The checked-in
-`opencode.json` points it at `AGENTS.md`, this file, and `skills/README.md`.
-That is enough for project rules and Seagrass command discovery; do not install
-a separate OpenCode package unless you are building a custom OpenCode plugin.
+OpenCode should be started at the repository root. The tracked template is
+`editors/opencode/opencode.json`; activate it in a checkout with:
+
+```sh
+ln -sfn editors/opencode/opencode.json opencode.json
+```
+
+The activated root file points OpenCode at `AGENTS.md`, this file, and
+`skills/README.md`. That is enough for project rules and Seagrass command
+discovery; do not install a separate OpenCode package unless you are building a
+custom OpenCode plugin.
 
 ### Cursor
 
-Cursor should read `.cursor/rules/seagrass.mdc` as a project rule. Cursor also
-supports root `AGENTS.md`, but the `.mdc` rule gives scoped activation for Rust
-and Solana manifest files.
+Cursor should read `.cursor/rules/seagrass.mdc` as a project rule. The tracked
+template is `editors/cursor/rules/seagrass.mdc`; activate it in a checkout with:
+
+```sh
+mkdir -p .cursor/rules
+ln -sfn ../../editors/cursor/rules/seagrass.mdc .cursor/rules/seagrass.mdc
+```
+
+Cursor also supports root `AGENTS.md`, but the `.mdc` rule gives scoped
+activation for Rust and Solana manifest files.

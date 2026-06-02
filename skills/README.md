@@ -38,18 +38,33 @@ You can also install them project-locally under `.claude/skills`.
 
 ## OpenCode
 
-Use the repository root `opencode.json`. It points OpenCode at `AGENTS.md`,
-`docs/agents.md`, and this catalog. That gives OpenCode the CLI commands and
-workflow entry points without copying every skill body into the default prompt.
+Use the tracked template at `editors/opencode/opencode.json`. Activate it from
+the repository root:
+
+```bash
+ln -sfn editors/opencode/opencode.json opencode.json
+```
+
+The activated root file points OpenCode at `AGENTS.md`, `docs/agents.md`, and
+this catalog. That gives OpenCode the CLI commands and workflow entry points
+without copying every skill body into the default prompt.
 
 Create a custom OpenCode package only if you need plugin behavior beyond
 instructions, such as new tools, permissions, or slash commands.
 
 ## Cursor
 
-Cursor should use `.cursor/rules/seagrass.mdc`. Cursor's current project-rule
-format is `.cursor/rules/*.mdc`; root `AGENTS.md` remains a simple fallback, but
-the Seagrass rule is scoped to Rust and Solana manifest files.
+Cursor should use the tracked template at `editors/cursor/rules/seagrass.mdc`.
+Activate it from the repository root:
+
+```bash
+mkdir -p .cursor/rules
+ln -sfn ../../editors/cursor/rules/seagrass.mdc .cursor/rules/seagrass.mdc
+```
+
+Cursor's current project-rule format is `.cursor/rules/*.mdc`; root `AGENTS.md`
+remains a simple fallback, but the Seagrass rule is scoped to Rust and Solana
+manifest files.
 
 ## Codex, Aider, CI, And Plain Shells
 

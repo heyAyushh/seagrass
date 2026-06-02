@@ -8,3 +8,7 @@
 
 # Editor build artifacts (not published)
 editors/vscode/dist/
+
+# Local assistant/editor activation files. Tracked templates live in editors/.
+/opencode.json
+/.cursor/

@@ -5,8 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
-- docs: add OpenCode and Cursor project guidance for assistant and automation
-  workflows.
+- docs: add OpenCode and Cursor editor templates under `editors/` plus
+  activation guidance for assistant and automation workflows.
 - build: add a strict `verify-production --release` mode for today-of-release
   preflight checks that reject pending fuzz and review evidence.
 - ci: count release fuzz proof as 24 aggregate fuzz-hours across sharded
@@ -209,7 +209,7 @@ keep future entries aligned with release-plz output.
   measurement.
 - lsp: check in generated Anchor support catalogs and remove build-time parent
   source scraping.
-- lsp: add agent-friendly JSON diagnostics CLI mode.
+- lsp: add automation-ready JSON diagnostics CLI mode.
 - ci: add hotpath, property-test, and fuzz workflow gates for the LSP overlay.
 - docs: add bundled agent skills (`skills/seagrass-*`) for Claude Code, Cursor,
   and compatible agents. Covers install, lint, explain, suppress, debug-fp, and

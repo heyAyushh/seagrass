@@ -78,22 +78,37 @@ See `skills/README.md` for the full catalog.
 
 ### OpenCode
 
-No OpenCode package is required for the repo-level workflow. Seagrass ships a
-root `opencode.json` that routes OpenCode to:
+No OpenCode package is required for the repo-level workflow. The tracked
+template lives under `editors/opencode/` so editor-specific files do not clutter
+the repository root. To activate it for a local checkout:
+
+```bash
+ln -sfn editors/opencode/opencode.json opencode.json
+```
+
+That root `opencode.json` routes OpenCode to:
 
 - `AGENTS.md` for repository rules
 - `docs/agents.md` for CLI and LSP command payloads
 - `skills/README.md` for the optional Claude-style skill catalog
 
-Start OpenCode from the repository root so it can read `opencode.json`.
+Start OpenCode from the repository root so it can read the activated
+`opencode.json`.
 
 ### Cursor
 
 Cursor currently recommends project rules in `.cursor/rules/*.mdc`, while still
-supporting `AGENTS.md` as the simple fallback. Seagrass includes
-`.cursor/rules/seagrass.mdc`, scoped to Rust and Solana manifest files. It tells
-Cursor to run `seagrass diagnostics --json` and to prefer the structured LSP
-reports in `docs/agents.md` before editing Anchor account logic.
+supporting `AGENTS.md` as the simple fallback. The tracked Seagrass Cursor rule
+lives under `editors/cursor/`; activate it locally with:
+
+```bash
+mkdir -p .cursor/rules
+ln -sfn ../../editors/cursor/rules/seagrass.mdc .cursor/rules/seagrass.mdc
+```
+
+The rule is scoped to Rust and Solana manifest files. It tells Cursor to run
+`seagrass diagnostics --json` and to prefer the structured LSP reports in
+`docs/agents.md` before editing Anchor account logic.
 
 ### Codex, Aider, CI, And Low-Level LSP Bridges
 
