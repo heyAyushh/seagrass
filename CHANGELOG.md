@@ -7,6 +7,8 @@ keep future entries aligned with release-plz output.
 
 - docs: add OpenCode and Cursor editor templates under `editors/` plus
   activation guidance for assistant and automation workflows.
+- docs: remove stale agent-skill paths, hardcoded topic counts, and old install
+  references from onboarding docs.
 - build: add a strict `verify-production --release` mode for today-of-release
   preflight checks that reject pending fuzz and review evidence.
 - ci: count release fuzz proof as 24 aggregate fuzz-hours across sharded

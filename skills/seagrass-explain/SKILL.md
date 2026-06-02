@@ -55,8 +55,8 @@ Lint doc filename convention: replace `seagrass/` prefix and dots with dashes.
 - `seagrass/security.cpi.program` → `docs/lints/seagrass-security-cpi-program.md`
 - `seagrass/solana.code-quality.unchecked-arithmetic` → `docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md`
 
-The mapping is 1:1 — there are exactly 40 topics in `docs/topics.json` and 40
-lint docs in `docs/lints/`. If a topic does not have a matching doc, run
+The mapping is 1:1: every topic in `docs/topics.json` should have one matching
+lint doc in `docs/lints/`. If a topic does not have a matching doc, run
 `bun scripts/check-lint-catalog.ts` to detect drift.
 
 If exact filename doesn't exist, fuzzy match:
@@ -104,7 +104,8 @@ If the user's diagnostic carries those metadata fields, surface them — they te
 
 Top-level frameworks: `anchor`, `solana`, `security` (security cuts across the others).
 
-Authoritative list: `jq -r '.topics[].name' docs/topics.json` — 40 topics today.
+Authoritative list: `jq -r '.topics[].name' docs/topics.json`. Count it with
+`jq '.topics | length' docs/topics.json`; do not hardcode the number.
 
 If the user asks "what topics exist?", read from `docs/topics.json` rather than guessing.
 

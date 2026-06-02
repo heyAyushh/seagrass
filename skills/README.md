@@ -1,7 +1,7 @@
 # Seagrass Skills
 
-Bundled `SKILL.md` workflows for Claude Code and compatible assistants when
-working in a project that uses Seagrass.
+Bundled `SKILL.md` workflows for Claude Code, plus CLI/LSP routing notes for
+OpenCode, Cursor, Codex, Aider, CI, and plain-shell automation.
 
 ## What's here
 

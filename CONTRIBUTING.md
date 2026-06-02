@@ -118,14 +118,15 @@ should include a failing fixture or protocol transcript when possible.
 
 ## Agent skills
 
-The `skills/seagrass-*` directory contains markdown-driven skills for Claude Code,
-Cursor, and similar agent environments. These are the primary user-facing
-documentation for the diagnostics CLI, suppression forms, and lint topics.
+The `skills/seagrass-*` directory contains markdown-driven skills for Claude
+Code, Cursor, OpenCode, Codex, and other automation environments. These are the
+maintained automation docs for the diagnostics CLI, suppression forms, and lint
+topics.
 
 When you:
 - add or rename a lint topic
-- change CLI output shape or flags in `src/cli.rs`
-- modify suppression syntax in `src/diagnostics/suppression.rs`
+- change CLI output shape or flags in `src/app/cli/`
+- modify suppression syntax in `src/lsp/diagnostics/suppression.rs`
 - add/remove docs in `docs/lints/`
 
 ...also update the affected `SKILL.md` files and `skills/README.md` in the same

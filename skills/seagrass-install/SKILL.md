@@ -1,9 +1,9 @@
 ---
 name: seagrass-install
-description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through binary install (`cargo install seagrass`), per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
+description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
 user-invocable: true
 license: MIT
-compatibility: Requires Rust toolchain (1.78+), cargo, and one of VSCode, Zed, Helix, or a Neovim LSP client.
+compatibility: Requires a Rust toolchain, cargo, and one of VS Code, Zed, Helix, or a Neovim LSP client.
 metadata:
   author: Seagrass Maintainers
   version: 1.0.0
@@ -26,14 +26,24 @@ A language server for Solana framework programs:
 - **Pinocchio** — native invariants
 - **Native Solana** — owner checks, type cosplay, signer authorization
 
-40 lint topics today. All diagnostics carry `(source, code, confidence, topic, applicability)` metadata.
+Diagnostics carry `(source, code, confidence, topic, applicability)` metadata.
+Read the current topic catalog from `docs/topics.json` instead of hardcoding a
+count.
 
 ## Steps
 
 ### 1. Install the binary
 
+From a Seagrass checkout:
+
 ```bash
-cargo install seagrass
+cargo install --path crates/seagrass --locked
+```
+
+From an already-published crates.io release:
+
+```bash
+cargo install seagrass --locked
 ```
 
 Confirm:
@@ -42,12 +52,8 @@ Confirm:
 seagrass --version
 ```
 
-If `cargo install` fails:
-
-- `seagrass` may not yet be on crates.io. Fall back:
-  ```bash
-  cargo install --git https://github.com/heyAyushh/seagrass --locked
-  ```
+If crates.io install fails because the release is not published yet, use the
+source-checkout install above instead of guessing a sibling mirror.
 
 ### 2. Configure the editor
 
@@ -57,18 +63,20 @@ Pick the user's editor and apply the relevant block. Default to VSCode if unknow
 
 Install the extension. Two paths:
 
-- **Marketplace** (once published):
+- **Marketplace** (when published):
   ```
   ext install seagrass-local.seagrass-vscode
   ```
 
-- **Local development** (from a checkout of the seagrass repo — recommended while the extension is private):
+- **Local development** (from a checkout of the seagrass repo):
   ```bash
   cd editors/vscode
   bun install
   bun run build
   ```
-  Then point the server at the local binary (no .vsix packaging script is currently defined; run the language server directly):
+  Then point the server at the local binary. Release VSIX packaging is owned by
+  the root `scripts/package-release.ts --vscode` command; do not invent an
+  editor-local package script.
 
 Settings (`.vscode/settings.json`):
 
@@ -170,7 +178,7 @@ Expected: at least one diagnostic with `topic: "seagrass/solana.code-quality.unc
 If empty:
 
 - Re-run with `RUST_LOG=debug seagrass diagnostics /tmp/seagrass-smoke.rs --json 2>&1 | head -40` and report.
-- Verify `seagrass --version` matches the latest release.
+- Verify `seagrass --version` matches the intended checkout or release version.
 
 ### 4. (Optional) Wire into CI
 

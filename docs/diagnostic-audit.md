@@ -4,7 +4,7 @@ Status: Active
 
 This audit tracks whether user-visible providers are parsed, region-aware, and
 covered by false-positive fixtures. It is the source of truth for the rule-port
-queue across `src/lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/actions/`.
+queue across `lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/actions/`.
 
 | file | provider | AST-aware | region-aware | confidence | topic | substring risk | fixture |
 | --- | --- | --- | --- | --- | --- | --- | --- |
