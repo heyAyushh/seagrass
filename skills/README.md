@@ -1,7 +1,7 @@
-# Seagrass agent skills
+# Seagrass Skills
 
-Bundled skills for Claude Code (and compatible agents) to invoke when working
-in a project that uses Seagrass.
+Bundled `SKILL.md` workflows for Claude Code and compatible assistants when
+working in a project that uses Seagrass.
 
 ## What's here
 
@@ -14,7 +14,7 @@ in a project that uses Seagrass.
 | [`seagrass-debug-fp`](./seagrass-debug-fp/SKILL.md) | "this is a false positive", "seagrass is wrong here" | Reproduce, minimize, write upstream fixture |
 | [`seagrass-audit`](./seagrass-audit/SKILL.md) | "audit my program", "production readiness check" | Full project triage + punch list |
 
-## Install for Claude Code
+## Claude Code
 
 Symlink the skills into Claude's global skills directory:
 
@@ -34,12 +34,34 @@ ls ~/.claude/skills/seagrass-*
 Each will then trigger via `/seagrass-<name>` or natural-language phrasing
 matching the skill's description.
 
-## Install for Cursor / other agents
+You can also install them project-locally under `.claude/skills`.
 
-Most agents accept a `skills/` or `agents/` folder at the project root. The
-files in this directory follow the standard frontmatter + markdown skill format,
-so most clients should discover them with no changes. If your client requires a
-specific path, symlink or copy as documented above.
+## OpenCode
+
+Use the repository root `opencode.json`. It points OpenCode at `AGENTS.md`,
+`docs/agents.md`, and this catalog. That gives OpenCode the CLI commands and
+workflow entry points without copying every skill body into the default prompt.
+
+Create a custom OpenCode package only if you need plugin behavior beyond
+instructions, such as new tools, permissions, or slash commands.
+
+## Cursor
+
+Cursor should use `.cursor/rules/seagrass.mdc`. Cursor's current project-rule
+format is `.cursor/rules/*.mdc`; root `AGENTS.md` remains a simple fallback, but
+the Seagrass rule is scoped to Rust and Solana manifest files.
+
+## Codex, Aider, CI, And Plain Shells
+
+Use the CLI directly:
+
+```bash
+seagrass diagnostics <path> --json
+cat <file>.rs | seagrass diagnostics --stdin --stdin-path <file>.rs --json
+```
+
+Use `docs/agents.md` when an LSP bridge can call Seagrass execute-command
+endpoints.
 
 ## Workflow
 

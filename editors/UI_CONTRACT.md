@@ -114,9 +114,10 @@ VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settin
 
 Security family settings accept `off`, `warn`, `error`, or `hint`. `agent.mode`
 defaults to `false`; when enabled, the server fills unset analysis settings with
-agent-friendly defaults: every security family at `warn`, cold-path diagnostics
-at `idle`, security and experimental diagnostics enabled, strict native security
-enabled, and server tracing enabled. Explicit user settings always win.
+assistant and automation defaults: every security family at `warn`, cold-path
+diagnostics at `idle`, security and experimental diagnostics enabled, strict
+native security enabled, and server tracing enabled. Explicit user settings
+always win.
 
 Server launch settings are editor-specific because each editor models binaries differently. The behavior should still resolve in this order when possible:
 

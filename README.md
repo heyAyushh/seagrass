@@ -31,7 +31,7 @@ Run from source:
 cargo run -p seagrass
 ```
 
-Run agent-friendly JSON diagnostics without an editor:
+Run automation-ready JSON diagnostics without an editor:
 
 ```sh
 cargo run -p seagrass -- diagnostics programs/demo/src/lib.rs --json
@@ -50,13 +50,17 @@ any `ERROR` severity finding is emitted and exits `2` for usage or input
 errors. Run `cargo run -p seagrass -- diagnostics --help` for copy-pasteable
 examples.
 
-## Agent Setup
+## Assistant And Automation Setup
 
-Use this when an AI coding agent or LSP bridge needs Solana framework semantics.
+Use this when Claude Code, OpenCode, Cursor, Codex, Aider, CI, or an LSP bridge
+needs Solana framework semantics. In this repo, "headless" only means "without
+an editor UI": stdin/stdout, JSON diagnostics, and LSP `workspace/executeCommand`
+payloads. It is not a separate Seagrass mode.
 
-### For AI coding agents (Claude Code, Cursor, Aider, etc.)
+### Claude Code
 
-Symlink the bundled skills once:
+Claude Code supports `SKILL.md` folders. Symlink the bundled skills once into
+your global Claude skills directory:
 
 ```bash
 mkdir -p ~/.claude/skills
@@ -65,11 +69,33 @@ for skill in skills/seagrass-*; do
 done
 ```
 
-Then just say things like "lint my program", "explain seagrass/security.owner-check", "suppress this", or "audit my Anchor code for production".
+For project-local skills, use `.claude/skills` instead of `~/.claude/skills`.
+Then ask for workflows such as "lint my program", "explain
+seagrass/security.owner-check", "suppress this", or "audit my Anchor code for
+production".
 
-See `skills/README.md` for the full catalog and install for other agents.
+See `skills/README.md` for the full catalog.
 
-### For LSP / low-level agent bridges
+### OpenCode
+
+No OpenCode package is required for the repo-level workflow. Seagrass ships a
+root `opencode.json` that routes OpenCode to:
+
+- `AGENTS.md` for repository rules
+- `docs/agents.md` for CLI and LSP command payloads
+- `skills/README.md` for the optional Claude-style skill catalog
+
+Start OpenCode from the repository root so it can read `opencode.json`.
+
+### Cursor
+
+Cursor currently recommends project rules in `.cursor/rules/*.mdc`, while still
+supporting `AGENTS.md` as the simple fallback. Seagrass includes
+`.cursor/rules/seagrass.mdc`, scoped to Rust and Solana manifest files. It tells
+Cursor to run `seagrass diagnostics --json` and to prefer the structured LSP
+reports in `docs/agents.md` before editing Anchor account logic.
+
+### Codex, Aider, CI, And Low-Level LSP Bridges
 
 1. Start the server over stdio:
 

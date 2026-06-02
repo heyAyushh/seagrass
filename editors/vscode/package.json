@@ -150,7 +150,7 @@
         "seagrass.agent.mode": {
           "type": "boolean",
           "default": false,
-          "description": "Fill unset Seagrass analysis settings with agent-friendly diagnostics, security, and tracing defaults. Explicit settings still win."
+          "description": "Fill unset Seagrass analysis settings with assistant and automation diagnostics, security, and tracing defaults. Explicit settings still win."
         },
         "seagrass.feedback.url": {
           "type": "string",

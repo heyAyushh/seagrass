@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- docs: add OpenCode and Cursor project guidance for assistant and automation
+  workflows.
 - build: add a strict `verify-production --release` mode for today-of-release
   preflight checks that reject pending fuzz and review evidence.
 - ci: count release fuzz proof as 24 aggregate fuzz-hours across sharded
