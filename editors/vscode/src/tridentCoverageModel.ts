@@ -27,6 +27,12 @@ export type LineExecution = {
   covered: boolean;
 };
 
+export type CoverageSummary = {
+  totalLines: number;
+  coveredLines: number;
+  uncoveredLines: number;
+};
+
 export function lineExecutionsForFile(file: CoverageFile): LineExecution[] {
   const counts = new Map<number, number>();
   for (const segment of file.segments) {
@@ -58,6 +64,25 @@ export function coverageForDocumentPath(report: CoverageReport, documentPath: st
     return undefined;
   }
   return lineExecutionsForFile(match);
+}
+
+export function summarizeLineCoverage(lineCoverage: readonly LineExecution[]): CoverageSummary {
+  const coveredLines = lineCoverage.filter((entry) => entry.covered).length;
+  return {
+    totalLines: lineCoverage.length,
+    coveredLines,
+    uncoveredLines: lineCoverage.length - coveredLines,
+  };
+}
+
+export function tridentPromotionHint(summary: CoverageSummary): string | undefined {
+  if (summary.totalLines === 0) {
+    return undefined;
+  }
+  if (summary.uncoveredLines > 0) {
+    return "Use uncovered lines as trident-tests targets before promoting heuristic security findings.";
+  }
+  return "All reported lines are covered; promotion still needs topic-specific false-positive review.";
 }
 
 function findCoverageFile(files: CoverageFile[], documentPath: string): CoverageFile | undefined {

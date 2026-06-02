@@ -47,6 +47,40 @@ For GitHub code scanning and review UIs, emit SARIF:
 seagrass diagnostics programs/demo/src --sarif > seagrass.sarif
 ```
 
+Consumer repositories can use the bundled composite action without checking out
+the Seagrass source, as long as they install a published `seagrass-cli` version:
+copy [`docs/templates/seagrass-diagnostics-sarif.yml`](templates/seagrass-diagnostics-sarif.yml)
+into `.github/workflows/seagrass-diagnostics.yml` and replace `<tag-or-sha>`.
+
+```yaml
+name: Seagrass diagnostics
+
+on:
+  pull_request:
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: heyAyushh/seagrass/.github/actions/seagrass-diagnostics@<tag-or-sha>
+        with:
+          path: programs
+          sarif: "true"
+          seagrass-version: "1.0.2"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: seagrass-diagnostics.out
+```
+
+Pin `<tag-or-sha>` in real consumers. Leave `seagrass-version` empty only when
+the workflow is running inside the Seagrass repository itself, where the action
+can build the local checkout.
+
 Golden-path verification from the repository root:
 
 ```sh

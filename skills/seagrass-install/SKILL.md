@@ -87,9 +87,12 @@ Settings (`.vscode/settings.json`):
   "seagrass.serverCommand": "seagrass",
   "seagrass.serverArgs": [],
   "seagrass.diagnostics.security.enabled": true,
+  "seagrass.diagnostics.confidenceDecorations": true,
   "seagrass.inlayHints.enabled": true,
   "seagrass.workspaceIndex.enabled": true,
-  "seagrass.trace.server": "off"
+  "seagrass.tridentCoverage.reportPath": "",
+  "seagrass.tridentCoverage.showExecutionCount": true,
+  "seagrass.trace.server": false
 }
 ```
 
@@ -193,6 +196,25 @@ Add to the project's CI:
     seagrass diagnostics ./programs --json > seagrass-report.json
     test "$(jq '[.[] | select(.severity == "ERROR")] | length' seagrass-report.json)" = "0"
 ```
+
+For GitHub code scanning, use SARIF:
+
+```yaml
+- name: Seagrass SARIF
+  run: |
+    cargo install seagrass-cli --locked
+    seagrass diagnostics ./programs --sarif > seagrass.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: seagrass.sarif
+```
+
+If the project has Trident coverage JSON, point VS Code at it with
+`seagrass.tridentCoverage.reportPath` or leave that empty and let the extension
+discover reports under `trident-tests/`. Keep
+`seagrass.tridentCoverage.showExecutionCount` enabled when using coverage to
+decide whether heuristic lint gaps are ready to promote.
 
 ## What to do AFTER install
 

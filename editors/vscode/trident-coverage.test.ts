@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
   coverageForDocumentPath,
   lineExecutionsForFile,
+  summarizeLineCoverage,
+  tridentPromotionHint,
   type CoverageFile,
   type CoverageReport,
 } from "./src/tridentCoverageModel.ts";
@@ -40,6 +42,19 @@ describe("trident coverage bridge", () => {
     expect(lines.find((entry) => entry.line === 10)?.executionCount).toBe(5);
     expect(lines.find((entry) => entry.line === 10)?.covered).toBe(true);
     expect(lines.find((entry) => entry.line === 11)?.covered).toBe(false);
+  });
+
+  test("summarizes gaps for lint-promotion decisions", () => {
+    const summary = summarizeLineCoverage([
+      { line: 1, executionCount: 2, covered: true },
+      { line: 2, executionCount: 0, covered: false },
+    ]);
+
+    expect(summary).toEqual({ totalLines: 2, coveredLines: 1, uncoveredLines: 1 });
+    expect(tridentPromotionHint(summary)).toContain("trident-tests targets");
+    expect(tridentPromotionHint({ totalLines: 2, coveredLines: 2, uncoveredLines: 0 })).toContain(
+      "false-positive review",
+    );
   });
 
   test("matches workspace files by exact path or unique relative suffix", () => {

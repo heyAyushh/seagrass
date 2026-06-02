@@ -91,6 +91,11 @@ While the upstream fix is in flight, route to `seagrass-suppress` to add the nar
 
 ### 7. (Optional) Draft an upstream issue body
 
+If the user is in VS Code, `Seagrass: Report False Positive` already copies the
+diagnostic topic, confidence, applicability, quickfix, docs URL, source range,
+and source line. Use that report as the starting point, then add the minimized
+fixture below.
+
 ```markdown
 **Topic:** seagrass/<topic>
 **Class:** Region | Substring | AST shape | Duplicate

@@ -1,3 +1,5 @@
+import { parseDiagnosticMetadata } from "./diagnosticActions";
+
 export type ConfidenceTier = "authoritative" | "derived" | "heuristic";
 
 export const CONFIDENCE_PREFIX = "Seagrass confidence:";
@@ -6,13 +8,14 @@ export function parseConfidenceMessage(message: string): ConfidenceTier | undefi
   if (!message.startsWith(CONFIDENCE_PREFIX)) {
     return undefined;
   }
-  if (message.includes("authoritative")) {
+  const confidence = parseDiagnosticMetadata([message]).confidence;
+  if (confidence === "authoritative") {
     return "authoritative";
   }
-  if (message.includes("derived")) {
+  if (confidence === "derived") {
     return "derived";
   }
-  if (message.includes("heuristic")) {
+  if (confidence === "heuristic") {
     return "heuristic";
   }
   return undefined;

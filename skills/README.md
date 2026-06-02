@@ -73,10 +73,17 @@ Use the CLI directly:
 ```bash
 seagrass diagnostics <path> --json
 cat <file>.rs | seagrass diagnostics --stdin --stdin-path <file>.rs --json
+seagrass diagnostics <path> --sarif > seagrass.sarif
 ```
 
 Use `docs/agents.md` when an LSP bridge can call Seagrass execute-command
 endpoints.
+
+VS Code also exposes `Seagrass: Open Lint Doc`,
+`Seagrass: Copy Suppression`, and `Seagrass: Report False Positive` for the
+active diagnostic. Keep `seagrass.diagnostics.confidenceDecorations` enabled
+and point `seagrass.tridentCoverage.reportPath` at Trident llvm-cov JSON when
+coverage should guide security/lint promotion work.
 
 ## Workflow
 

@@ -389,24 +389,120 @@ pub(crate) fn enrich_confidence_related_information(diagnostics: &mut [Diagnosti
             continue;
         }
 
-        let message = match (
-            diagnostic_data_str(diagnostic, "confidence"),
-            diagnostic_data_str(diagnostic, "topic"),
-        ) {
-            (Some(confidence), Some(topic)) => {
-                format!("Seagrass confidence: {confidence}; topic: {topic}")
-            }
-            (Some(confidence), None) => format!("Seagrass confidence: {confidence}"),
-            (None, Some(topic)) => format!("Seagrass topic: {topic}"),
-            _ => continue,
-        };
-
-        let Some(info) = current_document_related_information(diagnostic.range, message) else {
+        let related_information = diagnostic_metadata_related_information(diagnostic);
+        if related_information.is_empty() {
             continue;
-        };
+        }
+
         let related = diagnostic.related_information.get_or_insert_with(Vec::new);
-        related.insert(0, info);
+        for info in related_information.into_iter().rev() {
+            if !related
+                .iter()
+                .any(|existing| same_related_information(existing, &info))
+            {
+                related.insert(0, info);
+            }
+        }
     }
+}
+
+fn diagnostic_metadata_related_information(
+    diagnostic: &Diagnostic,
+) -> Vec<DiagnosticRelatedInformation> {
+    let mut related_information = Vec::new();
+    let confidence = diagnostic_data_str(diagnostic, "confidence");
+    let topic = diagnostic_data_str(diagnostic, "topic");
+    let applicability = diagnostic_data_str(diagnostic, "applicability");
+    let quickfix = diagnostic_data_str(diagnostic, "quickfix");
+
+    if let Some(summary) = diagnostic_metadata_summary(confidence, topic, applicability, quickfix) {
+        if let Some(info) = current_document_related_information(diagnostic.range, summary) {
+            related_information.push(info);
+        }
+    }
+
+    if let Some(confidence) = confidence.and_then(confidence_reason) {
+        if let Some(info) =
+            current_document_related_information(diagnostic.range, confidence.to_string())
+        {
+            related_information.push(info);
+        }
+    }
+
+    if let Some(preview) = quickfix.map(quickfix_preview) {
+        if let Some(info) = current_document_related_information(diagnostic.range, preview) {
+            related_information.push(info);
+        }
+    }
+
+    related_information
+}
+
+fn diagnostic_metadata_summary(
+    confidence: Option<&str>,
+    topic: Option<&str>,
+    applicability: Option<&str>,
+    quickfix: Option<&str>,
+) -> Option<String> {
+    let mut message = match (confidence, topic) {
+        (Some(confidence), Some(topic)) => {
+            format!("Seagrass confidence: {confidence}; topic: {topic}")
+        }
+        (Some(confidence), None) => format!("Seagrass confidence: {confidence}"),
+        (None, Some(topic)) => format!("Seagrass topic: {topic}"),
+        _ => return None,
+    };
+    if let Some(applicability) = applicability {
+        message.push_str(&format!("; applicability: {applicability}"));
+    }
+    if let Some(quickfix) = quickfix {
+        message.push_str(&format!("; quickfix: {quickfix}"));
+    }
+    Some(message)
+}
+
+fn confidence_reason(confidence: &str) -> Option<&'static str> {
+    match confidence {
+        "authoritative" => Some(
+            "Why authoritative: parsed Anchor or Solana semantic evidence directly identifies this finding.",
+        ),
+        "derived" => Some(
+            "Why derived: Seagrass resolved the finding through local semantic inference, such as account or handler type flow.",
+        ),
+        "heuristic" => Some(
+            "Why heuristic: Seagrass used conservative pattern evidence; review the local code path before broad fixes.",
+        ),
+        _ => None,
+    }
+}
+
+fn quickfix_preview(quickfix: &str) -> String {
+    let preview = match quickfix {
+        "add-mut-constraint" => "add an Anchor `mut` constraint",
+        "add-missing-constraint" => "add the missing Anchor account constraint",
+        "add-instruction-argument" => "add the missing instruction argument",
+        "replace-instruction-argument" => "replace the mistyped instruction argument",
+        "remove-instruction-argument" => "remove the extra instruction argument",
+        "replace-account-type" => "replace the account field type",
+        "replace-invalid-sysvar" => "replace the invalid sysvar account type",
+        "program-field-type" => "replace the program field with the typed program account",
+        "system-program-type" => "replace the field with the System program account type",
+        "replace-has-one-target" => "replace the `has_one` target with an in-scope field",
+        "replace-keyword-value" => "replace the invalid constraint keyword value",
+        "remove-conflicting-constraints" => "remove the conflicting Anchor constraint",
+        "remove-handler-field-call" => "remove the method-call suffix from the account data field",
+        "use-checked-data-access" => "replace native instruction byte access with checked access",
+        "add-static-pda-domain-seed" => "add a static domain seed to the PDA",
+        "prefer-anchor-close" => "use Anchor close semantics instead of manual lamport draining",
+        "reject-reinit" => "guard against reinitializing account data",
+        "insert-reload-after-cpi" => "reload account data after CPI before reading it",
+        "add-signer-check" => "add a signer validation check",
+        "add-program-id-check" => "add a program id validation check",
+        "add-owner-check" => "add an owner validation check",
+        "add-discriminator-check" => "add an account discriminator validation check",
+        _ => "open the lightbulb for the available Seagrass edit",
+    };
+    format!("Fix preview: {preview}.")
 }
 
 pub(crate) fn enrich_current_document_related_information(

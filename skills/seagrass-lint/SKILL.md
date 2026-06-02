@@ -56,12 +56,23 @@ The CLI emits a JSON array (not an object wrapper):
     "code": "solana-code-quality.unchecked-arithmetic",
     "message": "Use checked arithmetic for balance, lamport, token, or amount math in Solana program code.",
     "topic": "seagrass/solana.code-quality.unchecked-arithmetic",
-    "confidence": "Heuristic"
+    "confidence": "heuristic",
+    "applicability": "Unspecified",
+    "docsUrl": "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md"
   }
 ]
 ```
 
-`severity` is uppercase (ERROR / WARNING / INFORMATION / HINT). `topic` and `confidence` are the primary fields for triage. `code` is the legacy short identifier.
+`severity` is uppercase (ERROR / WARNING / INFORMATION / HINT). `confidence`
+is lower-case (`authoritative`, `derived`, `heuristic`). `topic`, `confidence`,
+`applicability`, and `docsUrl` are the primary fields for triage. `code` is the
+legacy short identifier.
+
+For GitHub code scanning or review surfaces, use SARIF:
+
+```bash
+seagrass diagnostics <path> --sarif > seagrass.sarif
+```
 
 ## How to present results
 
@@ -69,7 +80,7 @@ Group and rank:
 
 1. **By severity** — errors first, then warnings, then information, then hints.
 2. **Within severity, by topic** — collapse duplicates of the same topic into "N findings of <topic>".
-3. **Confidence-aware** — call out `confidence: "Authoritative"` findings before `"Heuristic"` ones.
+3. **Confidence-aware** — call out `confidence: "authoritative"` findings before `"heuristic"` ones.
 
 Sample summary:
 

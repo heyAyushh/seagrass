@@ -174,6 +174,8 @@ fn confidence_related_information_is_prepended_for_editor_peek() {
         data: Some(serde_json::json!({
             "confidence": "heuristic",
             "topic": "seagrass/security.owner-check",
+            "applicability": "MachineApplicable",
+            "quickfix": "add-owner-check",
         })),
     }];
 
@@ -183,7 +185,13 @@ fn confidence_related_information_is_prepended_for_editor_peek() {
         .related_information
         .as_ref()
         .expect("confidence metadata");
-    assert!(related[0]
+    assert!(related[0].message.contains(
+        "Seagrass confidence: heuristic; topic: seagrass/security.owner-check; applicability: MachineApplicable; quickfix: add-owner-check"
+    ));
+    assert!(related[1]
         .message
-        .contains("Seagrass confidence: heuristic; topic: seagrass/security.owner-check"));
+        .contains("Why heuristic: Seagrass used conservative pattern evidence"));
+    assert!(related[2]
+        .message
+        .contains("Fix preview: add an owner validation check."));
 }

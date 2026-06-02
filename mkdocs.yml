@@ -1,0 +1,15 @@
+site_name: Seagrass
+site_description: Anchor, Pinocchio, and native Solana language-server diagnostics
+repo_url: https://github.com/heyAyushh/seagrass
+theme:
+  name: readthedocs
+plugins:
+  - search
+nav:
+  - Home: index.md
+  - Agent And Automation Commands: agents.md
+  - Lint Catalog: lints/README.md
+  - Diagnostic Architecture: diagnostic-architecture.md
+  - Diagnostic Audit: diagnostic-audit.md
+  - Quality Kit: quality-kit.md
+  - Release Readiness: release-readiness.md

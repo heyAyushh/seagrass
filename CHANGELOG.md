@@ -5,6 +5,14 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- client: add VS Code lint-doc, suppression-copy, and false-positive reporting
+  commands backed by Seagrass diagnostic metadata and the server feedback
+  manifest.
+- client: summarize Trident coverage gaps with lint-promotion hints in VS Code.
+- lsp: include diagnostic applicability and quickfix preview metadata in editor
+  related information for richer Problems hovers.
+- docs: add a MkDocs entrypoint, consumer SARIF workflow example, and refreshed
+  agent skill guidance for confidence, Trident coverage, and SARIF output.
 - docs: add OpenCode and Cursor editor templates under `editors/` plus
   activation guidance for assistant and automation workflows.
 - docs: remove stale agent-skill paths, hardcoded topic counts, and old install

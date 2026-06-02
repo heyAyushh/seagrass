@@ -27,6 +27,9 @@
     "onCommand:seagrass.showOutput",
     "onCommand:seagrass.explainDiagnostic",
     "onCommand:seagrass.suppressDiagnostic",
+    "onCommand:seagrass.openLintDoc",
+    "onCommand:seagrass.copySuppression",
+    "onCommand:seagrass.reportFalsePositive",
     "onCommand:seagrass.scanWorkspace",
     "onCommand:seagrass.showTridentCoverage",
     "onCommand:seagrass.closeTridentCoverage",
@@ -82,6 +85,18 @@
       {
         "command": "seagrass.suppressDiagnostic",
         "title": "Seagrass: Suppress Diagnostic"
+      },
+      {
+        "command": "seagrass.openLintDoc",
+        "title": "Seagrass: Open Lint Doc"
+      },
+      {
+        "command": "seagrass.copySuppression",
+        "title": "Seagrass: Copy Suppression"
+      },
+      {
+        "command": "seagrass.reportFalsePositive",
+        "title": "Seagrass: Report False Positive"
       },
       {
         "command": "seagrass.scanWorkspace",
@@ -142,6 +157,18 @@
         },
         {
           "command": "seagrass.suppressDiagnostic",
+          "when": "false"
+        },
+        {
+          "command": "seagrass.openLintDoc",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.copySuppression",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.reportFalsePositive",
           "when": "editorLangId == rust"
         },
         {
@@ -164,9 +191,19 @@
           "group": "seagrass@1"
         },
         {
-          "command": "seagrass.suppressDiagnostic",
+          "command": "seagrass.openLintDoc",
           "when": "editorLangId == rust",
           "group": "seagrass@2"
+        },
+        {
+          "command": "seagrass.copySuppression",
+          "when": "editorLangId == rust",
+          "group": "seagrass@3"
+        },
+        {
+          "command": "seagrass.reportFalsePositive",
+          "when": "editorLangId == rust",
+          "group": "seagrass@4"
         }
       ]
     },

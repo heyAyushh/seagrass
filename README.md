@@ -39,6 +39,11 @@ bash scripts/smoke-install.sh
 ```
 
 Browse lint topics at [`docs/lints/index.html`](docs/lints/index.html) (regenerate with `bun scripts/build-lint-docs-index.ts`).
+For searchable docs, build the MkDocs site from the repository root:
+
+```sh
+mkdocs build --strict
+```
 
 ## Install The Server
 

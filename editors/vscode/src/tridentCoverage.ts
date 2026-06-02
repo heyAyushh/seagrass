@@ -3,12 +3,14 @@ import * as path from "path";
 import * as vscode from "vscode";
 import {
   coverageForDocumentPath,
+  summarizeLineCoverage,
+  tridentPromotionHint,
   type CoverageReport,
   type LineExecution,
 } from "./tridentCoverageModel";
 
 export type { CoverageFile, CoverageReport, CoverageSegment, LineExecution } from "./tridentCoverageModel";
-export { coverageForDocumentPath, lineExecutionsForFile } from "./tridentCoverageModel";
+export { coverageForDocumentPath, lineExecutionsForFile, summarizeLineCoverage, tridentPromotionHint } from "./tridentCoverageModel";
 
 const DEFAULT_SEARCH_GLOBS = [
   "**/trident-tests/**/coverage.json",
@@ -59,7 +61,12 @@ export async function showTridentCoverage(context: vscode.ExtensionContext): Pro
   applyCoverageDecorations(editor, fileCoverage, config.get<boolean>("showExecutionCount", true));
   activeCoverageUri = editor.document.uri;
   watchCoverageReport(context, reportPath, editor, config.get<boolean>("showExecutionCount", true));
-  void vscode.window.showInformationMessage(`Seagrass Trident coverage loaded from ${path.basename(reportPath)}.`);
+  const summary = summarizeLineCoverage(fileCoverage);
+  const hint = tridentPromotionHint(summary);
+  const coverageText = `${summary.coveredLines}/${summary.totalLines} lines covered; ${summary.uncoveredLines} uncovered`;
+  void vscode.window.showInformationMessage(
+    `Seagrass Trident coverage loaded from ${path.basename(reportPath)}: ${coverageText}.${hint ? ` ${hint}` : ""}`,
+  );
 }
 
 export function closeTridentCoverage(): void {

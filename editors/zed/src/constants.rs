@@ -90,8 +90,10 @@ child.on("close", code => {
 });
 send(config.messages.initialize);
 "#;
-pub(crate) const SERVER_MANIFEST_FROM_EXTENSION: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/seagrass/Cargo.toml");
+pub(crate) const SERVER_MANIFEST_FROM_EXTENSION: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../crates/seagrass/Cargo.toml"
+);
 pub(crate) const SECURITY_LEVEL_SETTINGS: &[&str] = &[
     "diagnostics.security.ownerChecks",
     "diagnostics.security.typeCosplay",

@@ -3,6 +3,12 @@ import { promisify } from "node:util";
 import * as path from "path";
 import * as vscode from "vscode";
 import { confidenceTier, registerConfidencePresentation } from "./confidencePresentation";
+import {
+  formatFalsePositiveReport,
+  lintDocUrlFromTopic,
+  parseDiagnosticMetadata,
+  suppressionSnippet,
+} from "./diagnosticActions";
 import { registerTridentCoverage, refreshTridentCoverageForEditor } from "./tridentCoverage";
 import { type InitializeParams } from "vscode-languageserver-protocol";
 import { LanguageClient, type LanguageClientOptions, type ServerOptions } from "vscode-languageclient/node";
@@ -144,7 +150,10 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("seagrass.restart", () => queueRestart(context, fileWatchers, "manual restart")),
     vscode.commands.registerCommand("seagrass.showOutput", () => outputChannel?.show(true)),
     vscode.commands.registerCommand("seagrass.explainDiagnostic", explainDiagnostic),
-    vscode.commands.registerCommand("seagrass.suppressDiagnostic", suppressDiagnostic),
+    vscode.commands.registerCommand("seagrass.suppressDiagnostic", copySuppression),
+    vscode.commands.registerCommand("seagrass.openLintDoc", openLintDoc),
+    vscode.commands.registerCommand("seagrass.copySuppression", copySuppression),
+    vscode.commands.registerCommand("seagrass.reportFalsePositive", reportFalsePositive),
     vscode.commands.registerCommand("seagrass.scanWorkspace", scanWorkspace),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       updateStatusBar(client ? "ready" : "stopped");
@@ -280,21 +289,33 @@ function activeSeagrassDiagnostic(): vscode.Diagnostic | undefined {
     return undefined;
   }
   const position = editor.selection.active;
-  return vscode.languages
+  const diagnostics = vscode.languages
     .getDiagnostics(editor.document.uri)
-    .filter((diagnostic) => diagnostic.source === DIAGNOSTIC_SOURCE)
-    .find((diagnostic) => editor.document.getWordRangeAtPosition(position)?.contains(position) || diagnostic.range.contains(position));
+    .filter((diagnostic) => diagnostic.source === DIAGNOSTIC_SOURCE);
+  return diagnostics.find((diagnostic) => diagnostic.range.contains(position))
+    ?? diagnostics.find((diagnostic) => diagnostic.range.start.line <= position.line && diagnostic.range.end.line >= position.line);
 }
 
 function diagnosticDocsTarget(diagnostic: vscode.Diagnostic): vscode.Uri | undefined {
   const code = diagnostic.code;
   if (typeof code === "object" && code !== null && "target" in code) {
-    return (code as { target: vscode.Uri }).target;
+    const target = (code as { target?: unknown }).target;
+    if (target instanceof vscode.Uri) {
+      return target;
+    }
+    if (typeof target === "string") {
+      return vscode.Uri.parse(target);
+    }
   }
   return undefined;
 }
 
 function diagnosticTopic(diagnostic: vscode.Diagnostic): string | undefined {
+  const metadataTopic = diagnosticMetadata(diagnostic).topic;
+  if (metadataTopic) {
+    return metadataTopic;
+  }
+
   const code = diagnostic.code;
   if (typeof code === "string" && code.startsWith("seagrass/")) {
     return code;
@@ -308,6 +329,30 @@ function diagnosticTopic(diagnostic: vscode.Diagnostic): string | undefined {
   return undefined;
 }
 
+function diagnosticMetadata(diagnostic: vscode.Diagnostic) {
+  return parseDiagnosticMetadata((diagnostic.relatedInformation ?? []).map((info) => info.message));
+}
+
+function diagnosticCodeValue(diagnostic: vscode.Diagnostic): string | undefined {
+  const code = diagnostic.code;
+  if (typeof code === "string") {
+    return code;
+  }
+  if (typeof code === "object" && code !== null && "value" in code) {
+    return String((code as { value: string | number }).value);
+  }
+  return undefined;
+}
+
+function diagnosticLintDocUri(diagnostic: vscode.Diagnostic): vscode.Uri | undefined {
+  const target = diagnosticDocsTarget(diagnostic);
+  if (target) {
+    return target;
+  }
+  const topic = diagnosticTopic(diagnostic);
+  return topic ? vscode.Uri.parse(lintDocUrlFromTopic(topic)) : undefined;
+}
+
 async function explainDiagnostic(): Promise<void> {
   const diagnostic = activeSeagrassDiagnostic();
   if (!diagnostic) {
@@ -315,18 +360,9 @@ async function explainDiagnostic(): Promise<void> {
     return;
   }
 
-  const target = diagnosticDocsTarget(diagnostic);
+  const target = diagnosticLintDocUri(diagnostic);
   if (target) {
     await vscode.env.openExternal(target);
-    return;
-  }
-
-  const topic = diagnosticTopic(diagnostic);
-  if (topic) {
-    const slug = topic.replace("seagrass/", "seagrass-").replaceAll(".", "-").replaceAll("/", "-");
-    await vscode.env.openExternal(
-      vscode.Uri.parse(`https://github.com/heyAyushh/seagrass/blob/main/docs/lints/${slug}.md`),
-    );
     return;
   }
 
@@ -334,18 +370,80 @@ async function explainDiagnostic(): Promise<void> {
   outputChannel?.show(true);
 }
 
-async function suppressDiagnostic(): Promise<void> {
+async function openLintDoc(): Promise<void> {
   const diagnostic = activeSeagrassDiagnostic();
   if (!diagnostic) {
     void vscode.window.showInformationMessage("Place the cursor on a Seagrass diagnostic first.");
     return;
   }
 
-  const topic = diagnosticTopic(diagnostic) ?? "seagrass/<topic>";
-  const suffix = topic.includes(".") ? topic.split(".").pop() ?? topic : topic;
-  const snippet = `// seagrass-allow-next-line: ${suffix}`;
+  const target = diagnosticLintDocUri(diagnostic);
+  if (!target) {
+    void vscode.window.showInformationMessage("This Seagrass diagnostic has no lint document yet.");
+    return;
+  }
+  await vscode.env.openExternal(target);
+}
+
+async function copySuppression(): Promise<void> {
+  const diagnostic = activeSeagrassDiagnostic();
+  if (!diagnostic) {
+    void vscode.window.showInformationMessage("Place the cursor on a Seagrass diagnostic first.");
+    return;
+  }
+
+  const topic = diagnosticTopic(diagnostic);
+  if (!topic) {
+    void vscode.window.showInformationMessage("This Seagrass diagnostic has no suppression topic.");
+    return;
+  }
+
+  const snippet = suppressionSnippet(topic);
   await vscode.env.clipboard.writeText(snippet);
   void vscode.window.showInformationMessage(`Copied suppression to clipboard: ${snippet}`);
+}
+
+async function reportFalsePositive(): Promise<void> {
+  const editor = vscode.window.activeTextEditor;
+  const diagnostic = activeSeagrassDiagnostic();
+  if (!editor || !diagnostic) {
+    void vscode.window.showInformationMessage("Place the cursor on a Seagrass diagnostic first.");
+    return;
+  }
+
+  const docsUri = diagnosticLintDocUri(diagnostic);
+  const report = formatFalsePositiveReport({
+    file: vscode.workspace.asRelativePath(editor.document.uri, false),
+    range: diagnosticRangeLabel(diagnostic.range),
+    message: diagnostic.message,
+    sourceLine: diagnosticSourceLine(editor.document, diagnostic.range.start.line),
+    code: diagnosticCodeValue(diagnostic),
+    docsUrl: docsUri?.toString(),
+    metadata: diagnosticMetadata(diagnostic),
+  });
+  await vscode.env.clipboard.writeText(report);
+  outputChannel?.appendLine("Copied Seagrass false-positive report:");
+  outputChannel?.appendLine(report);
+  outputChannel?.show(true);
+
+  const feedback = await feedbackLink();
+  if (!feedback) {
+    void vscode.window.showInformationMessage("Copied false-positive report to clipboard.");
+    return;
+  }
+  outputChannel?.appendLine(`Opening ${feedback.label}: ${feedback.url}`);
+  await vscode.env.openExternal(vscode.Uri.parse(feedback.url));
+}
+
+function diagnosticRangeLabel(range: vscode.Range): string {
+  return `${range.start.line + 1}:${range.start.character + 1}-${range.end.line + 1}:${range.end.character + 1}`;
+}
+
+function diagnosticSourceLine(document: vscode.TextDocument, line: number): string | undefined {
+  if (line < 0 || line >= document.lineCount) {
+    return undefined;
+  }
+  return document.lineAt(line).text;
 }
 
 async function scanWorkspace(): Promise<void> {
@@ -463,17 +561,7 @@ type FeedbackLink = {
 };
 
 async function showFeedback(): Promise<void> {
-  if (!client) {
-    outputChannel?.appendLine("Seagrass is not running.");
-    outputChannel?.show(true);
-    return;
-  }
-
-  const response = await client.sendRequest<unknown>("workspace/executeCommand", {
-    command: FEEDBACK_COMMAND,
-    arguments: [],
-  });
-  const feedback = parseFeedbackResponse(response);
+  const feedback = await feedbackLink();
   if (!feedback) {
     void vscode.window.showWarningMessage("Seagrass did not return a feedback URL.");
     return;
@@ -481,6 +569,25 @@ async function showFeedback(): Promise<void> {
 
   outputChannel?.appendLine(`Opening ${feedback.label}: ${feedback.url}`);
   await vscode.env.openExternal(vscode.Uri.parse(feedback.url));
+}
+
+async function feedbackLink(): Promise<FeedbackLink | undefined> {
+  const configuredUrl = vscode.workspace.getConfiguration("seagrass.feedback").get<string>("url", "").trim();
+  if (configuredUrl) {
+    return { url: configuredUrl, label: "Seagrass feedback" };
+  }
+
+  if (!client) {
+    outputChannel?.appendLine("Seagrass is not running.");
+    outputChannel?.show(true);
+    return undefined;
+  }
+
+  const response = await client.sendRequest<unknown>("workspace/executeCommand", {
+    command: FEEDBACK_COMMAND,
+    arguments: [],
+  });
+  return parseFeedbackResponse(response);
 }
 
 function parseFeedbackResponse(value: unknown): FeedbackLink | undefined {

@@ -83,9 +83,9 @@ Present in that order. Don't paraphrase the matrix — copy the table verbatim. 
 Seagrass tags every diagnostic with two extra axes that influence the explanation:
 
 - **Confidence**
-  - `Authoritative` — derived from parsed syntax + context; act on it
-  - `Derived` — multi-step inference; usually correct
-  - `Heuristic` — pattern-based; check before fixing
+  - `authoritative` — derived from parsed syntax + context; act on it
+  - `derived` — multi-step inference; usually correct
+  - `heuristic` — pattern-based; check before fixing
 
 - **Applicability**
   - `MachineApplicable` — quickfix can be auto-applied
@@ -94,6 +94,15 @@ Seagrass tags every diagnostic with two extra axes that influence the explanatio
   - `Unspecified` — no fix offered
 
 If the user's diagnostic carries those metadata fields, surface them — they tell the user whether to act blindly or investigate.
+
+In VS Code, the editor commands mirror this workflow:
+
+- `Seagrass: Open Lint Doc` opens the `docsUrl` or topic-derived lint page.
+- `Seagrass: Copy Suppression` copies the supported `// seagrass-allow: <topic>`
+  form.
+- `Seagrass: Report False Positive` copies a report with topic, confidence,
+  applicability, quickfix, docs URL, source range, and source line before
+  opening the feedback link returned by the language server.
 
 ## Topic taxonomy
 
