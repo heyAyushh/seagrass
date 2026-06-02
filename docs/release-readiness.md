@@ -13,6 +13,16 @@ The release workflow enforces those proofs with:
 bun scripts/check-release-readiness.ts --version "$(tr -d '[:space:]' < VERSION)"
 ```
 
+Before tagging locally, run the full production preflight in release mode:
+
+```sh
+bun scripts/verify-production.ts --release
+```
+
+Release mode runs the normal production gate but switches release-readiness
+validation from pending-shape checks to strict evidence checks for the current
+commit.
+
 Use `--readiness-path <path>` to validate a generated evidence artifact before
 copying it into `docs/release-readiness.json`.
 

@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- build: add a strict `verify-production --release` mode for today-of-release
+  preflight checks that reject pending fuzz and review evidence.
 - lsp: keep imported helpers, file constants/statics, and program handlers
   resolved during broken-buffer handler-scope diagnostic recovery.
 - lsp: reduce false positives for trait-style handler method calls, qualified

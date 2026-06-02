@@ -131,8 +131,13 @@ describe("release workflow packaging", () => {
   test("keeps the local production gate aligned with release evidence gates", () => {
     const script = readFileSync(verifyProductionPath, "utf8");
 
+    expect(script).toContain('"--release"');
+    expect(script).toContain("Strict release readiness evidence");
+    expect(script).toContain('"--allow-pending"');
     expect(script).toContain('"--version"');
     expect(script).toContain("rootVersion");
+    expect(script).toContain('"--commit"');
+    expect(script).toContain("git rev-parse");
     expect(script).toContain('"scripts/check-rule-hygiene.test.ts"');
     expect(script).toContain('"scripts/check-diagnostic-topics.test.ts"');
     expect(script).toContain('"scripts/check-diagnostic-audit.ts"');
@@ -147,6 +152,7 @@ describe("release workflow packaging", () => {
   test("documents the same concrete proof constraints as the validator", () => {
     const releaseReadiness = readFileSync(releaseReadinessDocPath, "utf8");
 
+    expect(releaseReadiness).toContain("bun scripts/verify-production.ts --release");
     expect(releaseReadiness).toContain("concrete GitHub Actions run URL");
     expect(releaseReadiness).toContain("positive run id");
     expect(releaseReadiness).toContain("concrete pull, issue, or discussion URL");
