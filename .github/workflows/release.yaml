@@ -265,11 +265,11 @@ jobs:
         env:
           CARGO_PROFILE_RELEASE_LTO: "off"
           RUSTFLAGS: -C embed-bitcode=no
-        run: cargo build --package seagrass --release --locked --target ${{ matrix.target }}
+        run: cargo build --package seagrass-cli --release --locked --target ${{ matrix.target }}
 
       - name: Build server binary
         if: runner.os != 'macOS'
-        run: cargo build --package seagrass --release --locked --target ${{ matrix.target }}
+        run: cargo build --package seagrass-cli --release --locked --target ${{ matrix.target }}
 
       - name: Package server binary
         run: >

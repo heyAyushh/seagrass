@@ -40,11 +40,13 @@ From a Seagrass checkout:
 cargo install --path crates/seagrass --locked
 ```
 
-From an already-published crates.io release:
+From an already-published crates.io CLI package:
 
 ```bash
-cargo install seagrass --locked
+cargo install seagrass-cli --locked
 ```
+
+Both commands install the user-facing binary as `seagrass`.
 
 Confirm:
 
@@ -52,7 +54,7 @@ Confirm:
 seagrass --version
 ```
 
-If crates.io install fails because the release is not published yet, use the
+If crates.io install fails because the CLI package is not published yet, use the
 source-checkout install above instead of guessing a sibling mirror.
 
 ### 2. Configure the editor
@@ -187,7 +189,7 @@ Add to the project's CI:
 ```yaml
 - name: Seagrass lint
   run: |
-    cargo install seagrass --locked
+    cargo install seagrass-cli --locked
     seagrass diagnostics ./programs --json > seagrass-report.json
     test "$(jq '[.[] | select(.severity == "ERROR")] | length' seagrass-report.json)" = "0"
 ```

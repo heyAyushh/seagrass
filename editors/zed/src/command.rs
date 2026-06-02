@@ -1,6 +1,7 @@
 use {
     crate::constants::{
         SERVER_BINARY, SERVER_ID, SERVER_MANIFEST_ENV, SERVER_MANIFEST_FROM_EXTENSION,
+        SERVER_PACKAGE,
     },
     zed_extension_api::{self as zed, settings::LspSettings},
 };
@@ -76,7 +77,7 @@ fn worktree_manifest_path(worktree: &zed::Worktree) -> String {
 }
 
 fn is_seagrass_server_manifest(manifest: &str) -> bool {
-    section_has_toml_string(manifest, "[package]", "name", SERVER_BINARY)
+    section_has_toml_string(manifest, "[package]", "name", SERVER_PACKAGE)
         && section_has_toml_string(manifest, "[[bin]]", "name", SERVER_BINARY)
 }
 
@@ -188,7 +189,7 @@ edition = "2021"
 
     const SEAGRASS_SERVER_MANIFEST: &str = r#"
 [package]
-name = "seagrass"
+name = "seagrass-cli"
 version = "1.0.2"
 edition = "2021"
 

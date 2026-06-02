@@ -26,8 +26,8 @@ The extension starts `seagrass` in this order:
 
 1. `lsp.seagrass.binary` from Zed settings.
 2. `seagrass` from `PATH`.
-3. `cargo run --manifest-path Cargo.toml --quiet` when the opened worktree is this repository.
-4. `cargo run --manifest-path <this checkout>/Cargo.toml --quiet` as the default dev-extension fallback for any other Anchor project.
+3. `cargo run --manifest-path Cargo.toml --quiet` when the opened worktree is the `crates/seagrass` CLI package.
+4. `cargo run --manifest-path <this checkout>/crates/seagrass/Cargo.toml --quiet` as the default dev-extension fallback for any other Anchor project.
 
 The default dev-extension fallback should work on this machine after installing the extension from this checkout. For another server checkout, point Zed at that checkout's server package:
 
@@ -40,7 +40,7 @@ The default dev-extension fallback should work on this machine after installing 
         "arguments": [
           "run",
           "--manifest-path",
-          "<seagrass-checkout>/Cargo.toml",
+          "<seagrass-checkout>/crates/seagrass/Cargo.toml",
           "--quiet"
         ]
       },
@@ -83,7 +83,7 @@ Use `!rust-analyzer` when you want Seagrass without rust-analyzer while preservi
 As an alternative to the `binary` setting, set `SEAGRASS_MANIFEST_PATH` in the shell environment used to launch Zed:
 
 ```sh
-export SEAGRASS_MANIFEST_PATH=<seagrass-checkout>/Cargo.toml
+export SEAGRASS_MANIFEST_PATH=<seagrass-checkout>/crates/seagrass/Cargo.toml
 ```
 
 ## Capabilities

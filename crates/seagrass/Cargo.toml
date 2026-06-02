@@ -5,12 +5,16 @@ authors.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
-description = "Installable Seagrass language-server entrypoint"
+publish = true
+description = "Installable Seagrass CLI package with the seagrass binary"
 
 [[bin]]
 name = "seagrass"
 path = "src/main.rs"
+
+[features]
+default = []
+hotpath = ["seagrass-core/hotpath"]
 
 [dependencies]
 seagrass-core = { package = "seagrass", path = "../..", version = "1.0.2" }

@@ -68,8 +68,7 @@ publish = true
 
 [[package]]
 name = "seagrass-cli"
-publish = false
-release = false
+publish = true
 
 [[package]]
 name = "seagrass-fuzz"

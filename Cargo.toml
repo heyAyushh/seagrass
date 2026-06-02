@@ -35,7 +35,6 @@ license.workspace = true
 repository.workspace = true
 description = "Language server for Solana framework programs"
 readme = "README.md"
-default-run = "seagrass"
 publish = true
 homepage = "https://github.com/heyAyushh/seagrass"
 documentation = "https://docs.rs/seagrass"
@@ -45,10 +44,6 @@ categories = ["development-tools", "command-line-utilities"]
 [lib]
 name = "seagrass"
 doctest = false
-
-[[bin]]
-name = "seagrass"
-path = "src/main.rs"
 
 [features]
 default = []

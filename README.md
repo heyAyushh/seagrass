@@ -16,38 +16,38 @@ the `otter-sec/anchor` Anchor line used by this workspace.
 From the repository root:
 
 ```sh
-cargo build -p seagrass
+cargo build -p seagrass-cli
 ```
 
 Install the launch entrypoint:
 
 ```sh
-cargo install --path crates/seagrass
+cargo install --path crates/seagrass --locked
 ```
 
 Run from source:
 
 ```sh
-cargo run -p seagrass
+cargo run -p seagrass-cli
 ```
 
 Run automation-ready JSON diagnostics without an editor:
 
 ```sh
-cargo run -p seagrass -- diagnostics programs/demo/src/lib.rs --json
+cargo run -p seagrass-cli -- diagnostics programs/demo/src/lib.rs --json
 ```
 
 Or pipe a single Rust source file through stdin while preserving the source path
 for workspace context:
 
 ```sh
-cat programs/demo/src/lib.rs | cargo run -p seagrass -- diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
+cat programs/demo/src/lib.rs | cargo run -p seagrass-cli -- diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
 ```
 
 The JSON output is an array of diagnostics with `file`, `range`, `code`,
 `severity`, `topic`, `confidence`, and `message`. The command exits `1` when
 any `ERROR` severity finding is emitted and exits `2` for usage or input
-errors. Run `cargo run -p seagrass -- diagnostics --help` for copy-pasteable
+errors. Run `cargo run -p seagrass-cli -- diagnostics --help` for copy-pasteable
 examples.
 
 ## Assistant And Automation Setup
@@ -117,7 +117,7 @@ The rule is scoped to Rust and Solana manifest files. It tells Cursor to run
    ```json
    {
      "command": "cargo",
-     "args": ["run", "-p", "seagrass", "--quiet"]
+     "args": ["run", "-p", "seagrass-cli", "--quiet"]
    }
    ```
 
@@ -152,7 +152,7 @@ Example settings for a local source run:
     "seagrass": {
       "binary": {
         "path": "cargo",
-        "arguments": ["run", "-p", "seagrass", "--quiet"]
+        "arguments": ["run", "-p", "seagrass-cli", "--quiet"]
       },
       "settings": {
         "agent.mode": false,

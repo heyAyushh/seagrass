@@ -9,6 +9,8 @@ keep future entries aligned with release-plz output.
   activation guidance for assistant and automation workflows.
 - docs: remove stale agent-skill paths, hardcoded topic counts, and old install
   references from onboarding docs.
+- build: make `seagrass-cli` the package-level CLI identity while keeping the
+  installed binary named `seagrass`.
 - build: add a strict `verify-production --release` mode for today-of-release
   preflight checks that reject pending fuzz and review evidence.
 - ci: count release fuzz proof as 24 aggregate fuzz-hours across sharded

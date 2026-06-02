@@ -56,6 +56,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const defaultVsceVersion = "3.9.1";
 const defaultRepository = "heyAyushh/seagrass";
+const serverCargoPackage = "seagrass-cli";
 
 if (import.meta.main) {
   try {
@@ -256,7 +257,7 @@ function packageServer(context: PackageContext, stagingDir: string, outDir: stri
         : undefined;
     runChecked(
       "cargo",
-      ["build", "--package", "seagrass", "--release", "--locked", "--target", target],
+      ["build", "--package", serverCargoPackage, "--release", "--locked", "--target", target],
       { cwd: context.repoRoot, env },
     );
   }

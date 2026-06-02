@@ -5,13 +5,13 @@ headless path: no editor UI, no prompts, JSON over stdout, and stable exit
 codes.
 
 ```sh
-cargo run -p seagrass -- diagnostics programs/demo/src/lib.rs --json
+cargo run -p seagrass-cli -- diagnostics programs/demo/src/lib.rs --json
 ```
 
 Agents can also pipe one Rust file through stdin:
 
 ```sh
-cat programs/demo/src/lib.rs | cargo run -p seagrass -- diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
+cat programs/demo/src/lib.rs | cargo run -p seagrass-cli -- diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
 ```
 
 It prints a JSON array:
@@ -36,7 +36,7 @@ It prints a JSON array:
 The command accepts a Rust file or directory, recurses over `.rs` files for
 directories, and exits with code `1` when any diagnostic has ERROR severity.
 Usage and input errors exit with code `2` and include a retryable example
-invocation. Run `cargo run -p seagrass -- diagnostics --help` for the layered
+invocation. Run `cargo run -p seagrass-cli -- diagnostics --help` for the layered
 CLI help.
 
 Use these `workspace/executeCommand` endpoints when an agent needs a compact

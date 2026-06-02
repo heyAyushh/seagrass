@@ -61,7 +61,7 @@ describe("release workflow packaging", () => {
     expect(script).not.toContain("raw/main/editors/vscode");
   });
 
-  test("uses the root package command for release artifacts", () => {
+  test("uses the CLI package command for release artifacts", () => {
     const workflow = readFileSync(releaseWorkflowPath, "utf8");
     const buildServer = workflowSection(
       workflow,
@@ -81,8 +81,11 @@ describe("release workflow packaging", () => {
     const packageFuzzCorpus = workflowSection(workflow, "package-fuzz-corpus:", "release:");
 
     expect(buildServer).toContain("bun scripts/package-release.ts");
+    expect(buildServer).toContain("cargo build --package seagrass-cli");
+    expect(buildServer).not.toContain("cargo build --package seagrass --release");
     expect(buildServer).toContain("--server");
     expect(buildServer).toContain("--skip-build");
+    expect(readFileSync(packageReleasePath, "utf8")).toContain('"seagrass-cli"');
     expect(buildZed).toContain("bun scripts/package-release.ts");
     expect(buildZed).toContain("--zed");
     expect(buildZed).toContain("--zed-wasm");

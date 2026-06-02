@@ -102,7 +102,7 @@ pub struct {owner} {{
 "#
         );
         let document = ParsedDocument::parse_or_empty(&source);
-        let completion_line = format!("{alias}.{prefix}");
+        let completion_line = format!("    {alias}.{prefix}");
 
         let items = completions(&document, position_after(&source, &completion_line))
             .expect("generated as_ref account-data member completions");

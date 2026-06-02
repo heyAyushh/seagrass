@@ -15,7 +15,7 @@ const SUPPORT_MATRIX_COMMAND = "seagrass/supportMatrix";
 const GENERATOR_PROFILE_COMMAND = "seagrass/generatorProfile";
 const LOGS_COMMAND = "seagrass/logs";
 const SNIPPET_TEXT_EDIT_CAPABILITY = "snippetTextEdit";
-const DEFAULT_SERVER_ARGS = ["run", "-p", "seagrass", "--quiet"];
+const DEFAULT_SERVER_ARGS = ["run", "-p", "seagrass-cli", "--quiet"];
 const WATCHED_FILES = [
   "**/src/**/*.rs",
   "**/Anchor.toml",

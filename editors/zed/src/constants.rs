@@ -1,5 +1,6 @@
 pub(crate) const SERVER_ID: &str = "seagrass";
 pub(crate) const SERVER_BINARY: &str = "seagrass";
+pub(crate) const SERVER_PACKAGE: &str = "seagrass-cli";
 pub(crate) const SERVER_MANIFEST_ENV: &str = "SEAGRASS_MANIFEST_PATH";
 pub(crate) const DEFAULT_DIAGNOSTICS_TRANSPORT: &str = "push";
 pub(crate) const SLASH_STATUS: &str = "seagrass-status";
@@ -90,7 +91,7 @@ child.on("close", code => {
 send(config.messages.initialize);
 "#;
 pub(crate) const SERVER_MANIFEST_FROM_EXTENSION: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml");
+    concat!(env!("CARGO_MANIFEST_DIR"), "/../../crates/seagrass/Cargo.toml");
 pub(crate) const SECURITY_LEVEL_SETTINGS: &[&str] = &[
     "diagnostics.security.ownerChecks",
     "diagnostics.security.typeCosplay",

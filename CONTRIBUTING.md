@@ -10,9 +10,9 @@ Anchor changes.
 ## Development Setup
 
 ```sh
-cargo build -p seagrass
+cargo build -p seagrass-cli
 cargo test -p seagrass
-cargo install --path crates/seagrass
+cargo install --path crates/seagrass --locked
 bun scripts/verify-production.ts
 ```
 

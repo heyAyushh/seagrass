@@ -1099,10 +1099,10 @@ function seagrassServerCommand(): [string, string[]] {
   if (process.env.SEAGRASS_HOTPATH === "1") {
     return [
       "cargo",
-      ["run", "-p", "seagrass", "--features", "hotpath", "--release", "--quiet"],
+      ["run", "-p", "seagrass-cli", "--features", "hotpath", "--release", "--quiet"],
     ];
   }
-  return ["cargo", ["run", "-p", "seagrass", "--quiet"]];
+  return ["cargo", ["run", "-p", "seagrass-cli", "--quiet"]];
 }
 
 async function waitForServerExit(): Promise<void> {

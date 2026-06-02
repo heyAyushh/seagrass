@@ -25,7 +25,7 @@ const steps = [
     name: "Rust formatting",
     cwd: repoRoot,
     command: "cargo",
-    args: ["fmt", "-p", "seagrass", "--", "--check"],
+    args: ["fmt", "-p", "seagrass", "-p", "seagrass-cli", "--", "--check"],
   },
   {
     name: "Seagrass source size",
@@ -203,10 +203,10 @@ const steps = [
     args: ["test", "-p", "seagrass"],
   },
   {
-    name: "Seagrass binary",
+    name: "Seagrass CLI binary",
     cwd: repoRoot,
     command: "cargo",
-    args: ["build", "-p", "seagrass"],
+    args: ["build", "-p", "seagrass-cli"],
   },
   {
     name: "Protocol smoke",

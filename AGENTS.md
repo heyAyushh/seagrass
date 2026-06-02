@@ -80,7 +80,7 @@ When changing LSP behavior:
 Run the server locally with:
 
 ```sh
-cargo run -p seagrass
+cargo run -p seagrass-cli
 ```
 
 Run the production gate with:

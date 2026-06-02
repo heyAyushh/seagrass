@@ -126,7 +126,7 @@
           "default": [
             "run",
             "-p",
-            "seagrass",
+            "seagrass-cli",
             "--quiet"
           ],
           "items": {
@@ -137,7 +137,7 @@
         "seagrass.serverCwd": {
           "type": "string",
           "default": "",
-          "description": "Working directory for the server command. For local development, this must be the checkout that contains the seagrass Cargo package."
+          "description": "Working directory for the server command. For local development, this must be the checkout that contains the seagrass-cli Cargo package."
         },
         "seagrass.serverEnv": {
           "type": "object",
