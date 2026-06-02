@@ -441,10 +441,7 @@ pub(crate) fn topic_lint_doc_url(topic: &str) -> Option<Url> {
 
 fn topic_lint_doc_slug(topic: &str) -> Option<String> {
     let rest = topic.strip_prefix("seagrass/")?;
-    Some(format!(
-        "seagrass-{}",
-        rest.replace('.', "-").replace('/', "-")
-    ))
+    Some(format!("seagrass-{}", rest.replace(['.', '/'], "-")))
 }
 
 fn diagnostic_docs_url(data: &Value) -> Option<&str> {

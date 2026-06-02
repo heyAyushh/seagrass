@@ -29,12 +29,12 @@ function escapeHtml(value: string): string {
 const checkMode = process.argv.includes("--check");
 
 const manifest = JSON.parse(readFileSync(topicsPath, "utf8")) as TopicManifest;
+const lintPages = new Set(readdirSync(lintsRoot));
 const rows = manifest.topics
   .map((topic) => {
     const slug = topicSlug(topic.name);
     const page = `${slug}.md`;
-    const exists = readdirSync(lintsRoot).includes(page);
-    const href = exists ? page : `https://github.com/heyAyushh/seagrass/blob/main/docs/lints/${page}`;
+    const href = lintPages.has(page) ? page : `https://github.com/heyAyushh/seagrass/blob/main/docs/lints/${page}`;
     return `<tr>
   <td><code>${escapeHtml(topic.name)}</code></td>
   <td>${escapeHtml(topic.description)}</td>
@@ -71,11 +71,15 @@ ${rows}
 `;
 
 const previous = existsSync(outputPath) ? readFileSync(outputPath, "utf8") : "";
-writeFileSync(outputPath, html);
-if (checkMode && previous !== html) {
-  console.error(
-    `docs/lints/index.html is stale; run: bun scripts/build-lint-docs-index.ts`,
-  );
-  process.exit(1);
+if (checkMode) {
+  if (previous !== html) {
+    console.error(
+      `docs/lints/index.html is stale; run: bun scripts/build-lint-docs-index.ts`,
+    );
+    process.exit(1);
+  }
+  console.log(`docs/lints/index.html is fresh (${manifest.topics.length} topics)`);
+} else {
+  writeFileSync(outputPath, html);
+  console.log(`wrote ${outputPath} (${manifest.topics.length} topics)`);
 }
-console.log(`wrote ${outputPath} (${manifest.topics.length} topics)`);

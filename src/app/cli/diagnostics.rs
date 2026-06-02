@@ -369,7 +369,7 @@ fn severity_label(severity: Option<DiagnosticSeverity>) -> SeverityLabel {
 
 fn topic_lint_doc_href(topic: &str) -> Option<String> {
     let rest = topic.strip_prefix("seagrass/")?;
-    let slug = format!("seagrass-{}", rest.replace('.', "-").replace('/', "-"));
+    let slug = format!("seagrass-{}", rest.replace(['.', '/'], "-"));
     Some(format!(
         "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/{slug}.md"
     ))

@@ -28,6 +28,8 @@
     "onCommand:seagrass.explainDiagnostic",
     "onCommand:seagrass.suppressDiagnostic",
     "onCommand:seagrass.scanWorkspace",
+    "onCommand:seagrass.showTridentCoverage",
+    "onCommand:seagrass.closeTridentCoverage",
     "workspaceContains:Anchor.toml"
   ],
   "main": "./dist/extension.js",
@@ -84,6 +86,14 @@
       {
         "command": "seagrass.scanWorkspace",
         "title": "Seagrass: Scan Workspace For Issues"
+      },
+      {
+        "command": "seagrass.showTridentCoverage",
+        "title": "Seagrass: Show Trident Coverage"
+      },
+      {
+        "command": "seagrass.closeTridentCoverage",
+        "title": "Seagrass: Close Trident Coverage"
       }
     ],
     "menus": {
@@ -137,6 +147,14 @@
         {
           "command": "seagrass.scanWorkspace",
           "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "seagrass.showTridentCoverage",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.closeTridentCoverage",
+          "when": "editorLangId == rust"
         }
       ],
       "editor/context": [
@@ -309,6 +327,34 @@
           ],
           "default": "push",
           "description": "Diagnostics transport used for VS Code. Use push by default to avoid duplicate diagnostics; pull enables LSP 3.17 pull diagnostics; both is useful only for protocol debugging and can duplicate diagnostics in VS Code."
+        },
+        "seagrass.diagnostics.confidenceDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Underline derived and heuristic Seagrass diagnostics differently and show confidence counts in the status bar tooltip. Confidence metadata is attached by the server as related information."
+        },
+        "seagrass.tridentCoverage.reportPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a Trident llvm-cov JSON report. Leave empty to discover reports under trident-tests/ automatically."
+        },
+        "seagrass.tridentCoverage.searchGlobs": {
+          "type": "array",
+          "default": [
+            "**/trident-tests/**/coverage.json",
+            "**/trident-tests/**/coverage/**/*.json",
+            "**/*-coverage-report/**/*.json",
+            "**/llvm-cov/**/*.json"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Workspace globs used to discover Trident coverage JSON when reportPath is empty."
+        },
+        "seagrass.tridentCoverage.showExecutionCount": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show per-line execution counts from Trident coverage in the editor gutter."
         },
         "seagrass.diagnostics.coldPath": {
           "type": "string",

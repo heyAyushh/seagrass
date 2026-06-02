@@ -21,6 +21,10 @@ keep future entries aligned with release-plz output.
   suppress / scan-workspace commands, and `seagrass.dev.useCargoFromCheckout`.
 - lsp: prefer Seagrass lint catalog URLs in `codeDescription` for `seagrass/...`
   topics.
+- lsp: attach `confidence` and `topic` as related information so editors can show
+  trust tiers in Problems peek and hovers.
+- client: VS Code Trident llvm-cov JSON bridge with gutter coverage and derived /
+  heuristic diagnostic underlines.
 - ci: wire golden-path smoke and lint index freshness into `verify-production.ts`.
 - lint: ignore non-catalog pages such as `docs/lints/README.md` in the lint catalog
   checker.

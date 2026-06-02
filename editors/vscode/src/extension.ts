@@ -2,6 +2,8 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import * as path from "path";
 import * as vscode from "vscode";
+import { confidenceTier, registerConfidencePresentation } from "./confidencePresentation";
+import { registerTridentCoverage, refreshTridentCoverageForEditor } from "./tridentCoverage";
 import { type InitializeParams } from "vscode-languageserver-protocol";
 import { LanguageClient, type LanguageClientOptions, type ServerOptions } from "vscode-languageclient/node";
 
@@ -124,6 +126,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const fileWatchers = WATCHED_FILES.map((glob) => vscode.workspace.createFileSystemWatcher(glob));
 
+  registerConfidencePresentation(context);
+  registerTridentCoverage(context);
+
   context.subscriptions.push(
     outputChannel,
     statusBarItem,
@@ -141,8 +146,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("seagrass.explainDiagnostic", explainDiagnostic),
     vscode.commands.registerCommand("seagrass.suppressDiagnostic", suppressDiagnostic),
     vscode.commands.registerCommand("seagrass.scanWorkspace", scanWorkspace),
-    vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar(client ? "ready" : "stopped")),
-    vscode.languages.onDidChangeDiagnostics(() => updateStatusBar(client ? "ready" : "stopped")),
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      updateStatusBar(client ? "ready" : "stopped");
+      refreshTridentCoverageForEditor(editor);
+    }),
+    vscode.languages.onDidChangeDiagnostics(() => {
+      updateStatusBar(client ? "ready" : "stopped");
+      refreshTridentCoverageForEditor(vscode.window.activeTextEditor);
+    }),
     vscode.workspace.onDidChangeConfiguration((event) => {
       if (LAUNCH_CONFIGURATION_KEYS.some((key) => event.affectsConfiguration(key))) {
         void queueRestart(context, fileWatchers, "server launch configuration changed");
@@ -250,7 +261,7 @@ function updateStatusBar(state: StatusState): void {
 function summarizeConfidence(diagnostics: readonly vscode.Diagnostic[]): string {
   const counts = new Map<string, number>();
   for (const diagnostic of diagnostics) {
-    const label = confidenceLabel(diagnostic);
+    const label = confidenceTier(diagnostic);
     if (!label) {
       continue;
     }
@@ -261,27 +272,6 @@ function summarizeConfidence(diagnostics: readonly vscode.Diagnostic[]): string 
   }
   const parts = [...counts.entries()].map(([label, count]) => `${count} ${label}`);
   return ` (${parts.join(", ")})`;
-}
-
-function confidenceLabel(diagnostic: vscode.Diagnostic): string | undefined {
-  const code = diagnostic.code;
-  if (typeof code === "object" && code !== null && "value" in code) {
-    const value = String((code as { value: string | number }).value);
-    if (value.includes("authoritative")) {
-      return "authoritative";
-    }
-    if (value.includes("derived")) {
-      return "derived";
-    }
-    if (value.includes("heuristic")) {
-      return "heuristic";
-    }
-  }
-  const message = diagnostic.message.toLowerCase();
-  if (message.includes("authoritative")) {
-    return "authoritative";
-  }
-  return undefined;
 }
 
 function activeSeagrassDiagnostic(): vscode.Diagnostic | undefined {

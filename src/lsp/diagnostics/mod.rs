@@ -375,6 +375,40 @@ pub(crate) fn bind_current_document_related_uri(
     }
 }
 
+pub(crate) fn enrich_confidence_related_information(diagnostics: &mut [Diagnostic]) {
+    for diagnostic in diagnostics.iter_mut() {
+        if diagnostic
+            .related_information
+            .as_ref()
+            .is_some_and(|related| {
+                related
+                    .iter()
+                    .any(|info| info.message.starts_with("Seagrass confidence:"))
+            })
+        {
+            continue;
+        }
+
+        let message = match (
+            diagnostic_data_str(diagnostic, "confidence"),
+            diagnostic_data_str(diagnostic, "topic"),
+        ) {
+            (Some(confidence), Some(topic)) => {
+                format!("Seagrass confidence: {confidence}; topic: {topic}")
+            }
+            (Some(confidence), None) => format!("Seagrass confidence: {confidence}"),
+            (None, Some(topic)) => format!("Seagrass topic: {topic}"),
+            _ => continue,
+        };
+
+        let Some(info) = current_document_related_information(diagnostic.range, message) else {
+            continue;
+        };
+        let related = diagnostic.related_information.get_or_insert_with(Vec::new);
+        related.insert(0, info);
+    }
+}
+
 pub(crate) fn enrich_current_document_related_information(
     document: &ParsedDocument,
     diagnostics: &mut [Diagnostic],
