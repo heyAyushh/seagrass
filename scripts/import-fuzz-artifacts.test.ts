@@ -23,7 +23,7 @@ import {
 
 const releaseCommit = "abc123def456";
 const completedAt = "2026-05-26T12:00:00.000Z";
-const startedAt = "2026-05-25T12:00:00.000Z";
+const startedAt = "2026-05-26T11:00:00.000Z";
 const fuzzShardCount = 8;
 const secondsPerTargetShard = 3_600;
 const tarBlockSize = 512;

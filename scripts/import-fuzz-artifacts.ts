@@ -16,7 +16,6 @@ import { basename, dirname, join, relative, resolve } from "node:path";
 import {
   compareStrings,
   corpusTreeSha256,
-  elapsedHours,
   expectedFuzzTargets,
   finiteIsoTimestamp,
   isExpectedActionsRunUrl,
@@ -217,8 +216,8 @@ function validateReadiness(readiness: FuzzCleanRun, expectedCommit: string): voi
   if (!isExpectedActionsRunUrl(readiness.workflowRunUrl)) {
     failures.push("fuzzCleanRun.workflowRunUrl must be an actions run URL under the origin repo");
   }
-  if (elapsedHours(readiness.startedAt, readiness.completedAt) < REQUIRED_FUZZ_HOURS) {
-    failures.push(`fuzzCleanRun must cover at least ${REQUIRED_FUZZ_HOURS} elapsed hours`);
+  if (Date.parse(readiness.completedAt) <= Date.parse(readiness.startedAt)) {
+    failures.push("fuzzCleanRun.completedAt must be after startedAt");
   }
   if (readiness.aggregateFuzzHours < REQUIRED_FUZZ_HOURS) {
     failures.push(`fuzzCleanRun.aggregateFuzzHours must be at least ${REQUIRED_FUZZ_HOURS}`);

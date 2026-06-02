@@ -7,6 +7,8 @@ keep future entries aligned with release-plz output.
 
 - build: add a strict `verify-production --release` mode for today-of-release
   preflight checks that reject pending fuzz and review evidence.
+- ci: count release fuzz proof as 24 aggregate fuzz-hours across sharded
+  targets so the fuzz workflow can run in parallel for release-day evidence.
 - lsp: keep imported helpers, file constants/statics, and program handlers
   resolved during broken-buffer handler-scope diagnostic recovery.
 - lsp: reduce false positives for trait-style handler method calls, qualified
