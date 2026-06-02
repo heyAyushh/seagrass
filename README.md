@@ -8,8 +8,37 @@ Solana projects.
 Seagrass is a standalone stdio LSP server. It complements rust-analyzer for
 generic Rust and owns the Solana framework layer.
 
+### With rust-analyzer
+
+| Layer | Tool | Owns |
+| --- | --- | --- |
+| Generic Rust | rust-analyzer | Types, borrow checking, non-Anchor refactors |
+| Solana / Anchor | Seagrass | `#[program]`, accounts, constraints, IDL/SBF evidence, security topics |
+
+Recommended editor setup:
+
+- **VS Code / Zed:** enable both servers on Rust; let Seagrass own Anchor squiggles
+  and quick fixes. Use `seagrass.diagnostics.transport: push` in Zed for live Problems.
+- **Agents / CI:** `seagrass diagnostics --json` or `--sarif` only — do not infer
+  Anchor semantics from rust-analyzer output alone.
+
 Unofficial. Not affiliated with Coral or the Anchor project. Compatible with
 the `otter-sec/anchor` Anchor line used by this workspace.
+
+## Choose Your Path
+
+| You are… | Fastest path | Golden-path check |
+| --- | --- | --- |
+| **Human in VS Code** | Install `seagrass` binary, install the VS Code extension (local VSIX or marketplace when published), set `seagrass.dev.useCargoFromCheckout` only when hacking this repo | Open `fixtures/smoke-broken.rs` and confirm init companion diagnostics |
+| **Human in Zed** | Install release `seagrass`, install the Zed dev/marketplace extension, point `lsp.seagrass.binary` at `seagrass` | Same smoke fixture in Problems |
+| **Agent / CI only** | `seagrass diagnostics <path> --json` or `--sarif` | `bash scripts/smoke-install.sh` |
+| **Cursor / Claude / OpenCode** | Activate templates under `editors/`, symlink skills per `skills/README.md` | CLI smoke script plus `bun scripts/protocol-smoke.ts` |
+
+```sh
+bash scripts/smoke-install.sh
+```
+
+Browse lint topics at [`docs/lints/index.html`](docs/lints/index.html) (regenerate with `bun scripts/build-lint-docs-index.ts`).
 
 ## Install The Server
 
@@ -45,7 +74,8 @@ cat programs/demo/src/lib.rs | cargo run -p seagrass-cli -- diagnostics --stdin 
 ```
 
 The JSON output is an array of diagnostics with `file`, `range`, `code`,
-`severity`, `topic`, `confidence`, and `message`. The command exits `1` when
+`severity`, `topic`, `confidence`, `applicability`, `docsUrl`, and `message`.
+Use `--sarif` for GitHub code scanning compatible output. The command exits `1` when
 any `ERROR` severity finding is emitted and exits `2` for usage or input
 errors. Run `cargo run -p seagrass-cli -- diagnostics --help` for copy-pasteable
 examples.
@@ -183,6 +213,12 @@ bun run check
 code .
 ```
 
+When developing this repository, copy recommended settings:
+
+```sh
+cp editors/vscode/settings.recommended.json .vscode/settings.json
+```
+
 Run the `Run Seagrass Extension` launch configuration. Server process settings
 live under `seagrass.*`. VS Code advertises Seagrass snippet quick-fix support,
 so account-field fixes can include tabstops while other editors receive the
@@ -190,10 +226,13 @@ same materialized edits.
 
 ## Smoke Test
 
-Open `fixtures/broken.rs` in the editor. You should see:
+Open `fixtures/smoke-broken.rs` in the editor. You should see init companion
+guidance such as missing `payer` or `space` for `#[account(init)]`.
 
-```text
-payer must be provided when initializing an account
+From the shell:
+
+```sh
+bash scripts/smoke-install.sh
 ```
 
 Then confirm:

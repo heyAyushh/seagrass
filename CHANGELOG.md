@@ -11,6 +11,21 @@ keep future entries aligned with release-plz output.
   references from onboarding docs.
 - build: make `seagrass-cli` the package-level CLI identity while keeping the
   installed binary named `seagrass`.
+- product: add golden-path `scripts/smoke-install.sh`, `fixtures/smoke-broken.rs`,
+  README choose-your-path table, and `docs/lints/index.html` generator.
+- cli: add `--sarif` output plus `docsUrl` and `applicability` fields in JSON
+  diagnostics for CI and GitHub code scanning.
+- ci: add `seagrass-diagnostics` workflow, composite GitHub Action, and SARIF
+  upload for the smoke fixture.
+- client: VS Code defaults to the installed `seagrass` binary, adds explain /
+  suppress / scan-workspace commands, and `seagrass.dev.useCargoFromCheckout`.
+- lsp: prefer Seagrass lint catalog URLs in `codeDescription` for `seagrass/...`
+  topics.
+- ci: wire golden-path smoke and lint index freshness into `verify-production.ts`.
+- lint: ignore non-catalog pages such as `docs/lints/README.md` in the lint catalog
+  checker.
+- docs: document rust-analyzer coexistence, SARIF/agents CLI paths, and VS Code
+  recommended settings for checkout development.
 - build: add a strict `verify-production --release` mode for today-of-release
   preflight checks that reject pending fuzz and review evidence.
 - ci: count release fuzz proof as 24 aggregate fuzz-hours across sharded

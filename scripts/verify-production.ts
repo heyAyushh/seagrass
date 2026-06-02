@@ -100,6 +100,12 @@ const steps = [
     args: ["test", "scripts/check-lint-catalog.test.ts"],
   },
   {
+    name: "Lint docs index freshness",
+    cwd: repoRoot,
+    command: "bun",
+    args: ["scripts/build-lint-docs-index.ts", "--check"],
+  },
+  {
     name: options.release
       ? "Strict release readiness evidence"
       : "Seagrass release readiness evidence shape",
@@ -209,6 +215,12 @@ const steps = [
     args: ["build", "-p", "seagrass-cli"],
   },
   {
+    name: "Golden-path install smoke",
+    cwd: repoRoot,
+    command: "bash",
+    args: ["scripts/smoke-install.sh"],
+  },
+  {
     name: "Protocol smoke",
     cwd: repoRoot,
     command: "bun",
@@ -228,6 +240,12 @@ const steps = [
     cwd: repoRoot,
     command: "bun",
     args: ["test", "scripts/perf-workflow.test.ts"],
+  },
+  {
+    name: "Product gate guardrail tests",
+    cwd: repoRoot,
+    command: "bun",
+    args: ["test", "scripts/product-gate.test.ts"],
   },
   {
     name: "Synthetic workspace generator tests",

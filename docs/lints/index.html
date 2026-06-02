@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Seagrass lint catalog</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 2rem auto; max-width: 960px; line-height: 1.5; }
+    table { border-collapse: collapse; width: 100%; }
+    th, td { border: 1px solid #ccc; padding: 0.5rem 0.75rem; text-align: left; vertical-align: top; }
+    th { background: #f4f4f4; }
+    code { font-size: 0.9em; }
+  </style>
+</head>
+<body>
+  <h1>Seagrass lint catalog</h1>
+  <p>Browsable index of <code>docs/lints/</code> topics. Regenerate with <code>bun scripts/build-lint-docs-index.ts</code>.</p>
+  <table>
+    <thead><tr><th>Topic</th><th>Description</th><th>Doc</th></tr></thead>
+    <tbody>
+<tr>
+  <td><code>seagrass/anchor.account.usage</code></td>
+  <td>Anchor account mutability and usage diagnostics.</td>
+  <td><a href="seagrass-anchor-account-usage.md">seagrass-anchor-account-usage.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.artifact.idl</code></td>
+  <td>Anchor IDL artifact freshness and availability diagnostics.</td>
+  <td><a href="seagrass-anchor-artifact-idl.md">seagrass-anchor-artifact-idl.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.artifact.program-keypair</code></td>
+  <td>Anchor program keypair artifact diagnostics.</td>
+  <td><a href="seagrass-anchor-artifact-program-keypair.md">seagrass-anchor-artifact-program-keypair.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.artifact.sbf</code></td>
+  <td>Anchor SBF build artifact diagnostics.</td>
+  <td><a href="seagrass-anchor-artifact-sbf.md">seagrass-anchor-artifact-sbf.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.artifact.types</code></td>
+  <td>Anchor generated TypeScript type artifact diagnostics.</td>
+  <td><a href="seagrass-anchor-artifact-types.md">seagrass-anchor-artifact-types.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.check-cfg</code></td>
+  <td>Anchor Cargo feature diagnostics for Rust check-cfg compatibility.</td>
+  <td><a href="seagrass-anchor-check-cfg.md">seagrass-anchor-check-cfg.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.constraint.account-reference</code></td>
+  <td>Anchor constraint references to missing accounts or arguments.</td>
+  <td><a href="seagrass-anchor-constraint-account-reference.md">seagrass-anchor-constraint-account-reference.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.constraint.expression</code></td>
+  <td>Anchor account constraint expression name, field, and type resolution diagnostics.</td>
+  <td><a href="seagrass-anchor-constraint-expression.md">seagrass-anchor-constraint-expression.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.constraint.shape</code></td>
+  <td>Anchor account constraint parser and shape diagnostics.</td>
+  <td><a href="seagrass-anchor-constraint-shape.md">seagrass-anchor-constraint-shape.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.context.accounts</code></td>
+  <td>Anchor Context&lt;T&gt; account struct diagnostics.</td>
+  <td><a href="seagrass-anchor-context-accounts.md">seagrass-anchor-context-accounts.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.init.constraints</code></td>
+  <td>General Anchor init constraint diagnostics.</td>
+  <td><a href="seagrass-anchor-init-constraints.md">seagrass-anchor-init-constraints.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.init.missing-companion</code></td>
+  <td>Anchor init companion constraint diagnostics.</td>
+  <td><a href="seagrass-anchor-init-missing-companion.md">seagrass-anchor-init-missing-companion.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.init.missing-payer</code></td>
+  <td>Anchor init constraints missing payer evidence.</td>
+  <td><a href="seagrass-anchor-init-missing-payer.md">seagrass-anchor-init-missing-payer.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.init.missing-space</code></td>
+  <td>Anchor init constraints missing account space evidence.</td>
+  <td><a href="seagrass-anchor-init-missing-space.md">seagrass-anchor-init-missing-space.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.instruction.argument</code></td>
+  <td>Anchor instruction attribute argument diagnostics.</td>
+  <td><a href="seagrass-anchor-instruction-argument.md">seagrass-anchor-instruction-argument.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.pda.seed-resolution</code></td>
+  <td>Anchor PDA seed expression visibility and IDL diagnostics.</td>
+  <td><a href="seagrass-anchor-pda-seed-resolution.md">seagrass-anchor-pda-seed-resolution.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.project-id</code></td>
+  <td>Anchor declare_id and Anchor.toml project identity diagnostics.</td>
+  <td><a href="seagrass-anchor-project-id.md">seagrass-anchor-project-id.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.spl-token-interface</code></td>
+  <td>Anchor SPL token and token-interface semantic diagnostics.</td>
+  <td><a href="seagrass-anchor-spl-token-interface.md">seagrass-anchor-spl-token-interface.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/anchor.syntax</code></td>
+  <td>Anchor parser syntax diagnostics.</td>
+  <td><a href="seagrass-anchor-syntax.md">seagrass-anchor-syntax.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.account.duplicate-mutable</code></td>
+  <td>Duplicate mutable account security diagnostics.</td>
+  <td><a href="seagrass-security-account-duplicate-mutable.md">seagrass-security-account-duplicate-mutable.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.account.unchecked</code></td>
+  <td>Unchecked account security diagnostics.</td>
+  <td><a href="seagrass-security-account-unchecked.md">seagrass-security-account-unchecked.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.cpi.program</code></td>
+  <td>CPI program validation security diagnostics.</td>
+  <td><a href="seagrass-security-cpi-program.md">seagrass-security-cpi-program.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.owner-check</code></td>
+  <td>Owner-check security diagnostics.</td>
+  <td><a href="seagrass-security-owner-check.md">seagrass-security-owner-check.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.pda.static-seed</code></td>
+  <td>Static PDA seed security diagnostics.</td>
+  <td><a href="seagrass-security-pda-static-seed.md">seagrass-security-pda-static-seed.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.signer.authorization</code></td>
+  <td>Signer authorization security diagnostics.</td>
+  <td><a href="seagrass-security-signer-authorization.md">seagrass-security-signer-authorization.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.sysvar.address</code></td>
+  <td>Sysvar address validation diagnostics.</td>
+  <td><a href="seagrass-security-sysvar-address.md">seagrass-security-sysvar-address.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.token-account</code></td>
+  <td>Token account validation security diagnostics.</td>
+  <td><a href="seagrass-security-token-account.md">seagrass-security-token-account.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/security.type-cosplay</code></td>
+  <td>Type-cosplay and discriminator validation diagnostics.</td>
+  <td><a href="seagrass-security-type-cosplay.md">seagrass-security-type-cosplay.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.artifact.idl</code></td>
+  <td>Solana IDL artifact diagnostics.</td>
+  <td><a href="seagrass-solana-artifact-idl.md">seagrass-solana-artifact-idl.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality</code></td>
+  <td>General Solana code-quality diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality.md">seagrass-solana-code-quality.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality.account-closing</code></td>
+  <td>Manual account close invariant diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality-account-closing.md">seagrass-solana-code-quality-account-closing.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality.bump-seed-canonicalization</code></td>
+  <td>Manual PDA bump canonicalization diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality-bump-seed-canonicalization.md">seagrass-solana-code-quality-bump-seed-canonicalization.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality.initialization</code></td>
+  <td>Unchecked initialization and reinitialization diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality-initialization.md">seagrass-solana-code-quality-initialization.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality.instruction-data-bounds</code></td>
+  <td>Instruction data bounds validation diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality-instruction-data-bounds.md">seagrass-solana-code-quality-instruction-data-bounds.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality.pda-seed-collision</code></td>
+  <td>PDA seed domain collision diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality-pda-seed-collision.md">seagrass-solana-code-quality-pda-seed-collision.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality.stale-account-after-cpi</code></td>
+  <td>Stale account reads after CPI diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality-stale-account-after-cpi.md">seagrass-solana-code-quality-stale-account-after-cpi.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality.unchecked-arithmetic</code></td>
+  <td>Unchecked balance and lamports arithmetic diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality-unchecked-arithmetic.md">seagrass-solana-code-quality-unchecked-arithmetic.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.code-quality.unsafe-unwrap</code></td>
+  <td>Unsafe unwrap and expect diagnostics.</td>
+  <td><a href="seagrass-solana-code-quality-unsafe-unwrap.md">seagrass-solana-code-quality-unsafe-unwrap.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.program-metadata</code></td>
+  <td>Solana program metadata diagnostics.</td>
+  <td><a href="seagrass-solana-program-metadata.md">seagrass-solana-program-metadata.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.surfpool-workspace</code></td>
+  <td>Surfpool workspace diagnostics.</td>
+  <td><a href="seagrass-solana-surfpool-workspace.md">seagrass-solana-surfpool-workspace.md</a></td>
+</tr>
+<tr>
+  <td><code>seagrass/solana.test-harness</code></td>
+  <td>Solana test harness diagnostics.</td>
+  <td><a href="seagrass-solana-test-harness.md">seagrass-solana-test-harness.md</a></td>
+</tr>
+    </tbody>
+  </table>
+</body>
+</html>

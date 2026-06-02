@@ -80,6 +80,7 @@ Use targeted tests while iterating, then run the production gate before review:
 cargo test -p seagrass
 bun scripts/check-rule-hygiene.ts
 bun scripts/check-source-size.ts
+bash scripts/smoke-install.sh
 bun scripts/verify-production.ts
 ```
 

@@ -21,7 +21,7 @@ run_diagnostics() {
     seagrass diagnostics "$FIXTURE" --json
     return
   fi
-  cargo run -p seagrass --quiet -- diagnostics "$FIXTURE" --json
+  cargo run -p seagrass-cli --quiet -- diagnostics "$FIXTURE" --json
 }
 
 echo "==> Seagrass install smoke"

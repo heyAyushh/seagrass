@@ -28,6 +28,8 @@ It prints a JSON array:
     "severity": "WARNING",
     "topic": "seagrass/security.signer.authorization",
     "confidence": "authoritative",
+    "applicability": "Unspecified",
+    "docsUrl": "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-security-signer-authorization.md",
     "message": "`authority` is used as a signer account without Anchor signer validation; use `Signer<'info>` or add `#[account(signer)]`."
   }
 ]
@@ -38,6 +40,18 @@ directories, and exits with code `1` when any diagnostic has ERROR severity.
 Usage and input errors exit with code `2` and include a retryable example
 invocation. Run `cargo run -p seagrass-cli -- diagnostics --help` for the layered
 CLI help.
+
+For GitHub code scanning and review UIs, emit SARIF:
+
+```sh
+seagrass diagnostics programs/demo/src --sarif > seagrass.sarif
+```
+
+Golden-path verification from the repository root:
+
+```sh
+bash scripts/smoke-install.sh
+```
 
 Use these `workspace/executeCommand` endpoints when an agent needs a compact
 semantic snapshot instead of many granular LSP requests.
