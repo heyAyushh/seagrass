@@ -1,4 +1,5 @@
 mod diagnostics;
+mod sarif;
 
 use {
     clap::{Parser, Subcommand},

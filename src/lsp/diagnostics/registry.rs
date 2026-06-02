@@ -151,8 +151,10 @@ impl AnchorDiagnosticKind {
     }
 
     pub fn docs_url_for_data(self, data: Option<&Value>) -> Option<Url> {
-        data.and_then(diagnostic_docs_url)
-            .and_then(parse_url)
+        data.and_then(|value| value.get("topic"))
+            .and_then(Value::as_str)
+            .and_then(topic_lint_doc_url)
+            .or_else(|| data.and_then(diagnostic_docs_url).and_then(parse_url))
             .or_else(|| {
                 data.and_then(diagnostic_constraint_key)
                     .and_then(constraint_catalog::documentation_url_for_key)
@@ -430,6 +432,21 @@ fn diagnostic_constraint_key(data: &Value) -> Option<&str> {
     .find_map(|key| data.get(key).and_then(Value::as_str))
 }
 
+pub(crate) fn topic_lint_doc_url(topic: &str) -> Option<Url> {
+    let slug = topic_lint_doc_slug(topic)?;
+    parse_url(&format!(
+        "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/{slug}.md"
+    ))
+}
+
+fn topic_lint_doc_slug(topic: &str) -> Option<String> {
+    let rest = topic.strip_prefix("seagrass/")?;
+    Some(format!(
+        "seagrass-{}",
+        rest.replace('.', "-").replace('/', "-")
+    ))
+}
+
 fn diagnostic_docs_url(data: &Value) -> Option<&str> {
     data.get("docsUrl").and_then(Value::as_str)
 }
@@ -441,6 +458,14 @@ fn parse_url(url: &str) -> Option<Url> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn topic_lint_doc_url_maps_seagrass_topics_to_catalog_pages() {
+        let url = topic_lint_doc_url("seagrass/anchor.init.missing-payer")
+            .expect("topic lint url")
+            .to_string();
+        assert!(url.contains("docs/lints/seagrass-anchor-init-missing-payer.md"));
+    }
 
     #[test]
     fn docs_url_uses_exact_constraint_anchor_from_data() {

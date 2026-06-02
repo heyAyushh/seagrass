@@ -2,6 +2,7 @@ use {
     super::*,
     clap::CommandFactory,
     std::time::{SystemTime, UNIX_EPOCH},
+    tower_lsp::lsp_types::Diagnostic,
 };
 
 #[test]
@@ -114,7 +115,8 @@ fn diagnostics_help_includes_agent_examples() {
 fn diagnostics_command_requires_path_or_stdin() {
     let error = DiagnosticsCommand {
         path: None,
-        _json: false,
+        json: false,
+        sarif: false,
         stdin: false,
         stdin_path: None,
     }
@@ -132,7 +134,8 @@ fn diagnostics_command_requires_path_or_stdin() {
 fn diagnostics_command_rejects_path_with_stdin() {
     let error = DiagnosticsCommand {
         path: Some(PathBuf::from("programs/demo/src/lib.rs")),
-        _json: false,
+        json: false,
+        sarif: false,
         stdin: true,
         stdin_path: None,
     }
@@ -149,7 +152,8 @@ fn diagnostics_command_rejects_path_with_stdin() {
 fn diagnostics_command_rejects_stdin_path_without_stdin() {
     let error = DiagnosticsCommand {
         path: None,
-        _json: false,
+        json: false,
+        sarif: false,
         stdin: false,
         stdin_path: Some(PathBuf::from("programs/demo/src/lib.rs")),
     }
@@ -214,6 +218,70 @@ fn diagnostics_cli_rejects_directory_without_rust_files() {
     assert!(error.contains(DIAGNOSTICS_DIRECTORY_EXAMPLE));
 
     let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_diagnostic_includes_docs_url_for_seagrass_topic() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init)]
+    pub state: Account<'info, State>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostic = diagnostic_engine::collect_with_workspace(&document, None)
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic_data_string(diagnostic, "topic")
+                .is_some_and(|topic| topic.contains("anchor.init"))
+        })
+        .expect("init companion diagnostic");
+    let serialized = CliDiagnostic::from_lsp("smoke.rs".to_string(), diagnostic);
+    assert!(
+        serialized
+            .docs_url
+            .as_deref()
+            .is_some_and(|url| url.contains("docs/lints/seagrass-anchor-init")),
+        "expected lint catalog docsUrl, got {:?}",
+        serialized.docs_url
+    );
+}
+
+#[test]
+fn diagnostics_command_emits_sarif_log() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init)]
+    pub state: Account<'info, State>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = diagnostic_engine::collect_with_workspace(&document, None)
+        .into_iter()
+        .map(|diagnostic| CliDiagnostic::from_lsp("smoke.rs".to_string(), diagnostic))
+        .collect::<Vec<_>>();
+    let mut buffer = Vec::new();
+    serde_json::to_writer_pretty(&mut buffer, &sarif_log(&diagnostics)).unwrap();
+    let stdout = String::from_utf8(buffer).unwrap();
+    assert!(stdout.contains("\"version\": \"2.1.0\""));
+    assert!(stdout.contains("\"name\": \"seagrass\""));
+}
+
+fn sarif_log(diagnostics: &[CliDiagnostic]) -> serde_json::Value {
+    let mut sink = Vec::new();
+    super::super::sarif::write_sarif_to_writer(diagnostics, &mut sink).unwrap();
+    serde_json::from_slice(&sink).unwrap()
+}
+
+fn diagnostic_data_string(diagnostic: &Diagnostic, key: &str) -> Option<String> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get(key))
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
 }
 
 fn unique_temp_dir(prefix: &str) -> PathBuf {
