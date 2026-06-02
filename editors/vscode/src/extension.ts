@@ -1,3 +1,5 @@
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import * as path from "path";
 import * as vscode from "vscode";
 import { type InitializeParams } from "vscode-languageserver-protocol";
@@ -15,7 +17,11 @@ const SUPPORT_MATRIX_COMMAND = "seagrass/supportMatrix";
 const GENERATOR_PROFILE_COMMAND = "seagrass/generatorProfile";
 const LOGS_COMMAND = "seagrass/logs";
 const SNIPPET_TEXT_EDIT_CAPABILITY = "snippetTextEdit";
-const DEFAULT_SERVER_ARGS = ["run", "-p", "seagrass-cli", "--quiet"];
+const DEFAULT_CARGO_SERVER_ARGS = ["run", "-p", "seagrass-cli", "--quiet"];
+const BYTES_PER_MEBIBYTE = 1024 * 1024;
+const WORKSPACE_SCAN_MAX_BUFFER_BYTES = 10 * BYTES_PER_MEBIBYTE;
+const DIAGNOSTICS_FOUND_EXIT_CODE = 1;
+const execFileAsync = promisify(execFile);
 const WATCHED_FILES = [
   "**/src/**/*.rs",
   "**/Anchor.toml",
@@ -33,6 +39,7 @@ const LAUNCH_CONFIGURATION_KEYS = [
   "seagrass.serverCwd",
   "seagrass.serverEnv",
   "seagrass.diagnostics.transport",
+  "seagrass.dev.useCargoFromCheckout",
 ];
 const SERVER_CAPABILITIES = [
   "full document sync",
@@ -78,9 +85,16 @@ type ServerLaunchConfig = {
   cwd: string;
   env: NodeJS.ProcessEnv;
   diagnosticsTransport: DiagnosticsTransport;
+  useCargo: boolean;
 };
 
 type DiagnosticsTransport = "push" | "pull" | "both";
+
+type ExecFileError = Error & {
+  code?: number | string;
+  stdout?: string;
+  stderr?: string;
+};
 
 class SeagrassLanguageClient extends LanguageClient {
   protected override fillInitializeParams(params: InitializeParams): void {
@@ -124,6 +138,9 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("seagrass.logs", showLogs),
     vscode.commands.registerCommand("seagrass.restart", () => queueRestart(context, fileWatchers, "manual restart")),
     vscode.commands.registerCommand("seagrass.showOutput", () => outputChannel?.show(true)),
+    vscode.commands.registerCommand("seagrass.explainDiagnostic", explainDiagnostic),
+    vscode.commands.registerCommand("seagrass.suppressDiagnostic", suppressDiagnostic),
+    vscode.commands.registerCommand("seagrass.scanWorkspace", scanWorkspace),
     vscode.window.onDidChangeActiveTextEditor(() => updateStatusBar(client ? "ready" : "stopped")),
     vscode.languages.onDidChangeDiagnostics(() => updateStatusBar(client ? "ready" : "stopped")),
     vscode.workspace.onDidChangeConfiguration((event) => {
@@ -223,10 +240,174 @@ function updateStatusBar(state: StatusState): void {
     statusBarItem.text = "$(check) Seagrass";
   }
 
+  const confidenceSummary = summarizeConfidence(diagnostics);
   statusBarItem.tooltip =
     errors + warnings > 0
-      ? `Seagrass: ${errors} errors, ${warnings} warnings in the active file`
+      ? `Seagrass: ${errors} errors, ${warnings} warnings in the active file${confidenceSummary}`
       : "Seagrass: no Anchor diagnostics in the active file";
+}
+
+function summarizeConfidence(diagnostics: readonly vscode.Diagnostic[]): string {
+  const counts = new Map<string, number>();
+  for (const diagnostic of diagnostics) {
+    const label = confidenceLabel(diagnostic);
+    if (!label) {
+      continue;
+    }
+    counts.set(label, (counts.get(label) ?? 0) + 1);
+  }
+  if (counts.size === 0) {
+    return "";
+  }
+  const parts = [...counts.entries()].map(([label, count]) => `${count} ${label}`);
+  return ` (${parts.join(", ")})`;
+}
+
+function confidenceLabel(diagnostic: vscode.Diagnostic): string | undefined {
+  const code = diagnostic.code;
+  if (typeof code === "object" && code !== null && "value" in code) {
+    const value = String((code as { value: string | number }).value);
+    if (value.includes("authoritative")) {
+      return "authoritative";
+    }
+    if (value.includes("derived")) {
+      return "derived";
+    }
+    if (value.includes("heuristic")) {
+      return "heuristic";
+    }
+  }
+  const message = diagnostic.message.toLowerCase();
+  if (message.includes("authoritative")) {
+    return "authoritative";
+  }
+  return undefined;
+}
+
+function activeSeagrassDiagnostic(): vscode.Diagnostic | undefined {
+  const editor = vscode.window.activeTextEditor;
+  if (!editor || editor.document.languageId !== "rust") {
+    return undefined;
+  }
+  const position = editor.selection.active;
+  return vscode.languages
+    .getDiagnostics(editor.document.uri)
+    .filter((diagnostic) => diagnostic.source === DIAGNOSTIC_SOURCE)
+    .find((diagnostic) => editor.document.getWordRangeAtPosition(position)?.contains(position) || diagnostic.range.contains(position));
+}
+
+function diagnosticDocsTarget(diagnostic: vscode.Diagnostic): vscode.Uri | undefined {
+  const code = diagnostic.code;
+  if (typeof code === "object" && code !== null && "target" in code) {
+    return (code as { target: vscode.Uri }).target;
+  }
+  return undefined;
+}
+
+function diagnosticTopic(diagnostic: vscode.Diagnostic): string | undefined {
+  const code = diagnostic.code;
+  if (typeof code === "string" && code.startsWith("seagrass/")) {
+    return code;
+  }
+  if (typeof code === "object" && code !== null && "value" in code) {
+    const value = String((code as { value: string | number }).value);
+    if (value.includes("/")) {
+      return value;
+    }
+  }
+  return undefined;
+}
+
+async function explainDiagnostic(): Promise<void> {
+  const diagnostic = activeSeagrassDiagnostic();
+  if (!diagnostic) {
+    void vscode.window.showInformationMessage("Place the cursor on a Seagrass diagnostic first.");
+    return;
+  }
+
+  const target = diagnosticDocsTarget(diagnostic);
+  if (target) {
+    await vscode.env.openExternal(target);
+    return;
+  }
+
+  const topic = diagnosticTopic(diagnostic);
+  if (topic) {
+    const slug = topic.replace("seagrass/", "seagrass-").replaceAll(".", "-").replaceAll("/", "-");
+    await vscode.env.openExternal(
+      vscode.Uri.parse(`https://github.com/heyAyushh/seagrass/blob/main/docs/lints/${slug}.md`),
+    );
+    return;
+  }
+
+  outputChannel?.appendLine(diagnostic.message);
+  outputChannel?.show(true);
+}
+
+async function suppressDiagnostic(): Promise<void> {
+  const diagnostic = activeSeagrassDiagnostic();
+  if (!diagnostic) {
+    void vscode.window.showInformationMessage("Place the cursor on a Seagrass diagnostic first.");
+    return;
+  }
+
+  const topic = diagnosticTopic(diagnostic) ?? "seagrass/<topic>";
+  const suffix = topic.includes(".") ? topic.split(".").pop() ?? topic : topic;
+  const snippet = `// seagrass-allow-next-line: ${suffix}`;
+  await vscode.env.clipboard.writeText(snippet);
+  void vscode.window.showInformationMessage(`Copied suppression to clipboard: ${snippet}`);
+}
+
+async function scanWorkspace(): Promise<void> {
+  const folder = vscode.workspace.workspaceFolders?.[0];
+  if (!folder) {
+    void vscode.window.showInformationMessage("Open a workspace folder before scanning.");
+    return;
+  }
+
+  const launch = readServerLaunchConfigFromWorkspace();
+  const command = launch.useCargo ? "cargo" : launch.command;
+  const args = launch.useCargo
+    ? [...launch.args, "--", "diagnostics", folder.uri.fsPath, "--json"]
+    : ["diagnostics", folder.uri.fsPath, "--json"];
+
+  try {
+    const { stdout, stderr } = await execFileAsync(command, args, {
+      cwd: launch.cwd,
+      env: launch.env,
+      maxBuffer: WORKSPACE_SCAN_MAX_BUFFER_BYTES,
+    });
+    showWorkspaceScanResult(folder.name, stdout, stderr, false);
+  } catch (error) {
+    if (isExecFileError(error) && error.code === DIAGNOSTICS_FOUND_EXIT_CODE) {
+      showWorkspaceScanResult(folder.name, error.stdout ?? "", error.stderr ?? "", true);
+      return;
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    void vscode.window.showErrorMessage(`Seagrass workspace scan failed: ${message}`);
+  }
+}
+
+function showWorkspaceScanResult(
+  folderName: string,
+  stdout: string,
+  stderr: string,
+  hasFindings: boolean,
+): void {
+  const suffix = hasFindings ? " found issues" : "";
+  outputChannel?.appendLine(`Seagrass workspace scan (${folderName})${suffix}:`);
+  if (stdout.trim().length > 0) {
+    outputChannel?.appendLine(stdout);
+  }
+  if (stderr.trim().length > 0) {
+    outputChannel?.appendLine(stderr);
+  }
+  outputChannel?.show(true);
+}
+
+function isExecFileError(error: unknown): error is ExecFileError {
+  return error instanceof Error && "code" in error;
 }
 
 async function showStatus(): Promise<void> {
@@ -434,11 +615,21 @@ function clientOptions(
 }
 
 function readServerLaunchConfig(context: vscode.ExtensionContext): ServerLaunchConfig {
+  return readServerLaunchConfigFromWorkspace(context);
+}
+
+function readServerLaunchConfigFromWorkspace(
+  context?: vscode.ExtensionContext,
+): ServerLaunchConfig {
   const config = vscode.workspace.getConfiguration("seagrass");
-  const command = config.get<string>("serverCommand") || "cargo";
-  const args = config.get<string[]>("serverArgs") ?? DEFAULT_SERVER_ARGS;
+  const useCargo = config.get<boolean>("dev.useCargoFromCheckout", false);
+  const command = useCargo ? "cargo" : config.get<string>("serverCommand") || "seagrass";
+  const configuredArgs = config.get<string[]>("serverArgs") ?? [];
+  const args = useCargo && configuredArgs.length === 0 ? DEFAULT_CARGO_SERVER_ARGS : configuredArgs;
   const configuredCwd = config.get<string>("serverCwd")?.trim();
-  const cwd = configuredCwd || path.resolve(context.extensionPath, "../../..");
+  const cwd =
+    configuredCwd ||
+    (context ? path.resolve(context.extensionPath, "../../..") : process.cwd());
   const serverEnv = config.get<Record<string, string>>("serverEnv") ?? {};
 
   return {
@@ -450,6 +641,7 @@ function readServerLaunchConfig(context: vscode.ExtensionContext): ServerLaunchC
       ...stringEnv(serverEnv),
     },
     diagnosticsTransport: readDiagnosticsTransport(),
+    useCargo,
   };
 }
 

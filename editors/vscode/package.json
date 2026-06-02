@@ -5,7 +5,7 @@
   "version": "1.0.2",
   "license": "MIT",
   "publisher": "seagrass-local",
-  "private": true,
+  "private": false,
   "packageManager": "bun@1.3.8",
   "engines": {
     "vscode": "^1.90.0"
@@ -25,6 +25,9 @@
     "onCommand:seagrass.logs",
     "onCommand:seagrass.restart",
     "onCommand:seagrass.showOutput",
+    "onCommand:seagrass.explainDiagnostic",
+    "onCommand:seagrass.suppressDiagnostic",
+    "onCommand:seagrass.scanWorkspace",
     "workspaceContains:Anchor.toml"
   ],
   "main": "./dist/extension.js",
@@ -69,6 +72,18 @@
       {
         "command": "seagrass.showOutput",
         "title": "Seagrass: Output"
+      },
+      {
+        "command": "seagrass.explainDiagnostic",
+        "title": "Seagrass: Explain Diagnostic"
+      },
+      {
+        "command": "seagrass.suppressDiagnostic",
+        "title": "Seagrass: Suppress Diagnostic"
+      },
+      {
+        "command": "seagrass.scanWorkspace",
+        "title": "Seagrass: Scan Workspace For Issues"
       }
     ],
     "menus": {
@@ -110,6 +125,30 @@
         },
         {
           "command": "seagrass.showOutput"
+        },
+        {
+          "command": "seagrass.explainDiagnostic",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.suppressDiagnostic",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.scanWorkspace",
+          "when": "workspaceFolderCount > 0"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "seagrass.explainDiagnostic",
+          "when": "editorLangId == rust",
+          "group": "seagrass@1"
+        },
+        {
+          "command": "seagrass.suppressDiagnostic",
+          "when": "editorLangId == rust",
+          "group": "seagrass@2"
         }
       ]
     },
@@ -118,21 +157,21 @@
       "properties": {
         "seagrass.serverCommand": {
           "type": "string",
-          "default": "cargo",
-          "description": "Command used to start Seagrass."
+          "default": "seagrass",
+          "description": "Command used to start Seagrass. Enable seagrass.dev.useCargoFromCheckout for repository development."
         },
         "seagrass.serverArgs": {
           "type": "array",
-          "default": [
-            "run",
-            "-p",
-            "seagrass-cli",
-            "--quiet"
-          ],
+          "default": [],
           "items": {
             "type": "string"
           },
           "description": "Arguments passed to the Seagrass server command."
+        },
+        "seagrass.dev.useCargoFromCheckout": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, launch `cargo run -p seagrass-cli --quiet` from seagrass.serverCwd instead of the installed `seagrass` binary."
         },
         "seagrass.serverCwd": {
           "type": "string",
