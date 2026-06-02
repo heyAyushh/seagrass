@@ -2,10 +2,7 @@ use {
     crate::{
         account_members, context_members,
         document::ParsedDocument,
-        lsp::scope::{
-            text_block_item_value_bindings, text_enclosing_function_body, TextHandlerBinding,
-            TextHandlerScope,
-        },
+        lsp::scope::{TextHandlerBinding, TextHandlerScope},
         workspace::WorkspaceIndex,
     },
     syn::{Expr, ExprField, Member, Pat, Type},
@@ -79,19 +76,16 @@ pub(crate) fn text_visible_typed_values_at_with_workspace(
     position: Position,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Vec<TypedLocalValue> {
-    let mut bindings = TextHandlerScope::at_position(document.source(), position)
-        .map(|scope| scope.bindings().to_vec())
-        .unwrap_or_default();
-    if let Some(body) = text_enclosing_function_body(document.source(), position) {
-        bindings.extend(text_block_item_value_bindings(body));
-    }
+    let Some(scope) = TextHandlerScope::at_position(document.source(), position) else {
+        return Vec::new();
+    };
     let mut values = Vec::new();
-    for (idx, binding) in bindings.iter().enumerate() {
+    for (idx, binding) in scope.bindings().iter().enumerate() {
         if let Some(value) = text_inference::typed_value_from_binding(
             document,
             workspace_index,
             &values,
-            &bindings[..idx],
+            &scope.bindings()[..idx],
             binding,
         ) {
             values.push(value);
@@ -680,35 +674,6 @@ pub(crate) fn explicit_pattern_type_name(pat: &Pat) -> Option<String> {
 
 pub(crate) fn local_value_type_name_from_type(ty: &Type) -> Option<String> {
     account_loader::local_type_name_from_type(ty).or_else(|| shallow_type_name(ty))
-}
-
-pub(crate) fn block_item_typed_values(block: &syn::Block) -> Vec<TypedLocalValue> {
-    block
-        .stmts
-        .iter()
-        .filter_map(|stmt| match stmt {
-            syn::Stmt::Item(item) => block_item_typed_value(item),
-            _ => None,
-        })
-        .collect()
-}
-
-fn block_item_typed_value(item: &syn::Item) -> Option<TypedLocalValue> {
-    match item {
-        syn::Item::Const(item_const) => {
-            local_value_type_name_from_type(&item_const.ty).map(|type_name| TypedLocalValue {
-                name: item_const.ident.to_string(),
-                type_name,
-            })
-        }
-        syn::Item::Static(item_static) => {
-            local_value_type_name_from_type(&item_static.ty).map(|type_name| TypedLocalValue {
-                name: item_static.ident.to_string(),
-                type_name,
-            })
-        }
-        _ => None,
-    }
 }
 
 pub(crate) fn iterable_item_type_name_from_type(ty: &Type) -> Option<String> {

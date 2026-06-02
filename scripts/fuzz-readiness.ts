@@ -6,6 +6,7 @@ import { dirname, resolve } from "node:path";
 import {
   assertSameStringSet,
   compareStrings,
+  elapsedHours,
   expectedFuzzTargets,
   finiteIsoTimestamp,
   fuzzHours,
@@ -106,13 +107,11 @@ export function buildFuzzEvidence(input: {
     input.startedAt ??
     new Date(Date.parse(completedAt) - aggregateFuzzHours * MILLISECONDS_PER_HOUR).toISOString();
   const normalizedStartedAt = finiteIsoTimestamp(startedAt, "--started-at");
-  if (input.status === "passed" && aggregateFuzzHours < REQUIRED_FUZZ_HOURS) {
-    throw new Error(
-      `passed fuzz evidence must cover at least ${REQUIRED_FUZZ_HOURS} aggregate fuzz-hours`,
-    );
-  }
-  if (Date.parse(completedAt) <= Date.parse(normalizedStartedAt)) {
-    throw new Error("fuzz evidence completedAt must be after startedAt");
+  if (
+    input.status === "passed" &&
+    elapsedHours(normalizedStartedAt, completedAt) < REQUIRED_FUZZ_HOURS
+  ) {
+    throw new Error(`passed fuzz evidence must cover at least ${REQUIRED_FUZZ_HOURS} elapsed hours`);
   }
 
   return {

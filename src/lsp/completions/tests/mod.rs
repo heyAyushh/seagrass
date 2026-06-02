@@ -12,7 +12,6 @@ mod handler_expression_tests;
 mod handler_iterator_tests;
 mod handler_macro_tests;
 mod handler_member_tests;
-mod handler_member_wakeup_tests;
 mod handler_method_return_tests;
 mod handler_method_tests;
 mod handler_pattern_tests;
@@ -478,26 +477,6 @@ pub struct Run<'info> {
     assert_eq!(
         signature.kind,
         CompletionSignatureKind::AccountConstraintKey
-    );
-    assert_eq!(signature.prefix, "");
-}
-
-#[test]
-fn completion_signature_tracks_seed_list_opener() {
-    let source = r#"
-#[derive(Accounts)]
-pub struct Run<'info> {
-    #[account(seeds = [])]
-    pub state: Account<'info, State>,
-}
-"#;
-
-    let signature = completion_signature(source, position_after(source, "seeds = ["))
-        .expect("expected seed-list completion signature after opener");
-
-    assert_eq!(
-        signature.kind,
-        CompletionSignatureKind::AccountConstraintValue
     );
     assert_eq!(signature.prefix, "");
 }

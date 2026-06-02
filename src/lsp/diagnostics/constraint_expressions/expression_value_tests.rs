@@ -223,66 +223,6 @@ pub struct State {
 }
 
 #[test]
-fn validates_instruction_argument_struct_members() {
-    let source = r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>, params: RunParams) -> Result<()> { Ok(()) }
-}
-
-#[derive(Accounts)]
-#[instruction(params: RunParams)]
-pub struct Run<'info> {
-    #[account(
-        constraint = params.position_mint == mint.key(),
-        constraint = params.missing == mint.key(),
-    )]
-    pub mint: AccountInfo<'info>,
-}
-
-pub struct RunParams {
-    pub position_mint: Pubkey,
-}
-"#;
-    let document = ParsedDocument::parse(source).unwrap();
-    let diagnostics = collect(&document);
-
-    assert!(diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.message.contains("`params.missing`")));
-    assert!(!diagnostics.iter().any(|diagnostic| diagnostic
-        .message
-        .contains("position_mint` does not resolve")));
-}
-
-#[test]
-fn reports_instruction_argument_field_called_as_method() {
-    let source = r#"
-#[program]
-pub mod demo {
-    pub fn run(ctx: Context<Run>, params: RunParams) -> Result<()> { Ok(()) }
-}
-
-#[derive(Accounts)]
-#[instruction(params: RunParams)]
-pub struct Run<'info> {
-    #[account(constraint = params.position_mint() == Pubkey::default())]
-    pub mint: AccountInfo<'info>,
-}
-
-pub struct RunParams {
-    pub position_mint: Pubkey,
-}
-"#;
-    let document = ParsedDocument::parse(source).unwrap();
-    let diagnostics = collect(&document);
-
-    assert!(diagnostics.iter().any(|diagnostic| diagnostic
-        .message
-        .contains("calls `position_mint` as a method")));
-}
-
-#[test]
 fn reports_unknown_associated_space_constant() {
     let source = r#"
 #[derive(Accounts)]

@@ -94,7 +94,7 @@ fn completion_advertises_anchor_slot_trigger_characters_for_fast_editor_wakeups(
         .trigger_characters
         .expect("completion trigger characters");
 
-    for trigger in ["a", "Z", "_", " ", ".", "<", ",", "=", "["] {
+    for trigger in ["a", "Z", "_", " ", ".", "<", ",", "="] {
         assert!(
             trigger_characters.contains(&trigger.to_string()),
             "missing completion trigger character {trigger}"
@@ -111,7 +111,7 @@ fn completion_triggers_do_not_include_delimiters_without_anchor_slot_value() {
         .trigger_characters
         .expect("completion trigger characters");
 
-    for trigger in ["(", ":", "#"] {
+    for trigger in ["(", ":", "#", "["] {
         assert!(
             !trigger_characters.contains(&trigger.to_string()),
             "punctuation trigger {trigger} would open noisy empty completion lists"

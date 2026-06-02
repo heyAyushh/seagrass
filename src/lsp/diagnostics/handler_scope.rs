@@ -35,7 +35,7 @@ pub(super) fn parse_error_unresolved_identifier_diagnostic(
         return None;
     }
     let identifier = parse_error_identifier(source, range)?;
-    if !crate::lsp::scope::handler_identifier_should_be_resolved(&identifier)
+    if !identifier_should_be_resolved(&identifier)
         || !parse_error_identifier_is_value(source, range)
     {
         return None;
@@ -111,9 +111,7 @@ impl HandlerScopeVisitor {
         let Some(identifier) = bare_value_identifier(path) else {
             return;
         };
-        if crate::lsp::scope::handler_identifier_should_be_resolved(&identifier)
-            && !self.identifier_resolves(&identifier)
-        {
+        if identifier_should_be_resolved(&identifier) && !self.identifier_resolves(&identifier) {
             self.report_unresolved_identifier(
                 &identifier,
                 range_from_span(path.path.segments[0].ident.span()),
@@ -183,9 +181,6 @@ impl<'ast> Visit<'ast> for HandlerScopeVisitor {
 
     fn visit_block(&mut self, node: &'ast syn::Block) {
         self.scopes.push();
-        for name in crate::lsp::scope::block_item_value_names(node) {
-            self.scopes.declare(&name);
-        }
         visit::visit_block(self, node);
         self.scopes.pop();
     }
@@ -366,7 +361,6 @@ impl RecoveredHandlerScope {
             .iter()
             .map(|binding| binding.name.clone())
             .collect::<BTreeSet<_>>();
-        names.extend(crate::lsp::scope::text_file_value_names(source));
         names.extend(
             KNOWN_SINGLE_SEGMENT_VALUES
                 .iter()
@@ -468,6 +462,11 @@ fn bare_value_identifier(path: &ExprPath) -> Option<String> {
     Some(segment.ident.to_string())
 }
 
+fn identifier_should_be_resolved(identifier: &str) -> bool {
+    matches!(identifier.as_bytes().first(), Some(b'a'..=b'z'))
+        || crate::lsp::scope::is_const_like_identifier(identifier)
+}
+
 fn is_identifier_char(ch: char) -> bool {
     ch == '_' || ch.is_ascii_alphanumeric()
 }
@@ -485,5 +484,317 @@ mod pattern_tests;
 mod macro_tests;
 
 #[cfg(test)]
-#[path = "handler_scope/tests.rs"]
-mod tests;
+mod tests {
+    use {
+        super::collect,
+        crate::{diagnostics::registry::ANCHOR_ACCOUNT_USAGE_CODE, document::ParsedDocument},
+        proptest::prelude::*,
+        tower_lsp::lsp_types::NumberOrString,
+    };
+
+    prop_compose! {
+        fn generated_ident()(tail in "[a-z0-9_]{1,10}") -> String {
+            format!("sg_{tail}")
+        }
+    }
+
+    #[test]
+    fn reports_unresolved_handler_identifier() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let position_bundle = &mut ctx.accounts.position_bundle;
+        position_bundle = position_bundle = sd;
+        Ok(())
+    }
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        let diagnostic = diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.message.contains("`sd` does not resolve"))
+            .unwrap_or_else(|| {
+                panic!("missing unresolved identifier diagnostic: {diagnostics:#?}")
+            });
+
+        assert_eq!(
+            diagnostic.code.as_ref(),
+            Some(&NumberOrString::String(
+                ANCHOR_ACCOUNT_USAGE_CODE.to_string()
+            ))
+        );
+        assert!(diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("candidates"))
+            .and_then(|value| value.as_array())
+            .is_some_and(|candidates| candidates
+                .iter()
+                .any(|candidate| candidate.as_str() == Some("position_bundle"))));
+    }
+
+    #[test]
+    fn accepts_arguments_locals_and_imported_helpers() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+use crate::util::verify_position_bundle_authority;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let position_bundle = &mut ctx.accounts.position_bundle;
+        let copied_index = bundle_index;
+        verify_position_bundle_authority(copied_index)?;
+        let nested = |value| {
+            let local = value;
+            local
+        };
+        nested(copied_index);
+        Ok(())
+    }
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "bound handler identifiers should stay quiet: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn reports_unresolved_identifier_in_context_helper() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle = missing_value;
+    Ok(())
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("`missing_value` does not resolve")),
+            "missing context helper identifier diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn reports_unresolved_handler_call_identifier() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let copied_index = bundle_index;
+        verify_bundel(copied_index);
+        Ok(())
+    }
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.iter().any(|diagnostic| diagnostic
+                .message
+                .contains("`verify_bundel` does not resolve")),
+            "missing unresolved handler call diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn accepts_imported_and_local_handler_call_identifiers() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+use crate::util::verify_position_bundle_authority;
+
+#[program]
+pub mod demo {
+    pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+        let local_helper = |value| value;
+        let copied_index = local_helper(bundle_index);
+        verify_position_bundle_authority(copied_index)?;
+        Ok(())
+    }
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "resolved handler calls should stay quiet: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn ignores_non_anchor_rust_functions() {
+        let diagnostics = collect(
+            &ParsedDocument::parse(
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn close() -> Result<()> {
+    missing_value;
+    Ok(())
+}
+"#,
+            )
+            .unwrap(),
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "non-Anchor helper should stay quiet: {diagnostics:#?}"
+        );
+    }
+
+    proptest! {
+        #[test]
+        fn reports_generated_unresolved_handler_identifiers(
+            missing in generated_ident(),
+            local in generated_ident(),
+            argument in generated_ident(),
+        ) {
+            prop_assume!(missing != local && missing != argument);
+            prop_assume!(local != "ctx" && argument != "ctx" && missing != "ctx");
+            let source = format!(
+                r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {{
+    pub fn close(ctx: Context<Close>, {argument}: u16) -> Result<()> {{
+        let {local} = {argument};
+        {local};
+        {missing};
+        Ok(())
+    }}
+}}
+"#
+            );
+
+            let diagnostics = collect(&ParsedDocument::parse(source).unwrap());
+
+            prop_assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains(&format!("`{missing}` does not resolve"))),
+                "expected generated unresolved handler identifier diagnostic, got {diagnostics:#?}"
+            );
+            prop_assert!(
+                diagnostics
+                    .iter()
+                    .all(|diagnostic| !diagnostic.message.contains(&format!("`{local}` does not resolve"))
+                        && !diagnostic.message.contains(&format!("`{argument}` does not resolve"))),
+                "bound generated identifiers should stay quiet: {diagnostics:#?}"
+            );
+        }
+
+        #[test]
+        fn reports_generated_unresolved_handler_call_identifiers(
+            missing in generated_ident(),
+            local in generated_ident(),
+            argument in generated_ident(),
+        ) {
+            prop_assume!(missing != local && missing != argument);
+            prop_assume!(local != "ctx" && argument != "ctx" && missing != "ctx");
+            let source = format!(
+                r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {{
+    pub fn close(ctx: Context<Close>, {argument}: u16) -> Result<()> {{
+        let {local} = {argument};
+        {missing}({local});
+        Ok(())
+    }}
+}}
+"#
+            );
+
+            let diagnostics = collect(&ParsedDocument::parse(source).unwrap());
+
+            prop_assert!(
+                diagnostics
+                    .iter()
+                    .any(|diagnostic| diagnostic.message.contains(&format!("`{missing}` does not resolve"))),
+                "expected generated unresolved handler call diagnostic, got {diagnostics:#?}"
+            );
+            prop_assert!(
+                diagnostics
+                    .iter()
+                    .all(|diagnostic| !diagnostic.message.contains(&format!("`{local}` does not resolve"))
+                        && !diagnostic.message.contains(&format!("`{argument}` does not resolve"))),
+                "bound generated identifiers should stay quiet: {diagnostics:#?}"
+            );
+        }
+
+        #[test]
+        fn recovers_generated_parse_error_identifiers(
+            missing in generated_ident(),
+            local in generated_ident(),
+            argument in generated_ident(),
+        ) {
+            prop_assume!(missing != local && missing != argument);
+            prop_assume!(local != "ctx" && argument != "ctx" && missing != "ctx");
+            let source = format!(
+                r#"
+use anchor_lang::prelude::*;
+
+pub fn close(ctx: Context<Close>, {argument}: u16) -> Result<()> {{
+    let {local} = {argument};
+    {local} = {local}  {missing} ;
+    Ok(())
+}}
+"#
+            );
+
+            let err = syn::parse_file(&source).unwrap_err();
+            let diagnostic =
+                crate::diagnostics::diagnostic_from_parse_error_with_source(err, &source);
+
+            prop_assert!(
+                diagnostic.message.contains(&format!("`{missing}` does not resolve")),
+                "expected parse-error semantic recovery for `{missing}`, got {diagnostic:#?}"
+            );
+            prop_assert_eq!(
+                diagnostic
+                    .data
+                    .as_ref()
+                    .and_then(|data| data.get("reason"))
+                    .and_then(|reason| reason.as_str()),
+                Some("unresolved-handler-identifier")
+            );
+        }
+    }
+}

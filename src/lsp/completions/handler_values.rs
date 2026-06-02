@@ -3,9 +3,8 @@ use {
     crate::{
         document::{ParsedDocument, SymbolRange},
         lsp::scope::{
-            block_item_value_names, collect_condition_pattern_bindings, collect_pattern_bindings,
-            program_module_value_names_from_document, text_block_item_value_names,
-            text_enclosing_function_body, TextHandlerBinding, TextHandlerScope,
+            collect_condition_pattern_bindings, collect_pattern_bindings,
+            program_module_value_names_from_document, TextHandlerBinding, TextHandlerScope,
         },
         workspace::{WorkspaceContextField, WorkspaceIndex},
     },
@@ -336,7 +335,6 @@ impl VisibleBindingCollector<'_> {
     }
 
     fn collect_block_bindings(&mut self, block: &syn::Block) -> bool {
-        self.add_block_item_candidates(block);
         for stmt in &block.stmts {
             let stmt_range = crate::range::range_from_span(stmt.span());
             let Some(stmt_start) = crate::range::byte_offset_at(self.source, stmt_range.start)
@@ -426,12 +424,6 @@ impl VisibleBindingCollector<'_> {
         }
     }
 
-    fn add_block_item_candidates(&mut self, block: &syn::Block) {
-        for name in block_item_value_names(block) {
-            self.add_candidate(name, None);
-        }
-    }
-
     fn span_contains_cursor(&self, span: proc_macro2::Span) -> bool {
         let range = crate::range::range_from_span(span);
         let Some(start) = crate::range::byte_offset_at(self.source, range.start) else {
@@ -473,36 +465,10 @@ impl VisibleBindingCollector<'_> {
 }
 
 fn text_visible_value_candidates(source: &str, position: Position) -> Vec<ValueCandidate> {
-    let scope_candidates = TextHandlerScope::at_position(source, position)
-        .map(|scope| {
-            scope
-                .bindings()
-                .iter()
-                .map(text_value_candidate)
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-
-    scope_candidates
-        .into_iter()
-        .chain(text_enclosing_block_item_candidates(source, position))
-        .collect()
-}
-
-fn text_enclosing_block_item_candidates(source: &str, position: Position) -> Vec<ValueCandidate> {
-    let Some(body) = text_enclosing_function_body(source, position) else {
+    let Some(scope) = TextHandlerScope::at_position(source, position) else {
         return Vec::new();
     };
-    text_block_item_value_names(body)
-        .into_iter()
-        .map(|name| ValueCandidate {
-            label: name.clone(),
-            insert_text: name,
-            detail: "Anchor handler block item".to_string(),
-            kind: CompletionItemKind::VALUE,
-            rank: LOCAL_VALUE_RANK,
-        })
-        .collect()
+    scope.bindings().iter().map(text_value_candidate).collect()
 }
 
 fn text_value_candidate(binding: &TextHandlerBinding) -> ValueCandidate {

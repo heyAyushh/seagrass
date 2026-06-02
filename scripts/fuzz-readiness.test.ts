@@ -55,23 +55,6 @@ describe("fuzz readiness evidence", () => {
     ]);
   });
 
-  test("accepts explicit parallel workflow timestamps", () => {
-    const evidence = buildFuzzEvidence({
-      status: "passed",
-      workflowRunUrl: `https://github.com/${expectedRepoSlug}/actions/runs/1`,
-      commit: "abc123",
-      secondsPerShard: 3_600,
-      shards: 8,
-      startedAt: "2026-05-26T11:00:00.000Z",
-      completedAt: "2026-05-26T12:00:00.000Z",
-      targets: ["fuzz_manifest_parse", "fuzz_document_parse", "fuzz_anchor_attr"],
-      workflowMatrixTargets: ["fuzz_document_parse", "fuzz_anchor_attr", "fuzz_manifest_parse"],
-    });
-
-    expect(evidence.aggregateFuzzHours).toBe(24);
-    expect(evidence.startedAt).toBe("2026-05-26T11:00:00.000Z");
-  });
-
   test("rejects stale workflow target matrices", () => {
     expect(() =>
       buildFuzzEvidence({

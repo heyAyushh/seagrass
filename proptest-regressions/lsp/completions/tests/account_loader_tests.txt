@@ -5,4 +5,3 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 0e8f88b488d33919e45437af389ce7f61366e7ac32964310303082d17dc59d3d # shrinks to account_field = "a", alias = "aa", owner = "A0", field = "a"
-cc 4f4dd04f8ce900a8674c853004c6b8b7083b9691ad95add3a7437d45c1b8a347 # shrinks to account_field = "y", alias = "s", owner = "Aa", field = "ya"

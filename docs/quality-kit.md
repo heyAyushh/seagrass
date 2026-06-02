@@ -61,7 +61,7 @@ Prefer invariants that survive formatting, renaming, and input order changes.
 ## Release Evidence
 
 Release readiness also requires evidence that cannot be produced by unit tests:
-a clean 24 aggregate fuzz-hour run and external review signoff. Generate the machine-readable
+a clean 24h fuzz run and external review signoff. Generate the machine-readable
 objects with:
 
 ```sh

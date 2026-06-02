@@ -99,9 +99,6 @@ fn unknown_method_diagnostic(
         &[],
     )?;
     let candidates = method_candidates(&members);
-    if candidates.is_empty() {
-        return None;
-    }
     if candidates.iter().any(|candidate| candidate == method_name) {
         return None;
     }

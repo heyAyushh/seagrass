@@ -14,9 +14,6 @@ const zedDir = resolve(repoRoot, "editors/zed");
 const vscodeDir = resolve(repoRoot, "editors/vscode");
 const rootVersion = readReleaseVersion();
 const anchorSourcePath = resolveAnchorSourcePath(repoRoot);
-const releaseFlag = "--release";
-const helpFlags = new Set(["--help", "-h"]);
-const options = parseOptions(process.argv.slice(2));
 
 checkVersionConsistency();
 
@@ -100,12 +97,10 @@ const steps = [
     args: ["test", "scripts/check-lint-catalog.test.ts"],
   },
   {
-    name: options.release
-      ? "Strict release readiness evidence"
-      : "Seagrass release readiness evidence shape",
+    name: "Seagrass release readiness evidence shape",
     cwd: repoRoot,
     command: "bun",
-    args: releaseReadinessArgs(options),
+    args: ["scripts/check-release-readiness.ts", "--allow-pending", "--version", rootVersion],
   },
   {
     name: "Release readiness checker tests",
@@ -317,11 +312,7 @@ if (checkedInHash !== builtHash) {
   );
 }
 
-console.log(
-  options.release
-    ? "seagrass release verification passed"
-    : "seagrass production verification passed",
-);
+console.log("seagrass production verification passed");
 
 function run(step) {
   console.log(`\n==> ${step.name}`);
@@ -338,60 +329,6 @@ function run(step) {
   if (result.status !== 0) {
     fail(`${step.name} failed with exit code ${result.status}`);
   }
-}
-
-function parseOptions(args) {
-  let release = false;
-  for (const arg of args) {
-    if (arg === releaseFlag) {
-      release = true;
-      continue;
-    }
-    if (helpFlags.has(arg)) {
-      printHelp();
-      process.exit(0);
-    }
-    fail(`Unknown argument: ${arg}`);
-  }
-  return { release };
-}
-
-function releaseReadinessArgs(options) {
-  const args = ["scripts/check-release-readiness.ts", "--version", rootVersion];
-  if (!options.release) {
-    args.splice(1, 0, "--allow-pending");
-  }
-  if (options.release) {
-    args.push("--commit", gitHead());
-  }
-  return args;
-}
-
-function gitHead() {
-  const result = spawnSync("git", ["rev-parse", "HEAD"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  if (result.error) {
-    fail(`git rev-parse failed to start: ${result.error.message}`);
-  }
-  if (result.status !== 0) {
-    fail(`git rev-parse failed with exit code ${result.status}\n${result.stderr}`);
-  }
-  return result.stdout.trim();
-}
-
-function printHelp() {
-  console.log(`Verify Seagrass production readiness.
-
-Usage:
-  bun scripts/verify-production.ts [--release]
-
-Options:
-  ${releaseFlag}  Run strict release readiness evidence checks instead of accepting pending evidence.
-
-Default mode is for PR/local production hygiene and accepts explicit pending
-release evidence. Use ${releaseFlag} before tagging or shipping production artifacts.`);
 }
 
 function sha256(path) {

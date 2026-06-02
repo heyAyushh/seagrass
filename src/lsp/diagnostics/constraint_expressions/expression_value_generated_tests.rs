@@ -133,43 +133,4 @@ pub struct AccountData {{
             "known account-data member should resolve, got {diagnostics:#?}"
         );
     }
-
-    #[test]
-    fn reports_generated_unknown_instruction_argument_members(
-        account_field in generated_ident(),
-        instruction_arg in generated_ident(),
-        known_member in generated_ident(),
-        missing_member in generated_ident(),
-    ) {
-        prop_assume!(account_field != instruction_arg);
-        prop_assume!(known_member != missing_member);
-        let source = format!(
-            r#"
-#[program]
-pub mod demo {{
-    pub fn run(ctx: Context<Run>, {instruction_arg}: RunParams) -> Result<()> {{ Ok(()) }}
-}}
-
-#[derive(Accounts)]
-#[instruction({instruction_arg}: RunParams)]
-pub struct Run<'info> {{
-    #[account(constraint = {instruction_arg}.{missing_member} == Pubkey::default())]
-    pub {account_field}: AccountInfo<'info>,
-}}
-
-pub struct RunParams {{
-    pub {known_member}: Pubkey,
-}}
-"#
-        );
-        let document = ParsedDocument::parse(&source).unwrap();
-        let diagnostics = collect(&document);
-
-        prop_assert!(
-            diagnostics.iter().any(|diagnostic| diagnostic.message.contains(&format!(
-                "`{instruction_arg}.{missing_member}` does not resolve"
-            ))),
-            "expected unknown instruction-arg member diagnostic, got {diagnostics:#?}"
-        );
-    }
 }

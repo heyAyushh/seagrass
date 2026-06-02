@@ -42,13 +42,6 @@ The bundled feedback destination lives in `editors/feedback.toml`. Editor
 adapters may expose native commands or slash commands, but they should request
 `seagrass/feedback` from the server instead of hardcoding the URL.
 
-Zed Assistant slash commands mirror the server-owned command surface:
-
-- `/seagrass-status`
-- `/seagrass-coverage`
-- `/seagrass-artifacts`
-- `/seagrass-feedback`
-
 ## Status Surface
 
 When an editor exposes a persistent status surface, use `Seagrass` as the label and keep it diagnostic-aware for the active file:

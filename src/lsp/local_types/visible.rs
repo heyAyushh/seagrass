@@ -116,7 +116,6 @@ impl VisibleTypedValueCollector<'_> {
     }
 
     fn collect_block_bindings(&mut self, block: &syn::Block) -> bool {
-        self.values.extend(super::block_item_typed_values(block));
         for stmt in &block.stmts {
             let stmt_range = crate::range::range_from_span(stmt.span());
             let Some(stmt_start) = crate::range::byte_offset_at(self.source, stmt_range.start)

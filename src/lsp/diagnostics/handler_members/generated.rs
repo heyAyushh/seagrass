@@ -49,52 +49,6 @@ pub struct {owner} {{
     }
 
     #[test]
-    fn reports_generated_unknown_block_item_members(
-        declaration in prop_oneof![Just("const"), Just("static")],
-        local in "[A-Z][A-Z0-9_]{1,10}",
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
-        known_field in generated_ident(),
-        missing_field in generated_ident(),
-    ) {
-        prop_assume!(known_field != missing_field);
-        let source = format!(
-            r#"
-#[program]
-pub mod demo {{
-    pub fn run(ctx: Context<Run>) -> Result<()> {{
-        {local}.{missing_field};
-
-        {declaration} {local}: {owner} = {owner} {{
-            {known_field}: Pubkey::default(),
-        }};
-
-        Ok(())
-    }}
-}}
-
-pub struct {owner} {{
-    pub {known_field}: Pubkey,
-}}
-"#
-        );
-        let document = ParsedDocument::parse(&source).unwrap();
-
-        let diagnostics = collect_with_workspace(&document, None);
-
-        prop_assert!(
-            diagnostics.iter().any(|diagnostic| {
-                diagnostic
-                    .message
-                    .contains(&format!("`{local}.{missing_field}` does not resolve"))
-                    && diagnostic
-                        .message
-                        .contains(&format!("`{owner}` has no field `{missing_field}`"))
-            }),
-            "expected generated block item member diagnostic, got {diagnostics:#?}"
-        );
-    }
-
-    #[test]
     fn reports_generated_field_called_as_method(
         local in generated_ident(),
         owner in "[A-Z][A-Za-z0-9_]{1,10}",

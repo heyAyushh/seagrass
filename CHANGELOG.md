@@ -5,25 +5,6 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
-- build: add a strict `verify-production --release` mode for today-of-release
-  preflight checks that reject pending fuzz and review evidence.
-- ci: count release fuzz proof as 24 aggregate fuzz-hours across sharded
-  targets so the fuzz workflow can run in parallel for release-day evidence.
-- lsp: keep imported helpers, file constants/statics, and program handlers
-  resolved during broken-buffer handler-scope diagnostic recovery.
-- lsp: reduce false positives for trait-style handler method calls, qualified
-  struct literals and patterns, and bogus module-qualified associated values in
-  Anchor constraint expressions.
-- lsp: wake account constraint value completions after `seeds = [` and include
-  same-file Rust values plus const-like imports in constraint expression
-  completions.
-- lsp: ignore `seagrass-ignore` and `seagrass-allow` text inside Rust string
-  literals when filtering diagnostics.
-- lsp: resolve typed instruction-argument member access in account constraint
-  expressions and completions.
-- lsp: infer typed members from handler-local `const` and `static` block items,
-  including mid-edit member completions before the item declaration.
-- lsp: resolve and complete Rust block item values inside Anchor handlers.
 - lsp: complete handler expression values declared inside Anchor
   `#[program]` modules.
 - lsp: flag unresolved const-like handler identifiers such as

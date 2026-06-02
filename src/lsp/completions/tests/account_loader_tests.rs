@@ -96,37 +96,6 @@ pub struct Position {
     assert!(items.iter().any(|item| item.label == "position_mint"));
 }
 
-#[test]
-fn completes_loaded_account_loader_data_when_account_path_shares_prefix() {
-    let source = r#"
-use anchor_lang::prelude::*;
-
-#[derive(Accounts)]
-pub struct Run<'info> {
-    pub y: AccountLoader<'info, Aa>,
-}
-
-pub fn handler(ctx: Context<Run>) -> Result<()> {
-    let s = ctx.accounts.y.load_mut()?;
-    s.y
-}
-
-#[account(zero_copy)]
-pub struct Aa {
-    pub ya: Pubkey,
-}
-"#;
-    let document = ParsedDocument::parse_or_empty(source);
-
-    let items = completions(&document, position_after(source, "    s.y"))
-        .expect("loaded AccountLoader data completions");
-
-    assert!(
-        items.iter().any(|item| item.label == "ya"),
-        "expected loaded account data member completion, got {items:#?}"
-    );
-}
-
 proptest! {
     #[test]
     fn completes_generated_loaded_account_loader_members(
@@ -161,7 +130,7 @@ pub struct {owner} {{
 "#
         );
         let document = ParsedDocument::parse_or_empty(&source);
-        let completion_line = format!("    {alias}.{prefix}");
+        let completion_line = format!("{alias}.{prefix}");
 
         let items = completions(&document, position_after(&source, &completion_line))
             .expect("generated loaded AccountLoader member completions");
@@ -205,7 +174,7 @@ pub struct {owner} {{
 "#
         );
         let document = ParsedDocument::parse_or_empty(&source);
-        let completion_line = format!("    {alias}.{prefix}");
+        let completion_line = format!("{alias}.{prefix}");
 
         let labels = completions(&document, position_after(&source, &completion_line))
             .unwrap_or_default()

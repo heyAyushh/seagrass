@@ -16,12 +16,6 @@ const expectedCommands = new Map([
   ["seagrass.restart", "Seagrass: Restart Server"],
   ["seagrass.showOutput", "Seagrass: Output"],
 ]);
-const expectedZedSlashCommands = new Map([
-  ["seagrass-status", "Show Seagrass server status"],
-  ["seagrass-coverage", "Show Seagrass project coverage"],
-  ["seagrass-artifacts", "Show Seagrass artifact report"],
-  ["seagrass-feedback", "Show Seagrass feedback URL"],
-]);
 
 const packageJson = JSON.parse(read("vscode/package.json"));
 const vscodeSource = read("vscode/src/extension.ts");
@@ -65,14 +59,6 @@ assert(
   zedToml.includes("Anchor-specific diagnostics, completions, hovers, symbols, and fixes"),
   "Zed extension description should match the shared product role",
 );
-for (const [command, description] of expectedZedSlashCommands) {
-  assert(zedToml.includes(`[slash_commands.${command}]`), `Zed extension is missing /${command}`);
-  assert(
-    zedToml.includes(`description = "${description}"`),
-    `Zed slash command /${command} should be described as ${description}`,
-  );
-  assert(contract.includes(`/${command}`), `UI contract is missing Zed slash command /${command}`);
-}
 assert(vscodeSettings["seagrass.agent.mode"], "VS Code package is missing seagrass.agent.mode");
 assert(vscodeSettings["seagrass.feedback.url"], "VS Code package is missing seagrass.feedback.url");
 assert(

@@ -193,15 +193,17 @@ impl<'ast> Visit<'ast> for HandlerStructLiteralVisitor<'_> {
 }
 
 fn struct_literal_type_name(node: &ExprStruct) -> Option<String> {
-    unqualified_path_type_name(&node.path)
+    node.path
+        .segments
+        .last()
+        .map(|segment| segment.ident.to_string())
 }
 
 fn struct_pattern_type_name(node: &syn::PatStruct) -> Option<String> {
-    unqualified_path_type_name(&node.path)
-}
-
-fn unqualified_path_type_name(path: &syn::Path) -> Option<String> {
-    (path.segments.len() == 1).then(|| path.segments[0].ident.to_string())
+    node.path
+        .segments
+        .last()
+        .map(|segment| segment.ident.to_string())
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

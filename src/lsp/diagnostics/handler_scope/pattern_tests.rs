@@ -99,44 +99,6 @@ pub fn close(ctx: Context<Close>) -> Result<()> {
     );
 }
 
-#[test]
-fn accepts_block_item_values_declared_after_use() {
-    let diagnostics = collect(
-        &ParsedDocument::parse(
-            r#"
-use anchor_lang::prelude::*;
-
-pub fn close(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
-    require!(bundle_index < LOCAL_LIMIT, ErrorCode::BadBundle);
-    local_helper();
-
-    const LOCAL_LIMIT: u16 = 64;
-    fn local_helper() {}
-
-    Ok(())
-}
-
-pub enum ErrorCode {
-    BadBundle,
-}
-"#,
-        )
-        .unwrap(),
-    );
-
-    assert!(
-        diagnostics.iter().all(|diagnostic| {
-            !diagnostic
-                .message
-                .contains("`LOCAL_LIMIT` does not resolve")
-                && !diagnostic
-                    .message
-                    .contains("`local_helper` does not resolve")
-        }),
-        "block item values should resolve throughout their block: {diagnostics:#?}"
-    );
-}
-
 proptest! {
     #[test]
     fn resolves_generated_if_let_and_match_pattern_bindings(

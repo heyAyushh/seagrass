@@ -6,7 +6,6 @@ use {
     tower_lsp::lsp_types::{NumberOrString, Position, Range, Url},
 };
 
-mod parse_errors;
 mod related_information;
 
 #[test]
@@ -118,25 +117,6 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
             .iter()
             .all(|diagnostic| !is_unchecked_arithmetic(diagnostic)),
         "line suppression should remove unchecked arithmetic diagnostic: {diagnostics:#?}"
-    );
-}
-
-#[test]
-fn suppression_marker_inside_string_does_not_filter_diagnostic() {
-    let source = r#"
-use pinocchio::program_error::ProgramError;
-
-fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    let _marker = "// seagrass-ignore";
-    Ok(amount - fee)
-}
-"#;
-
-    let diagnostics = collect(&ParsedDocument::parse(source).unwrap());
-
-    assert!(
-        diagnostics.iter().any(is_unchecked_arithmetic),
-        "string contents must not suppress unchecked arithmetic diagnostic: {diagnostics:#?}"
     );
 }
 
@@ -317,6 +297,152 @@ pub struct Create<'info> {
         diagnostic.message.as_str(),
         "payer must be provided" | "space must be provided"
     ));
+}
+
+#[test]
+fn parse_error_expected_semicolon_points_to_unterminated_statement() {
+    let source = r#"use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<CloseBundledPosition>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle
+
+    Ok(())
+}
+"#;
+
+    let err = syn::parse_file(source).unwrap_err();
+    let diagnostic = diagnostic_from_parse_error_with_source(err, source);
+
+    assert_eq!(diagnostic.message, "unexpected token, expected `;`");
+    assert_eq!(
+        diagnostic.range,
+        Range {
+            start: Position {
+                line: 4,
+                character: 4
+            },
+            end: Position {
+                line: 4,
+                character: 19
+            },
+        }
+    );
+}
+
+#[test]
+fn parse_error_expected_semicolon_does_not_jump_to_previous_account_attribute() {
+    let source = r#"use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+#[derive(Accounts)]
+#[instruction(bundle_index: u16)]
+pub struct CloseBundledPosition<'info> {
+    #[account(mut)]
+    pub bundled_position: Account<'info, Position>,
+
+    #[account(mut)]
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+
+    #[account(
+        constraint = position_bundle_token_account.mint == bundled_position.position_mint,
+        constraint = position_bundle_token_account.mint == position_bundle.position_bundle_mint,
+        constraint = position_bundle_token_account.amount == 1
+    )]
+    pub position_bundle_token_account: Box<Account<'info, TokenAccount>>,
+
+    pub position_bundle_authority: Signer<'info>,
+
+    #[account(mut)]
+    pub receiver: UncheckedAccount<'info>,
+}
+
+pub fn handler() -> Result<()> {
+    position_bundle = position_bundle  sd ;
+    Ok(())
+}
+"#;
+
+    let err = syn::parse_file(source).unwrap_err();
+    let diagnostic = diagnostic_from_parse_error_with_source(err, source);
+    let target_line = source
+        .lines()
+        .position(|line| line.contains("position_bundle = position_bundle"))
+        .expect("fixture contains a malformed handler line");
+    let line = source.lines().nth(target_line).expect("target line exists");
+
+    assert_eq!(diagnostic.message, "unexpected token, expected `;`");
+    assert_eq!(
+        diagnostic.range,
+        Range {
+            start: Position {
+                line: target_line as u32,
+                character: line.find("sd").expect("bad token start") as u32,
+            },
+            end: Position {
+                line: target_line as u32,
+                character: (line.find("sd").expect("bad token start") + "sd".len()) as u32,
+            },
+        }
+    );
+}
+
+#[test]
+fn parse_error_reports_unresolved_identifier_inside_anchor_handler() {
+    let source = r#"use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<CloseBundledPosition>, bundle_index: u16) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle = position_bundle  sd ;
+    Ok(())
+}
+"#;
+
+    let err = syn::parse_file(source).unwrap_err();
+    let diagnostic = diagnostic_from_parse_error_with_source(err, source);
+
+    assert!(
+        diagnostic.message.contains("`sd` does not resolve"),
+        "parse error should recover handler-scope semantics: {diagnostic:#?}"
+    );
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("reason"))
+            .and_then(|reason| reason.as_str()),
+        Some("unresolved-handler-identifier")
+    );
+}
+
+#[test]
+fn parse_error_scope_recovery_does_not_bind_current_let_lhs() {
+    let source = r#"use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<CloseBundledPosition>, bundle_index: u16) -> Result<()> {
+    let current = bundle_index  missing_value ;
+    Ok(())
+}
+"#;
+
+    let err = syn::parse_file(source).unwrap_err();
+    let diagnostic = diagnostic_from_parse_error_with_source(err, source);
+    let candidates = diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("candidates"))
+        .and_then(|value| value.as_array())
+        .expect("expected recovered scope candidates");
+
+    assert!(diagnostic
+        .message
+        .contains("`missing_value` does not resolve"));
+    assert!(candidates
+        .iter()
+        .any(|candidate| candidate.as_str() == Some("bundle_index")));
+    assert!(!candidates
+        .iter()
+        .any(|candidate| candidate.as_str() == Some("current")));
 }
 
 #[test]
