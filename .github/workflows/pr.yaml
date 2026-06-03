@@ -75,6 +75,10 @@ jobs:
           bun --version
       - name: Check source size
         run: bun scripts/check-source-size.ts
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Check diagnostic rule hygiene
         run: bun scripts/check-rule-hygiene.ts
       - name: Test diagnostic rule hygiene checker
@@ -117,3 +121,5 @@ jobs:
         run: cargo test -p seagrass editor_ux_parity -- --nocapture
       - name: Run seagrass unit tests
         run: cargo test -p seagrass
+      - name: Run protocol smoke
+        run: bun scripts/protocol-smoke.ts

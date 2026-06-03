@@ -5,6 +5,14 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- docs: make contributor guardrails repository-relative, fix dead editor setup
+  references, document Cursor/OpenCode templates, and clarify current
+  Anchor-first framework coverage.
+- ci: add Rust formatting and Clippy checks to PR guardrails.
+- ci: run the LSP protocol smoke test in PR guardrails.
+- build: pin the Anchor dependency with its full git revision.
+- security: replace the unreachable noreply security fallback with a safe
+  no-details escalation path.
 - client: add VS Code lint-doc, suppression-copy, and false-positive reporting
   commands backed by Seagrass diagnostic metadata and the server feedback
   manifest.
@@ -245,6 +253,23 @@ keep future entries aligned with release-plz output.
 - docs: add bundled agent skills (`skills/seagrass-*`) for Claude Code, Cursor,
   and compatible agents. Covers install, lint, explain, suppress, debug-fp, and
   full audit workflows. Includes fixes to skill docs for accurate CLI JSON shapes.
+
+## [1.0.2] - 2026-05-27
+
+- build: establish the standalone Seagrass workspace version used by `VERSION`,
+  Cargo package metadata, and local editor manifests.
+- release: switch release evidence and package workflow tags to the standalone
+  `v*` version line.
+
+## [1.0.1] - 2026-05-27
+
+- release: no standalone changelog entry was recorded before the repository was
+  flattened; retained here so the published version line does not skip history.
+
+## [1.0.0] - 2026-05-27
+
+- release: no standalone changelog entry was recorded before the repository was
+  flattened; retained here so the published version line does not skip history.
 
 ## [0.1.0] - 2026-05-26
 

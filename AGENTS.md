@@ -2,12 +2,13 @@
 
 Status: Active
 
-Canonical checkout: `/Users/ay/Documents/codes/solana/seagrass`.
+Canonical checkout: the Seagrass workspace root — the directory returned by
+`git rev-parse --show-toplevel` that contains this `AGENTS.md`, `VERSION`, and
+the `src/` language-server tree.
 
-If `pwd` or `git rev-parse --show-toplevel` differs from that path, stop and
-ask before editing, building, or changing editor settings. Do not edit sibling
-mirrors such as `upstream-anchor` unless the user explicitly names them for that
-turn.
+If your working directory is not that repository root, stop and ask before
+editing, building, or changing editor settings. Do not edit sibling mirrors such
+as `upstream-anchor` unless the user explicitly names them for that turn.
 
 This repository is the standalone Seagrass language-server workspace plus local
 editor adapters. You should work in the real checkout, preserve unrelated dirty
@@ -26,8 +27,7 @@ changes, and verify the user-facing path before reporting success.
 
 ## Scope
 
-Use this guide for changes in `/Users/ay/Documents/codes/solana/seagrass`,
-especially:
+Use this guide for changes in the Seagrass repository root, especially:
 
 - Anchor Rust crates, CLI, TypeScript packages, docs, and examples.
 - `src/`, including the Seagrass language server.
