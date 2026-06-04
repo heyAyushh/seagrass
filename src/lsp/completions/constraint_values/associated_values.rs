@@ -8,6 +8,9 @@ use {
 
 const ASSOCIATED_PATH_SEPARATOR: &str = "::";
 const INIT_SPACE_ASSOCIATED_CONST: &str = "INIT_SPACE";
+/// Provided by the `Discriminator` derive on every `#[account]` type; used in
+/// space math as `T::DISCRIMINATOR.len() + ...` (Anchor 0.31+).
+const DISCRIMINATOR_ASSOCIATED_CONST: &str = "DISCRIMINATOR";
 
 pub(super) struct AssociatedValuePrefix<'a> {
     pub(super) owner_type: &'a str,
@@ -30,20 +33,28 @@ pub(super) fn associated_value_items(
     let Some(prefix) = associated_value_prefix(value_prefix) else {
         return Vec::new();
     };
-    let mut items = local_associated_value_items(document, prefix.owner_type);
+    let owner_type = document.symbols().resolve_type_alias(prefix.owner_type);
+    let mut items = local_associated_value_items(document, owner_type);
     items.extend(workspace_associated_value_items(
         workspace_index,
-        prefix.owner_type,
+        owner_type,
     ));
     if document
         .symbols()
         .derived_init_space_types
-        .contains(prefix.owner_type)
+        .contains(owner_type)
     {
         items.push(associated_const_item(
             INIT_SPACE_ASSOCIATED_CONST,
             "Generated InitSpace associated const",
         ));
+    }
+    if document
+        .symbols()
+        .account_data_structs
+        .contains_key(owner_type)
+    {
+        items.push(discriminator_const_item());
     }
     items.sort_by(|left, right| left.sort_text.cmp(&right.sort_text));
     items.dedup_by(|left, right| left.label == right.label);
@@ -98,6 +109,24 @@ fn workspace_associated_value_item(value: WorkspaceAssociatedValue) -> Option<Co
             "Workspace associated function",
         )),
         _ => None,
+    }
+}
+
+/// Ranked after real impl consts / `INIT_SPACE` (which a human picks more
+/// often) since `DISCRIMINATOR` is used indirectly as `.len()` in space math.
+fn discriminator_const_item() -> CompletionItem {
+    CompletionItem {
+        label: DISCRIMINATOR_ASSOCIATED_CONST.to_string(),
+        kind: Some(CompletionItemKind::CONSTANT),
+        detail: Some("Account discriminator bytes".to_string()),
+        sort_text: Some(format!(
+            "030_anchor_associated_value_{DISCRIMINATOR_ASSOCIATED_CONST}"
+        )),
+        data: Some(serde_json::json!({
+            "anchorCompletion": "associated-value",
+            "associatedValueKind": "const",
+        })),
+        ..CompletionItem::default()
     }
 }
 
