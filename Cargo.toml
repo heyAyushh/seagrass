@@ -14,7 +14,7 @@ members = [
 resolver = "2"
 
 [workspace.package]
-version = "1.0.2"
+version = "0.1.2"
 authors = ["Seagrass Maintainers <17379963+heyAyushh@users.noreply.github.com>"]
 edition = "2021"
 rust-version = "1.89.0"
@@ -54,9 +54,9 @@ hotpath = ["dep:hotpath", "hotpath/hotpath"]
 [dependencies]
 anchor-syn = { workspace = true }
 cargo_toml = { workspace = true }
-seagrass-framework = { path = "crates/seagrass-framework", version = "1.0.2" }
-seagrass-native = { path = "crates/seagrass-native", version = "1.0.2" }
-seagrass-pinocchio = { path = "crates/seagrass-pinocchio", version = "1.0.2" }
+seagrass-framework = { path = "crates/seagrass-framework", version = "0.1.2" }
+seagrass-native = { path = "crates/seagrass-native", version = "0.1.2" }
+seagrass-pinocchio = { path = "crates/seagrass-pinocchio", version = "0.1.2" }
 syn = { workspace = true, features = ["full", "extra-traits", "parsing", "visit"] }
 clap = { version = "4.6.1", features = ["derive"] }
 dashmap = "6"

@@ -18,5 +18,5 @@ default = []
 hotpath = ["seagrass-core/hotpath"]
 
 [dependencies]
-seagrass-core = { package = "seagrass", path = "../..", version = "1.0.2" }
+seagrass-core = { package = "seagrass", path = "../..", version = "0.1.2" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

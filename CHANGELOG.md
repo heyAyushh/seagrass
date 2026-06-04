@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-05
+
 - client: expose Seagrass analysis, program report, error coverage, support
   matrix, generator profile, and logs as Zed slash commands, and advertise
   refactor code actions in the Zed manifest with concise report summaries before
@@ -332,22 +334,10 @@ keep future entries aligned with release-plz output.
   and compatible agents. Covers install, lint, explain, suppress, debug-fp, and
   full audit workflows. Includes fixes to skill docs for accurate CLI JSON shapes.
 
-## [1.0.2] - 2026-05-27
-
 - build: establish the standalone Seagrass workspace version used by `VERSION`,
   Cargo package metadata, and local editor manifests.
 - release: switch release evidence and package workflow tags to the standalone
   `v*` version line.
-
-## [1.0.1] - 2026-05-27
-
-- release: no standalone changelog entry was recorded before the repository was
-  flattened; retained here so the published version line does not skip history.
-
-## [1.0.0] - 2026-05-27
-
-- release: no standalone changelog entry was recorded before the repository was
-  flattened; retained here so the published version line does not skip history.
 
 ## [0.1.0] - 2026-05-26
 

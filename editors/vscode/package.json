@@ -2,7 +2,7 @@
   "name": "seagrass-vscode",
   "displayName": "Seagrass",
   "description": "Anchor-specific diagnostics, completions, hovers, symbols, and fixes plus local artifact evidence for Anchor, Pinocchio, and native Solana Rust programs.",
-  "version": "1.0.2",
+  "version": "0.1.2",
   "license": "MIT",
   "publisher": "seagrass-local",
   "private": false,
@@ -15,7 +15,6 @@
   ],
   "activationEvents": [
     "onLanguage:rust",
-    "onCommand:seagrass.status",
     "onCommand:seagrass.analyze",
     "onCommand:seagrass.artifacts",
     "onCommand:seagrass.feedback",
