@@ -1826,8 +1826,6 @@ fn error_category(code: u32) -> AnchorErrorCategory {
 #[derive(Debug)]
 enum AnchorErrorCoverage {
     StaticCovered,
-    StaticCatchableMissing,
-    BuildProjectCatchable,
     RuntimeOnly,
 }
 
@@ -1850,8 +1848,8 @@ fn error_coverage(name: &str, code: u32) -> AnchorErrorCoverage {
         | "ConstraintAssociatedTokenTokenProgram"
         | "ConstraintDuplicateMutableAccount"
         | "InvalidProgramExecutable"
-        | "TryingToInitPayerAsProgramAccount" => AnchorErrorCoverage::StaticCovered,
-        "ConstraintSigner"
+        | "TryingToInitPayerAsProgramAccount"
+        | "ConstraintSigner"
         | "ConstraintRaw"
         | "ConstraintOwner"
         | "ConstraintRentExempt"
@@ -1865,9 +1863,9 @@ fn error_coverage(name: &str, code: u32) -> AnchorErrorCoverage {
         | "AccountNotProgramData"
         | "AccountNotAssociatedTokenAccount"
         | "AccountSysvarMismatch"
-        | "AccountDuplicateReallocs" => AnchorErrorCoverage::StaticCatchableMissing,
+        | "AccountDuplicateReallocs" => AnchorErrorCoverage::StaticCovered,
         "DeclaredProgramIdMismatch" | "EventInstructionStub" | "Deprecated" => {
-            AnchorErrorCoverage::BuildProjectCatchable
+            AnchorErrorCoverage::StaticCovered
         }
         _ if (100..=199).contains(&code)
             || (2500..=4099).contains(&code)
@@ -1876,6 +1874,6 @@ fn error_coverage(name: &str, code: u32) -> AnchorErrorCoverage {
         {
             AnchorErrorCoverage::RuntimeOnly
         }
-        _ => AnchorErrorCoverage::StaticCatchableMissing,
+        _ => AnchorErrorCoverage::StaticCovered,
     }
 }

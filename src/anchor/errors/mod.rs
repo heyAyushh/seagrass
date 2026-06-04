@@ -12,8 +12,6 @@ pub enum AnchorErrorCategory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnchorErrorCoverage {
     StaticCovered,
-    StaticCatchableMissing,
-    BuildProjectCatchable,
     RuntimeOnly,
 }
 
@@ -34,15 +32,11 @@ pub fn by_name(name: &str) -> Option<&'static AnchorErrorSpec> {
 
 pub fn coverage_summary() -> serde_json::Value {
     let mut static_covered = 0usize;
-    let mut static_catchable_missing = 0usize;
-    let mut build_project_catchable = 0usize;
     let mut runtime_only = 0usize;
 
     for spec in ERRORS {
         match spec.coverage {
             AnchorErrorCoverage::StaticCovered => static_covered += 1,
-            AnchorErrorCoverage::StaticCatchableMissing => static_catchable_missing += 1,
-            AnchorErrorCoverage::BuildProjectCatchable => build_project_catchable += 1,
             AnchorErrorCoverage::RuntimeOnly => runtime_only += 1,
         }
     }
@@ -51,8 +45,6 @@ pub fn coverage_summary() -> serde_json::Value {
         "total": ERRORS.len(),
         "summary": {
             "staticCovered": static_covered,
-            "staticCatchableMissing": static_catchable_missing,
-            "buildProjectCatchable": build_project_catchable,
             "runtimeOnly": runtime_only,
         },
         "errors": ERRORS.iter().map(error_json).collect::<Vec<_>>(),
@@ -92,8 +84,6 @@ fn coverage_name(category: AnchorErrorCategory) -> &'static str {
 fn coverage_status(coverage: AnchorErrorCoverage) -> &'static str {
     match coverage {
         AnchorErrorCoverage::StaticCovered => "static-covered",
-        AnchorErrorCoverage::StaticCatchableMissing => "static-catchable-missing",
-        AnchorErrorCoverage::BuildProjectCatchable => "build-project-catchable",
         AnchorErrorCoverage::RuntimeOnly => "runtime-only",
     }
 }
@@ -121,5 +111,27 @@ mod tests {
         let summary = coverage_summary();
         assert_eq!(summary["total"].as_u64(), Some(ERRORS.len() as u64));
         assert_eq!(summary["errors"].as_array().unwrap().len(), ERRORS.len());
+    }
+
+    #[test]
+    fn generated_catalog_has_no_missing_static_coverage() {
+        let summary = coverage_summary();
+        assert_eq!(summary["summary"]["staticCovered"].as_u64(), Some(58));
+        assert_eq!(summary["summary"]["runtimeOnly"].as_u64(), Some(21));
+
+        let non_static = ERRORS
+            .iter()
+            .filter(|error| {
+                !matches!(
+                    error.coverage,
+                    AnchorErrorCoverage::StaticCovered | AnchorErrorCoverage::RuntimeOnly
+                )
+            })
+            .map(|error| error.name)
+            .collect::<Vec<_>>();
+        assert!(
+            non_static.is_empty(),
+            "every non-runtime Anchor framework error must have static coverage: {non_static:?}"
+        );
     }
 }

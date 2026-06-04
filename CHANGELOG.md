@@ -5,6 +5,16 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- cli: extend `seagrass analyze` compute analysis with SBF `.text`
+  instruction-count floors when local deploy artifacts are available, while
+  keeping runtime CU measurements evidence-gated.
+- cli: add `seagrass skills list/get/path` so installed binaries can expose
+  version-matched agent workflow instructions with JSON output and `--full`
+  progressive disclosure.
+- lsp: mark statically emitted Anchor account error metadata as
+  `static-covered` and guard it in protocol smoke.
+- docs: add the installed skill-help maintenance process so checked-in
+  `SKILL.md` files, `seagrass skills` output, and fallback docs do not drift.
 - lsp: mark native Solana and Pinocchio framework crates as stable applicable
   parity and keep owner/type/signer/writable/CPI validations scoped to the
   specific account or program expression being checked.

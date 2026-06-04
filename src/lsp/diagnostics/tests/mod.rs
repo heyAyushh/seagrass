@@ -2,7 +2,9 @@ use {
     super::*,
     crate::{
         diagnostics::registry::ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE, document::ParsedDocument,
+        workspace::WorkspaceIndex,
     },
+    std::{collections::BTreeMap, fs, path::PathBuf},
     tower_lsp::lsp_types::{NumberOrString, Position, Range, Url},
 };
 
@@ -27,6 +29,35 @@ pub struct Create<'info> {
     assert!(diagnostics
         .iter()
         .any(|diagnostic| diagnostic.message.contains("payer")));
+}
+
+#[test]
+fn fixture_anchor_workspace_reports_static_anchor_error_coverage() {
+    let fixture_source = anchor_error_fixture_source();
+    let source = fs::read_to_string(&fixture_source).unwrap();
+    let document = ParsedDocument::parse(source).unwrap();
+    let workspace_root = fixture_source.parent().unwrap();
+    let workspace_url = Url::from_directory_path(workspace_root).unwrap();
+    let workspace_index =
+        WorkspaceIndex::build(&[workspace_url], std::iter::empty::<(Url, String)>());
+
+    let diagnostics = collect_with_workspace(&document, Some(&workspace_index));
+    let anchor_errors = anchor_errors_by_name(&diagnostics);
+
+    for name in [
+        "ConstraintSpace",
+        "ConstraintMut",
+        "AccountNotMutable",
+        "AccountNotSigner",
+    ] {
+        let coverage = anchor_errors.get(name).unwrap_or_else(|| {
+            panic!("fixture missing Anchor error metadata for {name}: {diagnostics:#?}")
+        });
+        assert_eq!(
+            coverage, "static-covered",
+            "{name} must be covered by pre-build static analysis"
+        );
+    }
 }
 
 #[test]
@@ -119,6 +150,26 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
             .all(|diagnostic| !is_unchecked_arithmetic(diagnostic)),
         "line suppression should remove unchecked arithmetic diagnostic: {diagnostics:#?}"
     );
+}
+
+fn anchor_error_fixture_source() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("fixtures/anchor-error-coverage-workspace/programs/error-coverage-fixture/src/lib.rs")
+}
+
+fn anchor_errors_by_name(diagnostics: &[Diagnostic]) -> BTreeMap<String, String> {
+    diagnostics
+        .iter()
+        .filter_map(|diagnostic| diagnostic.data.as_ref())
+        .filter_map(|data| data.get("anchorErrors"))
+        .filter_map(|errors| errors.as_array())
+        .flat_map(|errors| errors.iter())
+        .filter_map(|error| {
+            let name = error.get("name")?.as_str()?;
+            let coverage = error.get("coverage")?.as_str()?;
+            Some((name.to_string(), coverage.to_string()))
+        })
+        .collect()
 }
 
 #[test]

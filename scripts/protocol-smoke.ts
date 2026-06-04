@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -243,6 +243,13 @@ const nativeSmokeUri = pathToFileURL(nativeSmokeLibPath).href;
 const ecosystemSmokeRoot = resolve(repoRoot, "target/seagrass-ecosystem-smoke");
 const ecosystemSmokeLibPath = resolve(ecosystemSmokeRoot, "programs/ecosystem-demo/src/lib.rs");
 const ecosystemSmokeUri = pathToFileURL(ecosystemSmokeLibPath).href;
+const anchorErrorCoverageWorkspaceRoot = resolve(repoRoot, "fixtures/anchor-error-coverage-workspace");
+const anchorErrorCoverageLibPath = resolve(
+  anchorErrorCoverageWorkspaceRoot,
+  "programs/error-coverage-fixture/src/lib.rs",
+);
+const anchorErrorCoverageUri = pathToFileURL(anchorErrorCoverageLibPath).href;
+const anchorErrorCoverageWorkspaceUri = pathToFileURL(anchorErrorCoverageWorkspaceRoot).href;
 
 const mainUri = pathToFileURL(resolve(repoRoot, "target/seagrass-smoke.rs")).href;
 const splitLibUri = pathToFileURL(resolve(repoRoot, "fixtures/seagrass-split-lib.rs")).href;
@@ -1222,6 +1229,39 @@ function completionItems(response: CompletionResponse | null | undefined): Compl
   return Array.isArray(response) ? response : (response.items ?? []);
 }
 
+function anchorErrorsByName(diagnostics: DiagnosticReport): Map<string, JsonObject> {
+  const errors = new Map<string, JsonObject>();
+  for (const diagnostic of diagnostics.items ?? []) {
+    const anchorErrors = diagnostic.data?.anchorErrors;
+    if (!Array.isArray(anchorErrors)) {
+      continue;
+    }
+    for (const anchorError of anchorErrors) {
+      if (typeof anchorError !== "object" || anchorError === null) {
+        continue;
+      }
+      const error = anchorError as JsonObject;
+      if (typeof error.name === "string") {
+        errors.set(error.name, error);
+      }
+    }
+  }
+  return errors;
+}
+
+function assertStaticAnchorErrors(diagnostics: DiagnosticReport, names: string[]): void {
+  const errors = anchorErrorsByName(diagnostics);
+  for (const name of names) {
+    const error = errors.get(name);
+    if (!error) {
+      throw new Error(`missing Anchor error metadata for ${name}: ${JSON.stringify(diagnostics)}`);
+    }
+    if (error.coverage !== "static-covered") {
+      throw new Error(`Anchor error ${name} was not static-covered: ${JSON.stringify(error)}`);
+    }
+  }
+}
+
 function documentSymbolsInclude(symbols: DocumentSymbol[] | null | undefined, path: string[]): boolean {
   if (!symbols || path.length === 0) {
     return false;
@@ -1451,6 +1491,7 @@ try {
       { uri: smokeFixtureWorkspaceUri, name: "smoke-fixtures" },
       { uri: checkCfgSmokeWorkspaceUri, name: "check-cfg-smoke" },
       { uri: pathToFileURL(cargoArtifactSmokeRoot).href, name: "cargo-artifact-smoke" },
+      { uri: anchorErrorCoverageWorkspaceUri, name: "anchor-error-coverage-fixture" },
     ],
     initializationOptions: {
       seagrass: {
@@ -1614,6 +1655,15 @@ try {
     assertNoDuplicateDiagnostics(corpusFile.uri, diagnostics);
     assertNoCoreSemanticFalsePositive(corpusFile.uri, diagnostics);
   }
+  openDocument(anchorErrorCoverageUri, readFileSync(anchorErrorCoverageLibPath, "utf8"));
+  const anchorErrorCoverageDiagnostics = await pullDiagnostics(anchorErrorCoverageUri);
+  assertNoDuplicateDiagnostics(anchorErrorCoverageUri, anchorErrorCoverageDiagnostics);
+  assertStaticAnchorErrors(anchorErrorCoverageDiagnostics, [
+    "ConstraintSpace",
+    "ConstraintMut",
+    "AccountNotMutable",
+    "AccountNotSigner",
+  ]);
 
   openDocument(basicMutationFixture.uri, basicMutationFixture.source);
   const basicMutationDiagnostics = await pullDiagnostics(basicMutationFixture.uri);
