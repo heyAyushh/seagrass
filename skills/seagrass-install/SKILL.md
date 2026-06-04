@@ -71,7 +71,7 @@ seagrass --version
 ```
 
 If crates.io install fails because the CLI package is not published yet, use the
-source-checkout install above instead of guessing a sibling mirror.
+source-checkout install above.
 
 ### 2. Configure the editor
 

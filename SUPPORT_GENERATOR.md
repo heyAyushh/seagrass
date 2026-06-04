@@ -1,14 +1,15 @@
 # Anchor Support Generator
 
 Seagrass checks in its generated Anchor support catalogs under
-`src/generated/`. Normal `cargo build -p seagrass` does not scrape the
-parent Anchor checkout; `build.rs` only watches the checked-in generated
-directory.
+`src/anchor/generated/`. Normal `cargo build -p seagrass` does not scrape an
+Anchor source tree; `build.rs` only watches the checked-in generated directory.
 
-Regeneration is an explicit maintainer workflow:
+Regeneration is an explicit maintainer workflow that requires a separate Anchor
+source checkout. Point `$SEAGRASS_ANCHOR_PATH` at that checkout (or pass it
+directly via `--anchor-path`):
 
 ```sh
-bun scripts/regen-support.ts --anchor-path . --family v1
+bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1
 ```
 
 For a preview Anchor v2 checkout:
@@ -20,11 +21,11 @@ bun scripts/regen-support.ts --anchor-path ../anchor-next --family v2-preview --
 Before committing generated changes:
 
 ```sh
-bun scripts/regen-support.ts --anchor-path . --family v1 --check
+bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1 --check
 cargo test -p seagrass constraint_catalog anchor_support anchor_errors anchor_types
 ```
 
-The generator reads:
+The generator reads from the Anchor source checkout:
 
 - `Cargo.toml` for the Anchor workspace version
 - `lang/syn/src/parser/accounts/constraints.rs` for accepted account
@@ -53,7 +54,7 @@ gaps for changed parser, error, field completion, or corpus inputs.
 For a newer Anchor v1 checkout:
 
 1. Update the pinned `anchor-syn` revision in the root workspace.
-2. Run `bun scripts/regen-support.ts --anchor-path <anchor> --family v1`.
+2. Run `bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1`.
 3. Inspect fingerprint and support-matrix changes.
 4. Commit the dependency pin, generated Rust files, and any semantic LSP updates
    together.

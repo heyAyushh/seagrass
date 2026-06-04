@@ -18,7 +18,7 @@ The shared editor surface is defined in [`../UI_CONTRACT.md`](../UI_CONTRACT.md)
    editors/zed
    ```
 
-3. Open the Anchor checkout or another Anchor project.
+3. Open an Anchor or Solana project.
 
 ## Server Command Resolution
 

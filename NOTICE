@@ -1,7 +1,7 @@
-Seagrass LSP
+Seagrass
 Copyright the Seagrass contributors.
 
-This LSP overlay is MIT licensed.
+This project is MIT licensed.
 
 Generated Anchor support catalogs include facts derived from Apache-2.0 Anchor
 source files in the `otter-sec/anchor` workspace:
@@ -18,5 +18,5 @@ source files in the `otter-sec/anchor` workspace:
 - `examples/**/programs/**/src/**/*.rs`
 - `tests/**/programs/**/src/**/*.rs`
 
-The generated catalogs are checked in under `src/generated/` so normal
+The generated catalogs are checked in under `src/anchor/generated/` so normal
 builds do not scrape those upstream files.

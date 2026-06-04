@@ -7,12 +7,10 @@ Canonical checkout: the Seagrass workspace root — the directory returned by
 the `src/` language-server tree.
 
 If your working directory is not that repository root, stop and ask before
-editing, building, or changing editor settings. Do not edit sibling mirrors such
-as `upstream-anchor` unless the user explicitly names them for that turn.
+editing, building, or changing editor settings.
 
 This repository is the standalone Seagrass language-server workspace plus local
-editor adapters. You should work in the real checkout, preserve unrelated dirty
-changes, and verify the user-facing path before reporting success.
+editor adapters. Verify the user-facing path before reporting success.
 
 ## Contents
 
@@ -44,8 +42,8 @@ Use this guide for changes in the Seagrass repository root, especially:
 
 | Rule | What you should do |
 | --- | --- |
-| Use the real source tree | Confirm `pwd`, inspect the current worktree, and avoid reasoning from stale mirrors. |
-| Keep scope tight | Change only files needed for the request. Preserve unrelated dirty files. |
+| Use the real source tree | Inspect the current worktree and reason from the files actually in it, not from memory. |
+| Keep scope tight | Change only files needed for the request, and leave unrelated uncommitted work alone. |
 | Do not take toy paths | Build production code, tests, and docs against the existing architecture. |
 | Prefer generated or parsed evidence | Use parser/catalog/workspace data before string-only heuristics. |
 | Verify the visible path | For editor work, prove diagnostics, completions, hovers, commands, and artifacts through the LSP/editor path, not only helper tests. |
@@ -60,8 +58,9 @@ git status --short
 ./scripts/guard-canonical-repo.sh
 ```
 
-Use `rg` or `rg --files` for search. Use `apply_patch` for manual file edits.
-Do not use destructive git commands unless the user explicitly asks for them.
+Use `rg` or `rg --files` for search. Use your agent's native file-editing tool
+for manual file edits. Do not use destructive git commands unless the user
+explicitly asks for them.
 
 ## Seagrass LSP Workflow
 
@@ -134,17 +133,15 @@ When contributor workflow changes, update `CONTRIBUTING.md` in the same change.
 
 ## Licensing
 
-The LSP overlay and local editor adapters use MIT licensing. Keep the license
-metadata aligned across:
+Seagrass is MIT licensed. Keep the license metadata aligned across:
 
 - `LICENSE`
 - `Cargo.toml`
 - `editors/vscode/package.json`
 - `editors/zed/Cargo.toml`
 
-Do not silently relicense the parent Anchor workspace. The root `LICENSE` and
-root README describe the parent workspace license unless a file explicitly says
-otherwise.
+Do not silently change the license. The root `LICENSE` and root `README.md`
+are the authoritative license declarations for this repository.
 
 ## Verification Matrix
 
@@ -156,7 +153,7 @@ otherwise.
 | VS Code adapter | `cd editors/vscode && bun run check`. |
 | Zed adapter | `cd editors/zed && cargo test`. |
 | Zed wasm release artifact | `cd editors/zed && cargo build --target wasm32-wasip2 --release`, then copy the release wasm to `extension.wasm`. |
-| Root Anchor Rust change | Relevant `cargo test`, `cargo build`, and formatting checks. |
+| Anchor support regeneration | `bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1 --check` plus relevant `cargo test`. |
 | TypeScript package change | Relevant `yarn build`, `yarn test`, or package-local lint/check command. |
 | Agent skills (`skills/seagrass-*`) | Manual review of each SKILL.md against current CLI shapes (`src/app/cli/mod.rs`), suppression logic (`src/lsp/diagnostics/suppression.rs`), lint docs (`docs/lints/`), and the install steps in `skills/README.md`. Update when topics, output, or UX contracts change. |
 

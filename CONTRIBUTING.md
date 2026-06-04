@@ -3,9 +3,8 @@
 Status: Active
 
 Work from the repository root unless a command explicitly changes directory.
-Preserve unrelated dirty state and keep server changes scoped to `src/`, editor
-adapters, workflows, or generated support files unless the task requires parent
-Anchor changes.
+Keep changes scoped to `src/`, editor adapters, workflows, or generated support
+files unless your task explicitly involves other areas.
 
 ## Development Setup
 
@@ -54,11 +53,11 @@ Check that generated files are current:
 bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1 --check
 ```
 
-Standalone Seagrass checkouts can run the production gate with an adjacent
+Standalone Seagrass checkouts can run the production gate against a separate
 Anchor checkout by setting `SEAGRASS_ANCHOR_PATH`. If the variable is unset, the
-gate uses this checkout when it contains Anchor sources, then the pinned Anchor
-git checkout from Cargo's dependency cache. It never silently falls back to
-sibling mirror directories.
+gate falls back to the pinned Anchor git dependency from Cargo's cache (fetching
+it with `cargo fetch --locked` if needed), and fails with a clear error if no
+supported Anchor source can be found.
 
 Preview a v2 checkout:
 
@@ -73,7 +72,7 @@ bun scripts/regen-support.ts \
 When bumping Anchor support:
 
 - update the root `anchor-syn` git revision
-- regenerate `src/generated/*.rs`
+- regenerate `src/anchor/generated/*.rs`
 - inspect support-matrix and fingerprint changes
 - commit the dependency pin, generated files, and semantic LSP updates together
 
@@ -101,8 +100,8 @@ Cut a signed release tag only after `VERSION` and every LSP/editor manifest
 match the intended version:
 
 ```sh
-git tag -s v1.0.2
-git push origin v1.0.2
+git tag -s v0.1.2
+git push origin v0.1.2
 ```
 
 The release workflow builds and attaches:
@@ -113,7 +112,7 @@ The release workflow builds and attaches:
 - `seagrass-vscode-<version>.vsix`
 - matching `.sha256` files
 
-Pre-release tags such as `v1.0.2-rc.1` create GitHub pre-releases.
+Pre-release tags such as `v0.1.2-rc.1` create GitHub pre-releases.
 
 ## Commit Messages
 
@@ -149,9 +148,8 @@ should include a failing fixture or protocol transcript when possible.
 ## Agent skills
 
 The `skills/seagrass-*` directory contains markdown-driven skills for Claude
-Code, Cursor, OpenCode, Codex, and other automation environments. These are the
-maintained automation docs for the diagnostics CLI, suppression forms, and lint
-topics.
+Code, Cursor, and other coding agents. These are the maintained automation docs
+for the diagnostics CLI, suppression forms, and lint topics.
 
 When you:
 - add or rename a lint topic
