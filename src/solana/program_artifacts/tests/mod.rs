@@ -1,5 +1,8 @@
 use {
     super::*,
+    crate::solana::program_artifacts::test_fixtures::{
+        minimal_sbf_elf, sbf_elf_with_text_bytes, sbf_elf_with_text_instruction_count,
+    },
     std::{env, thread, time::Duration},
 };
 
@@ -23,6 +26,25 @@ fn rejects_non_bpf_elf_header() {
     let error = parse_elf_summary(&header).unwrap_err();
 
     assert!(error.contains("not eBPF/SBF"));
+}
+
+#[test]
+fn counts_sbf_text_instructions_from_elf_sections() {
+    let elf = sbf_elf_with_text_instruction_count(3);
+
+    let count = sbf::parse_sbf_text_instruction_count(&elf).unwrap();
+
+    assert_eq!(count.text_section_bytes, 24);
+    assert_eq!(count.instruction_count, 3);
+}
+
+#[test]
+fn rejects_unaligned_sbf_text_section() {
+    let elf = sbf_elf_with_text_bytes(10);
+
+    let error = sbf::parse_sbf_text_instruction_count(&elf).unwrap_err();
+
+    assert!(error.contains("not aligned"));
 }
 
 #[test]
@@ -278,19 +300,6 @@ fn decodes_solana_keypair_public_key() {
     let public_key = keypair_public_key(&json).unwrap();
 
     assert_eq!(public_key, "11111111111111111111111111111112");
-}
-
-fn minimal_sbf_elf() -> Vec<u8> {
-    let mut header = vec![0_u8; 64];
-    header[0..4].copy_from_slice(b"\x7fELF");
-    header[4] = 2;
-    header[5] = 1;
-    header[6] = 1;
-    header[16] = 2;
-    header[18] = (EM_BPF & 0xff) as u8;
-    header[19] = (EM_BPF >> 8) as u8;
-    header[60] = 3;
-    header
 }
 
 fn pinocchio_source() -> &'static str {

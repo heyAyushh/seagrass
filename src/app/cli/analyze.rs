@@ -2,23 +2,28 @@ use {
     super::diagnostics::CliDiagnostic,
     crate::{
         diagnostics as diagnostic_engine, document::ParsedDocument, evidence, file_text,
-        solana_project, workspace::WorkspaceIndex,
+        program_artifacts, solana_project, workspace::WorkspaceIndex,
     },
     clap::Args,
     serde::Serialize,
     std::{
         collections::{BTreeMap, BTreeSet, HashSet},
         error::Error,
-        fmt, fs,
+        fmt,
         path::{Path, PathBuf},
     },
     tower_lsp::lsp_types::Url,
 };
 
+mod compute;
+mod input;
+
+use compute::{compute_analysis_report, ComputeAnalysisReport};
+use input::{display_path, rust_files, workspace_index_for_path};
+
 const RUST_EXTENSION: &str = "rs";
 const ANALYZE_FILE_EXAMPLE: &str = "seagrass analyze programs/demo/src/lib.rs --json";
 const ANALYZE_DIRECTORY_EXAMPLE: &str = "seagrass analyze programs/demo/src --json";
-const RUNTIME_EVIDENCE_STATUS_NOT_CONFIGURED: &str = "notConfigured";
 
 pub(super) const ANALYZE_HELP: &str = "\
 Examples:
@@ -91,6 +96,7 @@ struct FileIntelligenceReport {
     project: Option<ProjectReport>,
     account_flow: serde_json::Value,
     instructions: Vec<InstructionIntelligenceReport>,
+    compute_analysis: ComputeAnalysisReport,
     accounts: Vec<AccountContextReport>,
     pda_seed_usage: Vec<PdaSeedUsageReport>,
     framework_boundary: FrameworkBoundaryReport,
@@ -229,17 +235,23 @@ fn analyze_file(
     let diagnostics = diagnostic_engine::collect_with_workspace(&document, workspace_index);
     let file = display_path(path);
     let uri = Url::from_file_path(path).ok();
-    let project = uri
+    let program = uri
         .as_ref()
-        .and_then(|uri| solana_project::detect_for_document(uri, &document))
-        .map(project_report);
-    let program_kind = project.as_ref().map(|project| project.kind);
+        .and_then(|uri| solana_project::detect_for_document(uri, &document));
+    let artifact_report = program
+        .clone()
+        .and_then(program_artifacts::report_for_program);
+    let program_kind = program.as_ref().map(|program| program.kind.as_str());
+    let project = program.map(project_report);
+    let instructions = instruction_reports(&document, workspace_index);
+    let compute_analysis = compute_analysis_report(&instructions, artifact_report.as_ref());
 
     Ok(FileIntelligenceReport {
         file: file.clone(),
         project,
         account_flow: evidence::summary(&document),
-        instructions: instruction_reports(&document, workspace_index),
+        instructions,
+        compute_analysis,
         accounts: account_context_reports(&document),
         pda_seed_usage: pda_seed_usage_reports(&document),
         framework_boundary: framework_boundary_report(program_kind),
@@ -521,9 +533,9 @@ fn static_totals(files: &[FileIntelligenceReport]) -> StaticTotals {
 
 fn runtime_evidence_report() -> RuntimeEvidenceReport {
     RuntimeEvidenceReport {
-        status: RUNTIME_EVIDENCE_STATUS_NOT_CONFIGURED,
+        status: "notConfigured",
         compute_units: RuntimeEvidenceBoundary {
-            status: RUNTIME_EVIDENCE_STATUS_NOT_CONFIGURED,
+            status: "notConfigured",
             required_evidence: vec![
                 "tridentCoverage",
                 "validatorLogs",
@@ -532,113 +544,21 @@ fn runtime_evidence_report() -> RuntimeEvidenceReport {
             ],
         },
         traffic_shape: RuntimeEvidenceBoundary {
-            status: RUNTIME_EVIDENCE_STATUS_NOT_CONFIGURED,
+            status: "notConfigured",
             required_evidence: vec!["indexerTelemetry", "applicationTelemetry"],
         },
         cold_path_deletion: RuntimeEvidenceBoundary {
-            status: RUNTIME_EVIDENCE_STATUS_NOT_CONFIGURED,
+            status: "notConfigured",
             required_evidence: vec!["coverageWindow", "trafficWindow", "traceWindow"],
         },
     }
-}
-
-fn workspace_index_for_path(path: &Path) -> Option<WorkspaceIndex> {
-    let roots = workspace_roots_for_path(path)
-        .into_iter()
-        .filter_map(|root| Url::from_directory_path(root).ok())
-        .collect::<Vec<_>>();
-    (!roots.is_empty()).then(|| WorkspaceIndex::build(&roots, std::iter::empty::<(Url, String)>()))
-}
-
-fn workspace_roots_for_path(path: &Path) -> Vec<PathBuf> {
-    if path.is_file() {
-        return source_root_for_file(path).into_iter().collect();
-    }
-    if path.is_dir() {
-        return vec![path.to_path_buf()];
-    }
-    Vec::new()
-}
-
-fn source_root_for_file(path: &Path) -> Option<PathBuf> {
-    path.ancestors()
-        .skip(1)
-        .find(|ancestor| ancestor.file_name().is_some_and(|name| name == "src"))
-        .map(Path::to_path_buf)
-        .or_else(|| path.parent().map(Path::to_path_buf))
-}
-
-fn rust_files(path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    let metadata = fs::metadata(path).map_err(|error| {
-        AnalyzeUsageError::new(format!(
-            "Error: analyze path cannot be inspected: {}.\nExample:\n  {ANALYZE_FILE_EXAMPLE}\nCause: {error}",
-            path.display()
-        ))
-    })?;
-    if metadata.is_file() {
-        validate_rust_file(path)?;
-        return Ok(vec![path.to_path_buf()]);
-    }
-    if metadata.is_dir() {
-        let mut files = rust_files_in_dir(path)?;
-        files.sort();
-        if files.is_empty() {
-            return Err(AnalyzeUsageError::new(format!(
-                "Error: no Rust source files found under {}.\nExample:\n  {ANALYZE_DIRECTORY_EXAMPLE}",
-                path.display()
-            ))
-            .into());
-        }
-        return Ok(files);
-    }
-    Err(AnalyzeUsageError::new(format!(
-        "Error: analyze path must be a Rust file or directory: {}.\nExamples:\n  {ANALYZE_FILE_EXAMPLE}\n  {ANALYZE_DIRECTORY_EXAMPLE}",
-        path.display()
-    ))
-    .into())
-}
-
-fn rust_files_in_dir(path: &Path) -> Result<Vec<PathBuf>, Box<dyn Error>> {
-    fs::read_dir(path)?.try_fold(Vec::new(), |mut files, entry| {
-        let entry = entry?;
-        let entry_path = entry.path();
-        let metadata = entry.metadata()?;
-        if metadata.is_dir() {
-            files.extend(rust_files_in_dir(&entry_path)?);
-        } else if is_rust_file(&entry_path) {
-            files.push(entry_path);
-        }
-        Ok(files)
-    })
-}
-
-fn is_rust_file(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension == RUST_EXTENSION)
-}
-
-fn validate_rust_file(path: &Path) -> Result<(), AnalyzeUsageError> {
-    if is_rust_file(path) {
-        return Ok(());
-    }
-    Err(AnalyzeUsageError::new(format!(
-        "Error: analyze file must use the .rs extension: {}.\nExample:\n  {ANALYZE_FILE_EXAMPLE}",
-        path.display()
-    )))
-}
-
-fn display_path(path: &Path) -> String {
-    path.canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
-        .display()
-        .to_string()
 }
 
 #[cfg(test)]
 mod tests {
     use {
         super::*,
+        crate::solana::program_artifacts::test_fixtures::sbf_elf_with_text_instruction_count,
         clap::CommandFactory,
         std::{
             fs,
@@ -716,11 +636,20 @@ pub struct Route<'info> {
         assert_eq!(report.static_layer.totals.likely_compute_heavy_paths, 1);
 
         let file = report.static_layer.files.first().expect("file report");
+        let compute = compute_analysis_json(file);
         let route = file
             .instructions
             .iter()
             .find(|instruction| instruction.name == "route")
             .expect("route instruction");
+        assert_eq!(compute["status"].as_str(), Some("sourceOnly"));
+        assert_eq!(
+            compute["runtimeMeasurementStatus"].as_str(),
+            Some("notConfigured")
+        );
+        assert!(compute_has_source_signal(&compute, "cpiProgramUsage"));
+        assert!(compute_has_source_signal(&compute, "splitHelperCall"));
+        assert!(compute["bytecode"]["sbfInstructionCount"].is_null());
         assert!(route.compute_review_reasons.contains(&"splitHelperCall"));
         assert!(route.compute_review_reasons.contains(&"cpiProgramUsage"));
         assert!(route
@@ -739,6 +668,71 @@ pub struct Route<'info> {
             diagnostic.topic.as_deref() == Some("seagrass/security.cpi.program")
                 && diagnostic.message.contains("dead_program")
         }));
+
+        let _ = fs::remove_dir_all(temp_root);
+    }
+
+    #[test]
+    fn analyze_reports_static_bytecode_compute_floor_when_sbf_artifact_exists() {
+        let temp_root = unique_temp_dir("seagrass-analyze-sbf-compute");
+        let source_dir = temp_root.join("programs/demo/src");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::create_dir_all(temp_root.join("target/deploy")).unwrap();
+        fs::write(
+            temp_root.join("Anchor.toml"),
+            r#"
+[programs.localnet]
+demo = "Demo111111111111111111111111111111111"
+"#,
+        )
+        .unwrap();
+        let source_path = source_dir.join("lib.rs");
+        fs::write(
+            &source_path,
+            r#"
+use anchor_lang::prelude::*;
+
+declare_id!("Demo111111111111111111111111111111111");
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn route(ctx: Context<Route>) -> Result<()> {
+        let _ = ctx.accounts.vault.key();
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Route<'info> {
+    #[account(mut)]
+    pub vault: AccountInfo<'info>,
+}
+"#,
+        )
+        .unwrap();
+        fs::write(
+            temp_root.join("target/deploy/demo.so"),
+            sbf_elf_with_text_instruction_count(5),
+        )
+        .unwrap();
+
+        let report = analyze_path(&source_path).unwrap();
+        let compute =
+            compute_analysis_json(report.static_layer.files.first().expect("file report"));
+
+        assert_eq!(compute["status"].as_str(), Some("staticBytecodeAvailable"));
+        assert_eq!(compute["bytecode"]["sbfInstructionCount"].as_u64(), Some(5));
+        assert_eq!(
+            compute["bytecode"]["estimatedProgramExecutionCuFloor"].as_u64(),
+            Some(5)
+        );
+        assert_eq!(compute["bytecode"]["textSectionBytes"].as_u64(), Some(40));
+        assert_eq!(
+            compute["runtimeMeasurementStatus"].as_str(),
+            Some("notConfigured")
+        );
 
         let _ = fs::remove_dir_all(temp_root);
     }
@@ -790,5 +784,17 @@ pub struct Empty<'info> {
             .unwrap()
             .as_nanos();
         std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", std::process::id()))
+    }
+
+    fn compute_analysis_json(file: &FileIntelligenceReport) -> serde_json::Value {
+        serde_json::to_value(&file.compute_analysis).expect("compute analysis serializes")
+    }
+
+    fn compute_has_source_signal(compute: &serde_json::Value, signal: &str) -> bool {
+        compute["sourceSignals"]
+            .as_array()
+            .expect("source signals are serialized as an array")
+            .iter()
+            .any(|value| value.as_str() == Some(signal))
     }
 }

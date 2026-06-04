@@ -14,6 +14,10 @@ use {
     tower_lsp::lsp_types::Url,
 };
 
+mod sbf;
+
+pub(crate) use sbf::sbf_text_instruction_count;
+
 const MAX_SOURCE_INPUTS: usize = 512;
 const MAX_SOURCE_DEPTH: usize = 16;
 const EM_BPF: u16 = 247;
@@ -724,6 +728,9 @@ fn system_time_ms(time: SystemTime) -> Option<u128> {
         .ok()
         .map(|duration| duration.as_millis())
 }
+
+#[cfg(test)]
+pub(crate) mod test_fixtures;
 
 #[cfg(test)]
 mod tests;

@@ -10,9 +10,9 @@ compute, traffic, or execution behavior.
 ## Static Layer
 
 The static layer can report parsed program structure, accounts, CPIs, PDAs,
-artifact freshness, framework routing, lint topics, quick fixes, JSON output, and
-SARIF output. These findings are valid when they are backed by local source or
-artifact evidence.
+artifact freshness, SBF `.text` instruction-count floors, framework routing,
+lint topics, quick fixes, JSON output, and SARIF output. These findings are valid
+when they are backed by local source or artifact evidence.
 
 ## Runtime Layer
 
