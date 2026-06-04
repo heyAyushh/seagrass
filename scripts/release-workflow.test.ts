@@ -253,8 +253,8 @@ describe("release workflow packaging", () => {
   test("keeps release-plz on the repository default branch", () => {
     const workflow = readFileSync(releasePlzWorkflowPath, "utf8");
 
-    expect(workflow).toContain("branches: [master]");
-    expect(workflow).not.toContain("branches: [main]");
+    expect(workflow).toContain("branches: [main]");
+    expect(workflow).not.toContain("branches: [master]");
   });
 });
 

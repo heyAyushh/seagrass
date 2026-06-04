@@ -3,7 +3,7 @@ name: Anchor Property Tests
 on:
   pull_request:
     branches:
-      - master
+      - main
       - anchor-next
     paths:
       - "Cargo.toml"
@@ -15,7 +15,7 @@ on:
       - ".github/workflows/property-tests.yaml"
   push:
     branches:
-      - master
+      - main
     paths:
       - "Cargo.toml"
       - "Cargo.lock"

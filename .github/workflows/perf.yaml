@@ -3,7 +3,7 @@ name: Seagrass Perf
 on:
   pull_request:
     branches:
-      - master
+      - main
       - anchor-next
     paths:
       - "**"
@@ -12,7 +12,7 @@ on:
       - ".github/workflows/perf.yaml"
   push:
     branches:
-      - master
+      - main
     paths:
       - "**"
       - "Cargo.toml"

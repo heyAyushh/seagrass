@@ -3,7 +3,7 @@ name: Seagrass PR Guardrails
 on:
   pull_request:
     branches:
-      - master
+      - main
       - anchor-next
     paths:
       - "**"
@@ -29,7 +29,7 @@ on:
       - "scripts/package-release.ts"
   push:
     branches:
-      - master
+      - main
     paths:
       - "**"
       - "VERSION"
