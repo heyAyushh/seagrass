@@ -3,7 +3,7 @@ use {
         document_indexed_references, document_indexed_symbols, files, indexed_accounts_structs,
         indexed_functions, WorkspaceDocumentUpdate,
     },
-    crate::{document::ParsedDocument, document_stub::DocumentStub, file_text},
+    crate::{document::ParsedDocument, file_text},
     tower_lsp::lsp_types::Url,
 };
 
@@ -21,13 +21,10 @@ pub(super) fn update_for_workspace_file(
     }
     let source = file_text::read_limited_text(&path).ok().flatten()?;
     let document = ParsedDocument::parse_or_empty(source);
-    let stub = DocumentStub::from_parsed(&document);
-    let _ = stub.save_to_cache(&uri);
     let accounts_structs = indexed_accounts_structs(&document, &uri, false);
     Some(WorkspaceDocumentUpdate {
         uri,
         is_open: false,
-        stub,
         symbols: document_indexed_symbols(&document),
         references: document_indexed_references(&document),
         functions: indexed_functions(&document),

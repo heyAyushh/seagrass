@@ -66,7 +66,7 @@ pub fn completion_signature(source: &str, position: Position) -> Option<Completi
     CursorContext::classify_source(source, position).signature(position.line)
 }
 
-#[allow(dead_code)]
+#[cfg(test)]
 pub fn should_offer_completion(source: &str, position: Position) -> bool {
     completion_signature(source, position).is_some()
 }

@@ -1,13 +1,3 @@
-use {
-    crate::{
-        document::{has_attr, ParsedDocument, PdaSeeds},
-        file_text,
-    },
-    std::{error::Error, fs, path::Path},
-    syn::{Item, ItemFn, ItemMod},
-    tower_lsp::lsp_types::Url,
-};
-
 #[cfg(test)]
 use {crate::syntax::RustSyntax, tree_sitter::Node};
 
@@ -166,98 +156,6 @@ impl DocumentStub {
             for child in node.children(&mut cursor) {
                 stack.push(child);
             }
-        }
-
-        Self {
-            programs,
-            accounts,
-            data_structs,
-            pda_seeds,
-        }
-    }
-
-    /// Builds a stub from an existing [`ParsedDocument`].
-    ///
-    /// Use this when you already have a full parse and want to derive the
-    /// lightweight stub without re-parsing.
-    ///
-    /// # Example
-    ///
-    /// ```
-    /// # use seagrass::document::ParsedDocument;
-    /// # use seagrass::document_stub::DocumentStub;
-    /// let document = ParsedDocument::parse_or_empty("#[account] pub struct State {}");
-    /// let stub = DocumentStub::from_parsed(&document);
-    /// assert_eq!(stub.data_structs.len(), 1);
-    /// assert_eq!(stub.data_structs[0].name, "State");
-    /// ```
-    pub fn from_parsed(document: &ParsedDocument) -> Self {
-        let mut programs = Vec::new();
-
-        for item in &document.syntax().items {
-            if let Item::Mod(ItemMod {
-                attrs,
-                ident,
-                content,
-                ..
-            }) = item
-            {
-                if !has_attr(attrs, "program") {
-                    continue;
-                }
-                let name = ident.to_string();
-                let mut instructions = Vec::new();
-                if let Some((_, items)) = content {
-                    for inner in items {
-                        if let Item::Fn(ItemFn { sig, .. }) = inner {
-                            instructions.push(sig.ident.to_string());
-                        }
-                    }
-                }
-                programs.push(ProgramStub { name, instructions });
-            }
-        }
-
-        let mut accounts = Vec::with_capacity(document.symbols().accounts_structs.len());
-        let mut pda_seeds = Vec::new();
-        for symbol in document.symbols().accounts_structs.values() {
-            let mut fields = Vec::with_capacity(symbol.fields.len());
-            for field in &symbol.fields {
-                let constraints = field
-                    .account_constraints
-                    .iter()
-                    .map(|c| c.text.clone())
-                    .collect();
-
-                if let Some(pda) = &field.pda_constraint {
-                    let seeds = match &pda.seeds {
-                        PdaSeeds::List(list) => list.clone(),
-                        PdaSeeds::Expr(expr) => vec![expr.clone()],
-                    };
-                    pda_seeds.push(PdaSeedStub {
-                        account_name: field.name.clone(),
-                        seeds,
-                    });
-                }
-
-                fields.push(AccountFieldStub {
-                    name: field.name.clone(),
-                    constraints,
-                });
-            }
-            accounts.push(AccountStub {
-                name: symbol.name.clone(),
-                fields,
-            });
-        }
-
-        let mut data_structs = Vec::with_capacity(document.symbols().account_data_structs.len());
-        for symbol in document.symbols().account_data_structs.values() {
-            let fields = symbol.fields.iter().map(|f| f.name.clone()).collect();
-            data_structs.push(DataStructStub {
-                name: symbol.name.clone(),
-                fields,
-            });
         }
 
         Self {
@@ -502,49 +400,6 @@ fn skip_whitespace_and_equals(text: &str) -> Option<&str> {
     None
 }
 
-impl DocumentStub {
-    fn cache_dir() -> std::path::PathBuf {
-        Path::new("/tmp/seagrass-stubs").to_path_buf()
-    }
-
-    fn cache_path(uri: &Url) -> Option<std::path::PathBuf> {
-        let path = uri.to_file_path().ok()?;
-        let name = path
-            .file_name()?
-            .to_string_lossy()
-            .replace(|c: char| !c.is_alphanumeric(), "_");
-        Some(Self::cache_dir().join(name).with_extension("wincode"))
-    }
-
-    /// Saves to wincode cache (JSON for now; enables future zero-copy binary). Dir auto-created.
-    /// Why: open docs must persist updates; aligns with stacc (ownership on &self, no deps).
-    pub fn save_to_cache(&self, uri: &Url) -> Result<(), Box<dyn Error>> {
-        let path = Self::cache_path(uri).ok_or("invalid uri")?;
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let json = serde_json::to_string_pretty(self)?;
-        fs::write(&path, json)?;
-        Ok(())
-    }
-
-    /// Loads only if cache mtime > source mtime (freshness). None triggers reparse+save.
-    /// Why: avoids full from_source parse for unchanged root files (perf); mtime zero-cost.
-    /// Wincode choice documented for Anza alignment (no new deps per rules).
-    #[allow(dead_code)]
-    pub fn load_from_cache(uri: &Url) -> Option<Self> {
-        let cache_path = Self::cache_path(uri)?;
-        let source_path = uri.to_file_path().ok()?;
-        let cache_meta = fs::metadata(&cache_path).ok()?;
-        let source_meta = fs::metadata(&source_path).ok()?;
-        if cache_meta.modified().ok()? <= source_meta.modified().ok()? {
-            return None;
-        }
-        let json = file_text::read_limited_text(&cache_path).ok().flatten()?;
-        serde_json::from_str(&json).ok()
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -621,40 +476,6 @@ pub struct Create<'info> {
         assert_eq!(
             stub.pda_seeds[0].seeds,
             vec!["b\"state\"", "user.key().as_ref()"]
-        );
-    }
-
-    #[test]
-    fn from_parsed_matches_from_source() {
-        let source = r#"
-#[program]
-pub mod demo {
-    pub fn initialize(ctx: Context<Create>) -> Result<()> {
-        Ok(())
-    }
-}
-
-#[derive(Accounts)]
-pub struct Create<'info> {
-    #[account(init, payer = user, space = 8)]
-    pub state: Account<'info, State>,
-    pub user: Signer<'info>,
-}
-
-#[account]
-pub struct State {
-    pub value: u64,
-}
-"#;
-        let document = ParsedDocument::parse_or_empty(source);
-        let from_parsed = DocumentStub::from_parsed(&document);
-        let from_source = DocumentStub::from_source(source);
-
-        assert_eq!(from_parsed.programs.len(), from_source.programs.len());
-        assert_eq!(from_parsed.accounts.len(), from_source.accounts.len());
-        assert_eq!(
-            from_parsed.data_structs.len(),
-            from_source.data_structs.len()
         );
     }
 

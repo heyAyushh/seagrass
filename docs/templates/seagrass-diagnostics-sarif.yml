@@ -15,7 +15,7 @@ jobs:
         with:
           path: programs
           sarif: "true"
-          seagrass-version: "1.0.2"
+          seagrass-version: "0.1.2"
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:

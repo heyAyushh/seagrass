@@ -23,13 +23,16 @@ const DEFAULT_CAPACITY: usize = 1024;
 ///
 /// ```
 /// use tower_lsp::lsp_types::{Url, Diagnostic, Position};
-/// use seagrass::query_cache::{QueryCache, CacheKey, QueryKind, CacheValue};
+/// use seagrass::query_cache::{QueryCache, QueryKind, CacheValue};
 ///
 /// let cache = QueryCache::new();
 /// let uri = Url::parse("file:///main.rs").unwrap();
-/// let key = CacheKey::new(uri.clone(), QueryKind::Diagnostics);
 ///
-/// cache.insert(key, 1, CacheValue::Diagnostics(vec![Diagnostic::default()]));
+/// cache.insert(
+///     (uri.clone(), QueryKind::Diagnostics),
+///     1,
+///     CacheValue::Diagnostics(vec![Diagnostic::default()]),
+/// );
 ///
 /// // Cache hit – version matches.
 /// let hit = cache.get((uri.clone(), QueryKind::Diagnostics), 1);
@@ -139,27 +142,6 @@ impl QueryCache {
     pub fn invalidate_for_uri(&self, uri: &Url) {
         self.entries_by_uri.remove(uri);
     }
-
-    /// Clears the entire cache.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use tower_lsp::lsp_types::Url;
-    /// use seagrass::query_cache::{QueryCache, QueryKind, CacheValue};
-    ///
-    /// let cache = QueryCache::new();
-    /// let uri = Url::parse("file:///main.rs").unwrap();
-    ///
-    /// cache.insert((uri.clone(), QueryKind::Diagnostics), 1, CacheValue::Diagnostics(vec![]));
-    /// cache.clear();
-    ///
-    /// assert!(cache.get((uri, QueryKind::Diagnostics), 1).is_none());
-    /// ```
-    #[allow(dead_code)]
-    pub fn clear(&self) {
-        self.entries_by_uri.clear();
-    }
 }
 
 impl Default for QueryCache {
@@ -175,14 +157,6 @@ impl Default for QueryCache {
 pub struct CacheKey {
     pub uri: Url,
     pub kind: QueryKind,
-}
-
-impl CacheKey {
-    /// Creates a new cache key.
-    #[allow(dead_code)]
-    pub fn new(uri: Url, kind: QueryKind) -> Self {
-        Self { uri, kind }
-    }
 }
 
 impl From<(Url, QueryKind)> for CacheKey {
@@ -208,9 +182,6 @@ pub enum QueryKind {
     Completion(Position),
     /// Goto-definition result at a specific position.
     GotoDefinition(Position),
-    /// Find-references result at a specific position.
-    #[allow(dead_code)]
-    GotoReferences(Position),
     /// Document-level symbol tree.
     DocumentSymbols,
     /// Folding ranges for the whole document.
@@ -224,7 +195,6 @@ pub enum QueryKind {
     /// A single entry per document stores all actions computed for the last
     /// known document version.  Cursor-aware filtering is applied at the call
     /// site when the caller selects which actions to surface to the editor.
-    #[allow(dead_code)]
     CodeActions(Url),
 }
 
@@ -233,10 +203,7 @@ impl Hash for QueryKind {
         core::mem::discriminant(self).hash(state);
         match self {
             QueryKind::Diagnostics => {}
-            QueryKind::Hover(pos)
-            | QueryKind::Completion(pos)
-            | QueryKind::GotoDefinition(pos)
-            | QueryKind::GotoReferences(pos) => {
+            QueryKind::Hover(pos) | QueryKind::Completion(pos) | QueryKind::GotoDefinition(pos) => {
                 pos.line.hash(state);
                 pos.character.hash(state);
             }
@@ -289,9 +256,6 @@ pub enum CacheValue {
     Completion(Option<Vec<CompletionItem>>),
     /// Result of [`QueryKind::GotoDefinition`].
     GotoDefinition(Option<Location>),
-    /// Result of [`QueryKind::GotoReferences`].
-    #[allow(dead_code)]
-    GotoReferences(Vec<Location>),
     /// Result of [`QueryKind::DocumentSymbols`].
     DocumentSymbols(Vec<DocumentSymbol>),
     /// Result of [`QueryKind::FoldingRanges`].
@@ -305,7 +269,6 @@ pub enum CacheValue {
     /// Holds the **full, unfiltered** action set for the document.  The caller
     /// is responsible for filtering to the actions relevant to the current
     /// cursor range before returning them to the editor.
-    #[allow(dead_code)]
     CodeActions(Vec<CodeAction>),
 }
 

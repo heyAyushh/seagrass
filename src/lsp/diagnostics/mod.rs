@@ -204,14 +204,6 @@ fn parser_rule_diagnostic_message(
             }
             format!("Anchor account constraint `{key}` is on an unsupported account type: {parser_message}.")
         }
-        constraint_catalog::ConstraintParserRuleKind::FeatureGate => {
-            format!(
-                "Anchor account constraint `{key}` needs an enabled Cargo feature: {parser_message}."
-            )
-        }
-        constraint_catalog::ConstraintParserRuleKind::Parser => {
-            format!("Anchor account constraint `{key}` is invalid: {parser_message}.")
-        }
     }
 }
 

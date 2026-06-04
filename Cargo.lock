@@ -1456,7 +1456,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "seagrass"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "anchor-syn",
  "cargo_toml",
@@ -1484,7 +1484,7 @@ dependencies = [
 
 [[package]]
 name = "seagrass-anchor-v1"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "seagrass",
  "seagrass-framework",
@@ -1492,7 +1492,7 @@ dependencies = [
 
 [[package]]
 name = "seagrass-anchor-v2-preview"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "seagrass",
  "seagrass-framework",
@@ -1500,7 +1500,7 @@ dependencies = [
 
 [[package]]
 name = "seagrass-cli"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "seagrass",
  "tokio",
@@ -1508,7 +1508,7 @@ dependencies = [
 
 [[package]]
 name = "seagrass-framework"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1527,7 +1527,7 @@ dependencies = [
 
 [[package]]
 name = "seagrass-native"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "seagrass-framework",
  "serde_json",
@@ -1536,7 +1536,7 @@ dependencies = [
 
 [[package]]
 name = "seagrass-pinocchio"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "seagrass-framework",
  "serde_json",
@@ -1546,14 +1546,14 @@ dependencies = [
 
 [[package]]
 name = "seagrass-sources"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "seagrass-framework",
 ]
 
 [[package]]
 name = "seagrass-zed"
-version = "1.0.2"
+version = "0.1.2"
 dependencies = [
  "zed_extension_api",
 ]

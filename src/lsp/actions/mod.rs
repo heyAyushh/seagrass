@@ -101,11 +101,8 @@ pub fn cursor_dependent_code_actions(
 /// then ranked and filtered for the cursor.
 ///
 /// The LSP handler unrolls this composition so it can cache the unfiltered
-/// step; this wrapper exists for tests, embedders, and any caller that doesn't
-/// need the cache. Marked `#[allow(dead_code)]` because production code in this
-/// crate uses the unrolled form — non-test consumers (`#[cfg(test)]` modules
-/// and external crates) keep it live.
-#[allow(dead_code)]
+/// step; test callers keep this wrapper around for whole-action flow assertions.
+#[cfg(test)]
 pub fn code_actions(
     document: &ParsedDocument,
     uri: Url,

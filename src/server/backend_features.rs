@@ -1,4 +1,5 @@
 use super::*;
+use crate::assists;
 
 struct CompletionLog<'a> {
     uri: &'a Url,

@@ -4,7 +4,6 @@ use std::sync::Arc;
 use tower_lsp::lsp_types::DocumentSymbol;
 
 #[salsa::db]
-#[allow(dead_code)]
 pub trait LspDatabase: Database + Send {
     fn document_symbols(&self, source: Arc<str>, version: i32) -> Vec<DocumentSymbol>;
 }

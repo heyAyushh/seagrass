@@ -190,7 +190,7 @@ edition = "2021"
     const SEAGRASS_SERVER_MANIFEST: &str = r#"
 [package]
 name = "seagrass-cli"
-version = "1.0.2"
+version = "0.1.2"
 edition = "2021"
 
 [[bin]]

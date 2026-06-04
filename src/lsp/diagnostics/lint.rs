@@ -1,7 +1,3 @@
-// The shared rule contract lands before every diagnostic rule has migrated to
-// it. Keep the unused pieces visible so future ports reuse one vocabulary.
-#![allow(dead_code)]
-
 use {
     crate::{document::ParsedDocument, range::byte_offset_at},
     std::marker::PhantomData,
@@ -46,18 +42,12 @@ impl Confidence {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Applicability {
-    MachineApplicable,
-    MaybeIncorrect,
-    HasPlaceholders,
     Unspecified,
 }
 
 impl Applicability {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
-            Self::MachineApplicable => "MachineApplicable",
-            Self::MaybeIncorrect => "MaybeIncorrect",
-            Self::HasPlaceholders => "HasPlaceholders",
             Self::Unspecified => "Unspecified",
         }
     }
@@ -213,20 +203,6 @@ impl RegionMap {
             .map(|span| span.region)
             .unwrap_or(Region::Other)
     }
-
-    pub(crate) fn allows_executable_lints(&self, byte_offset: usize) -> bool {
-        matches!(
-            self.region_at(byte_offset),
-            Region::InstructionBody | Region::HelperFnBody
-        )
-    }
-
-    pub(crate) fn allows_constraint_lints(&self, byte_offset: usize) -> bool {
-        matches!(
-            self.region_at(byte_offset),
-            Region::AccountsStructField | Region::AttributeArguments
-        )
-    }
 }
 
 impl RegionSpan {
@@ -379,9 +355,18 @@ pub struct Initialize<'info> {
             Region::AttributeArguments
         );
         assert_eq!(regions.region_at(field_offset), Region::AccountsStructField);
-        assert!(regions.allows_executable_lints(amount_offset));
-        assert!(regions.allows_constraint_lints(account_offset));
-        assert!(!regions.allows_executable_lints(account_offset));
+        assert!(matches!(
+            regions.region_at(amount_offset),
+            Region::InstructionBody | Region::HelperFnBody
+        ));
+        assert!(matches!(
+            regions.region_at(account_offset),
+            Region::AccountsStructField | Region::AttributeArguments
+        ));
+        assert!(!matches!(
+            regions.region_at(account_offset),
+            Region::InstructionBody | Region::HelperFnBody
+        ));
     }
 
     #[test]
@@ -389,12 +374,6 @@ pub struct Initialize<'info> {
         assert_eq!(Confidence::Heuristic.as_str(), "heuristic");
         assert_eq!(Confidence::Derived.as_str(), "derived");
         assert_eq!(Confidence::Authoritative.as_str(), "authoritative");
-        assert_eq!(
-            Applicability::MachineApplicable.as_str(),
-            "MachineApplicable"
-        );
-        assert_eq!(Applicability::MaybeIncorrect.as_str(), "MaybeIncorrect");
-        assert_eq!(Applicability::HasPlaceholders.as_str(), "HasPlaceholders");
         assert_eq!(Applicability::Unspecified.as_str(), "Unspecified");
     }
 

@@ -1,7 +1,7 @@
 use {
     crate::{
-        account_semantics, actions, anchor_errors, anchor_support, assists, code_lens, completions,
-        debounce, diagnostics, document,
+        account_semantics, anchor_errors, anchor_support, code_lens, completions, debounce,
+        diagnostics, document,
         document::ParsedDocument,
         document_links, ecosystem, evidence, file_text, folding, hover, inlay_hints, navigation,
         program_artifacts, project, query_cache, renaming,
@@ -62,6 +62,7 @@ use {
 
 mod backend_features;
 mod code_action_epoch;
+mod code_actions;
 mod diagnostic_pipeline;
 mod formatting_handlers;
 mod helpers;
@@ -532,74 +533,12 @@ impl LanguageServer for Backend {
         &self,
         params: CodeActionParams,
     ) -> Result<Option<tower_lsp::lsp_types::CodeActionResponse>> {
-        let uri = params.text_document.uri;
-        let range = params.range;
-        let Some(document) = self.document_for(&uri) else {
-            return Ok(None);
-        };
-
-        let wants_source_action = params
-            .context
-            .only
-            .as_ref()
-            .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str().starts_with("source")));
-        let context_diagnostics = params.context.diagnostics;
-        let has_context_diagnostics = !context_diagnostics.is_empty();
-        let diagnostics = self.code_action_diagnostics(
-            &uri,
-            &document,
-            range,
-            context_diagnostics,
-            wants_source_action,
-        );
-
-        // Cache the cursor-independent action set per URI per publish-epoch.
-        // The epoch bumps on every publish_analysis, so manifest-driven republishes
-        // (e.g. Cargo.toml save) invalidate stale entries even though the document
-        // version is unchanged.
-        let epoch = self.code_action_epoch(&uri);
-        let cache_key = (
-            uri.clone(),
-            query_cache::QueryKind::CodeActions(uri.clone()),
-        );
-        let unfiltered = if has_context_diagnostics {
-            actions::code_actions_unfiltered(&document, uri.clone(), &diagnostics)
-        } else if let Some(query_cache::CacheValue::CodeActions(cached)) =
-            self.query_cache.get(cache_key.clone(), epoch)
-        {
-            cached
-        } else {
-            let built = actions::code_actions_unfiltered(&document, uri.clone(), &diagnostics);
-            self.query_cache.insert(
-                cache_key,
-                epoch,
-                query_cache::CacheValue::CodeActions(built.clone()),
-            );
-            built
-        };
-
-        let mut actions = unfiltered;
-        actions.extend(actions::cursor_dependent_code_actions(
-            &document,
-            uri.clone(),
-            range,
-            &diagnostics,
-        ));
-        actions.extend(assists::code_actions(&document, uri, range));
-        let actions = actions::rank_and_filter_for_cursor(actions, range);
-        Ok((!actions.is_empty()).then_some(actions.into_iter().map(Into::into).collect()))
+        self.code_action_impl(params).await
     }
 
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     async fn code_action_resolve(&self, params: CodeAction) -> Result<CodeAction> {
-        let Some(uri) = code_action_uri(&params) else {
-            return Ok(params);
-        };
-        let Some(document) = self.document_for(&uri) else {
-            return Ok(params);
-        };
-        let diagnostics = self.collect_diagnostics_for_uri(&uri, &document);
-        Ok(actions::resolve(&document, uri, params, &diagnostics))
+        self.code_action_resolve_impl(params).await
     }
 
     #[cfg_attr(feature = "hotpath", hotpath::measure)]

@@ -5,7 +5,6 @@ use {
         document::{
             document_symbols, AccountUsage, AssociatedValueKind, InstructionSymbol, ParsedDocument,
         },
-        document_stub::DocumentStub,
         navigation::{account_field_path_definition_target_for_position, AccountPathPosition},
         range::range_from_span,
     },
@@ -31,11 +30,6 @@ pub(super) fn document_indexed_references(document: &ParsedDocument) -> Vec<Inde
     } else {
         references
     }
-}
-
-#[derive(Debug, Clone)]
-pub(super) struct IndexedDocument {
-    pub(super) stub: DocumentStub,
 }
 
 #[derive(Debug, Clone)]

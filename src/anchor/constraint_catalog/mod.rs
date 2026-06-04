@@ -24,14 +24,11 @@ pub enum ConstraintFamily {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum ConstraintParserRuleKind {
     Duplicate,
     Ordering,
     Conflict,
     TypeRequirement,
-    FeatureGate,
-    Parser,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -52,10 +49,8 @@ pub struct ConstraintSpec {
     pub parser_rules: &'static [ConstraintParserRule],
     /// True when the presence of this constraint implies the account must be mutable
     /// (e.g. `mut`, `init`, `init_if_needed`, `realloc`, `close`, `zero`).
-    #[allow(dead_code)]
     pub implies_mutability: bool,
     /// True for constraints that create or reinitialize an account (`init`, `init_if_needed`).
-    #[allow(dead_code)]
     pub is_init_like: bool,
     /// For `ConstraintValueKind::Keyword` constraints, the set of allowed literal values
     /// (e.g. `rent_exempt` → `["skip", "enforce"]`). Empty for non-keyword constraints.
@@ -259,24 +254,6 @@ pub fn is_constraint_key(value: &str) -> bool {
         .chars()
         .next()
         .is_some_and(|ch| ch.is_ascii_lowercase())
-}
-
-/// Returns whether the constraint identified by `key` (with or without ` =`)
-/// is marked in the generated catalog as implying that the target account
-/// must be declared mutable (covers `mut`, `init*`, `realloc*`, `close`, `zero`, etc.).
-#[allow(dead_code)]
-pub fn implies_mutability_for_key(key: &str) -> bool {
-    let trimmed = key.trim().trim_end_matches(',');
-    if let Some(spec) = by_key(trimmed) {
-        return spec.implies_mutability;
-    }
-    // Try stripping any trailing value part for keyed constraints like "init, ..."
-    let primary = trimmed
-        .split(|ch: char| ch == ',' || ch.is_whitespace())
-        .next()
-        .unwrap_or(trimmed)
-        .trim();
-    by_key(primary).is_some_and(|spec| spec.implies_mutability)
 }
 
 /// Returns true if, according to the generated catalog, the presence of `key`
@@ -559,8 +536,6 @@ pub fn parser_rule_kind_name(kind: ConstraintParserRuleKind) -> &'static str {
         ConstraintParserRuleKind::Ordering => "ordering",
         ConstraintParserRuleKind::Conflict => "conflict",
         ConstraintParserRuleKind::TypeRequirement => "type-requirement",
-        ConstraintParserRuleKind::FeatureGate => "feature-gate",
-        ConstraintParserRuleKind::Parser => "parser",
     }
 }
 

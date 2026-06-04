@@ -2,7 +2,10 @@
 
 # Seagrass
 
-Seagrass is rust-analyzer for Solana. It reads your program the way the runtime does — accounts, constraints, CPIs, PDAs, deploy artifacts — and tells you what's wrong before mainnet does. Use it in your editor, on the command line, or in CI.
+Codebase intelligence for Solana programs: Seagrass is rust-analyzer for
+Solana. It reads your program the way the runtime does — accounts,
+constraints, CPIs, PDAs, deploy artifacts — and tells you what's wrong before
+mainnet does. Use it in your editor, on the command line, or in CI.
 
 Generic Rust tooling can't see Solana's failure modes: an `init` with no payer, an account you forgot to check the owner on, a PDA seeded with attacker-controlled input. Seagrass is built to catch exactly those.
 
@@ -68,7 +71,8 @@ Four families, each linking to a per-rule doc with examples and false-positive b
 
 ## What it won't do
 
-Seagrass only claims what its evidence supports, and it tells you which layer a finding came from:
+Seagrass only claims what its evidence supports, and it tells you which layer a
+finding came from. Runtime intelligence is an evidence-ingestion boundary:
 
 - **Static** — from your source, manifests, IDLs, and SBF binaries. Always on.
 - **Preflight** — validates Anchor runtime errors (data length, account count/owner, init status, discriminator, realloc) from explicit invocation JSON, e.g. a tx simulation. No validator required. Try it: `seagrass preflight fixtures/preflight/anchor-errors.json --json`.
@@ -86,7 +90,18 @@ Seagrass runs next to rust-analyzer — rust-analyzer keeps doing generic Rust, 
 
 ## For agents
 
-Seagrass is built to be an agent's source of truth for Anchor/Solana code — drop-in prompts and the LSP command payloads (`instructionSummary`, `programReport`, `proposeAssists`) are in [`docs/agents.md`](docs/agents.md), or pull version-matched instructions from the binary with `seagrass skills get <name> --full`.
+Seagrass is built to be an agent's source of truth for Anchor/Solana code —
+drop-in prompts and the LSP command payloads (`instructionSummary`,
+`programReport`, `proposeAssists`) are in [`docs/agents.md`](docs/agents.md),
+or pull version-matched instructions from the installed binary:
+
+```bash
+seagrass skills list --json
+seagrass skills get audit --full
+```
+
+The installed-CLI discovery contract is documented in
+[`docs/agent-skill-help.md`](docs/agent-skill-help.md).
 
 In CI, install the same way and upload SARIF:
 

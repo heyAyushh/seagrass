@@ -1,5 +1,5 @@
 {
-  "releaseVersion": "1.0.2",
+  "releaseVersion": "0.1.2",
   "fuzzCleanRun": {
     "status": "pending",
     "workflowRunUrl": "pending",
