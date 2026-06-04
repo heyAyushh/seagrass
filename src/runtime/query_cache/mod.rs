@@ -5,7 +5,7 @@ use tower_lsp::lsp_types::{
     Location, Position, Range, SemanticTokens, Url,
 };
 
-/// Pre-allocated capacity for the inner [`DashMap`].
+/// Pre-allocated capacity for the outer document cache map.
 const DEFAULT_CAPACITY: usize = 1024;
 
 /// A thread-safe, versioned cache for expensive LSP query results.
@@ -16,8 +16,8 @@ const DEFAULT_CAPACITY: usize = 1024;
 /// cache lookup the caller supplies the *current* document version; if the
 /// versions differ the entry is treated as stale and discarded.
 ///
-/// The backing store is a [`DashMap`], so reads and writes are lock-free and
-/// safe to use from multiple async LSP handlers concurrently.
+/// The backing store is keyed by URI first, so document invalidation removes
+/// one URI bucket instead of scanning unrelated files' cached queries.
 ///
 /// # Examples
 ///
@@ -41,14 +41,14 @@ const DEFAULT_CAPACITY: usize = 1024;
 /// ```
 #[derive(Debug, Clone)]
 pub struct QueryCache {
-    entries: DashMap<CacheKey, CacheEntry>,
+    entries_by_uri: DashMap<Url, DashMap<QueryKind, CacheEntry>>,
 }
 
 impl QueryCache {
     /// Creates a new, empty cache with a pre-allocated capacity of `1024`.
     pub fn new() -> Self {
         Self {
-            entries: DashMap::with_capacity(DEFAULT_CAPACITY),
+            entries_by_uri: DashMap::with_capacity(DEFAULT_CAPACITY),
         }
     }
 
@@ -78,12 +78,13 @@ impl QueryCache {
     /// ```
     pub fn get<K: Into<CacheKey>>(&self, key: K, current_version: i32) -> Option<CacheValue> {
         let key = key.into();
-        let entry = self.entries.get(&key)?;
+        let entries = self.entries_by_uri.get(&key.uri)?;
+        let entry = entries.get(&key.kind)?;
         if entry.document_version == current_version {
             Some(entry.value.clone())
         } else {
             drop(entry);
-            self.entries.remove(&key);
+            entries.remove(&key.kind);
             None
         }
     }
@@ -111,7 +112,10 @@ impl QueryCache {
     /// ```
     pub fn insert<K: Into<CacheKey>>(&self, key: K, version: i32, value: CacheValue) {
         let key = key.into();
-        self.entries.insert(key, CacheEntry::new(version, value));
+        self.entries_by_uri
+            .entry(key.uri)
+            .or_default()
+            .insert(key.kind, CacheEntry::new(version, value));
     }
 
     /// Removes every cached entry whose URI matches `uri`.
@@ -133,8 +137,7 @@ impl QueryCache {
     /// assert!(cache.get((uri, QueryKind::Diagnostics), 1).is_none());
     /// ```
     pub fn invalidate_for_uri(&self, uri: &Url) {
-        self.entries
-            .retain(|key, _| key.uri.as_str() != uri.as_str());
+        self.entries_by_uri.remove(uri);
     }
 
     /// Clears the entire cache.
@@ -155,7 +158,7 @@ impl QueryCache {
     /// ```
     #[allow(dead_code)]
     pub fn clear(&self) {
-        self.entries.clear();
+        self.entries_by_uri.clear();
     }
 }
 
@@ -403,6 +406,65 @@ mod tests {
             }
             other => panic!("unexpected variant for uri2: {other:?}"),
         }
+    }
+
+    #[test]
+    fn invalidate_for_uri_keeps_other_document_entries() {
+        let cache = QueryCache::new();
+        let changed_uri = make_uri("/project/src/changed.rs");
+        let stable_uri = make_uri("/project/src/stable.rs");
+
+        cache.insert(
+            (changed_uri.clone(), QueryKind::Diagnostics),
+            1,
+            CacheValue::Diagnostics(vec![Diagnostic::default()]),
+        );
+        cache.insert(
+            (
+                changed_uri.clone(),
+                QueryKind::Hover(Position {
+                    line: 2,
+                    character: 4,
+                }),
+            ),
+            1,
+            CacheValue::Hover(None),
+        );
+        cache.insert(
+            (stable_uri.clone(), QueryKind::Diagnostics),
+            1,
+            CacheValue::Diagnostics(vec![Diagnostic::default()]),
+        );
+
+        cache.invalidate_for_uri(&changed_uri);
+
+        assert!(
+            cache
+                .get((changed_uri.clone(), QueryKind::Diagnostics), 1)
+                .is_none(),
+            "changed document diagnostics should be invalidated"
+        );
+        assert!(
+            cache
+                .get(
+                    (
+                        changed_uri.clone(),
+                        QueryKind::Hover(Position {
+                            line: 2,
+                            character: 4,
+                        }),
+                    ),
+                    1,
+                )
+                .is_none(),
+            "changed document hover should be invalidated"
+        );
+        assert!(
+            cache
+                .get((stable_uri.clone(), QueryKind::Diagnostics), 1)
+                .is_some(),
+            "unrelated document diagnostics should remain cached"
+        );
     }
 
     /// An empty Vec<CodeAction> stored at version 1 must return Some(empty) on get at version 1.
