@@ -43,49 +43,6 @@ struct FeedbackManifest {
 
 impl Backend {
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
-    pub(super) async fn refresh_workspace_index(&self) {
-        if !self
-            .settings
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
-            .workspace_index
-        {
-            *self
-                .workspace_index
-                .write()
-                .unwrap_or_else(|err| err.into_inner()) = workspace::WorkspaceIndex::default();
-            return;
-        }
-
-        let roots = self
-            .workspace_roots
-            .lock()
-            .unwrap_or_else(|err| err.into_inner())
-            .clone();
-        let open_documents = self
-            .documents
-            .iter()
-            .map(|entry| (entry.key().clone(), entry.value().text.clone()))
-            .collect::<Vec<_>>();
-
-        let new_index = tokio::task::spawn_blocking(move || {
-            crate::measure_hotpath_block!("lsp.workspace.scan", {
-                workspace::WorkspaceIndex::build(&roots, open_documents)
-            })
-        })
-        .await
-        .unwrap_or_else(|err| {
-            eprintln!("Workspace index build panicked: {err}");
-            workspace::WorkspaceIndex::default()
-        });
-
-        *self
-            .workspace_index
-            .write()
-            .unwrap_or_else(|err| err.into_inner()) = new_index;
-    }
-
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub(super) async fn republish_open_documents(&self) -> usize {
         let documents = self.documents.clone().into_iter().collect::<Vec<_>>();
         let count = documents.len();
@@ -350,15 +307,12 @@ impl Backend {
         let document = self.document_for(&uri)?;
         let diagnostics = self.collect_diagnostics_for_uri(&uri, &document);
 
-        let source: Arc<str> = Arc::from(document.source());
-        let version = self.current_document_version(&uri);
-        let _ = {
-            // Recover from poison instead of panicking the whole LSP server.
-            let db = self.salsa_db.lock().unwrap_or_else(|e| e.into_inner());
-            db.constraint_diagnostics(source, version)
-        };
-
-        let project = project::nearest_anchor_toml(&uri)
+        let workspace_roots = self
+            .workspace_roots
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone();
+        let project = project::nearest_anchor_toml_with_roots(&uri, &workspace_roots)
             .map(|(anchor_toml_uri, anchor_toml_text)| {
                 project::summary(&uri, &document, &anchor_toml_uri, &anchor_toml_text)
             })
@@ -383,7 +337,7 @@ impl Backend {
             let document = self.document_for(&uri).or_else(|| {
                 uri.to_file_path()
                     .ok()
-                    .and_then(|path| fs::read_to_string(path).ok())
+                    .and_then(|path| file_text::read_limited_text(&path).ok().flatten())
                     .map(ParsedDocument::parse_or_empty)
             });
             let report = document
@@ -392,8 +346,13 @@ impl Backend {
             let ecosystem = report
                 .as_ref()
                 .map(|report| ecosystem::report_for_program(&report.program).to_json());
-            let anchor_toml =
-                project::nearest_anchor_toml(&uri).map(|(anchor_toml_uri, _)| anchor_toml_uri);
+            let workspace_roots = self
+                .workspace_roots
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .clone();
+            let anchor_toml = project::nearest_anchor_toml_with_roots(&uri, &workspace_roots)
+                .map(|(anchor_toml_uri, _)| anchor_toml_uri);
             return serde_json::json!({
                 "uri": uri,
                 "anchorToml": anchor_toml,

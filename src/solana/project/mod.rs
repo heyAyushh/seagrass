@@ -1,5 +1,5 @@
 use {
-    crate::{document::ParsedDocument, project, solana::frameworks::FrameworkId},
+    crate::{document::ParsedDocument, file_text, project, solana::frameworks::FrameworkId},
     cargo_toml::{DepsSet, Manifest},
     std::{
         collections::HashSet,
@@ -135,7 +135,7 @@ fn detect_anchor_programs(root: &Path) -> Vec<SolanaProgram> {
             let Some(uri) = Url::from_file_path(&path).ok() else {
                 return Vec::new();
             };
-            let Ok(text) = fs::read_to_string(&path) else {
+            let Ok(Some(text)) = file_text::read_limited_text(&path) else {
                 return Vec::new();
             };
             let Some(root) = path.parent().map(Path::to_path_buf) else {
@@ -168,7 +168,7 @@ fn detect_manifest_program(
     path: &Path,
     document: Option<&ParsedDocument>,
 ) -> Option<SolanaProgram> {
-    let text = fs::read_to_string(path).ok()?;
+    let text = file_text::read_limited_text(path).ok().flatten()?;
     let manifest = parse_cargo_manifest(&text)?;
     let package_root = path.parent()?.to_path_buf();
     let root = cargo_build_root(&package_root).unwrap_or_else(|| package_root.clone());
@@ -290,7 +290,7 @@ fn extend_dependency_names(dependencies: &DepsSet, names: &mut HashSet<String>) 
 
 pub fn nearest_manifest(uri: &Url) -> Option<(Url, String)> {
     let path = nearest_manifest_path(uri)?;
-    let text = fs::read_to_string(&path).ok()?;
+    let text = file_text::read_limited_text(&path).ok().flatten()?;
     let uri = Url::from_file_path(path).ok()?;
     Some((uri, text))
 }
@@ -317,8 +317,9 @@ fn cargo_build_root(package_root: &Path) -> Option<PathBuf> {
     while let Some(path) = current {
         let manifest_path = path.join("Cargo.toml");
         if manifest_path.is_file()
-            && fs::read_to_string(&manifest_path)
+            && file_text::read_limited_text(&manifest_path)
                 .ok()
+                .flatten()
                 .and_then(|text| Manifest::from_str(&text).ok())
                 .is_some_and(|manifest| manifest.workspace.is_some())
         {
@@ -330,7 +331,9 @@ fn cargo_build_root(package_root: &Path) -> Option<PathBuf> {
 }
 
 fn read_package_source(source_root: &Path) -> Option<String> {
-    fs::read_to_string(source_root.join("lib.rs")).ok()
+    file_text::read_limited_text(&source_root.join("lib.rs"))
+        .ok()
+        .flatten()
 }
 
 fn cargo_manifest_paths(root: &Path) -> Vec<PathBuf> {

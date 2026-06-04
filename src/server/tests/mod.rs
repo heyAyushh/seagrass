@@ -30,6 +30,16 @@ fn capabilities_advertise_anchor_type_definition_provider() {
 }
 
 #[test]
+fn capabilities_advertise_incremental_text_sync() {
+    let capabilities = server_capabilities(DiagnosticsTransport::Push);
+    let Some(TextDocumentSyncCapability::Options(options)) = capabilities.text_document_sync else {
+        panic!("expected text sync options");
+    };
+
+    assert_eq!(options.change, Some(TextDocumentSyncKind::INCREMENTAL));
+}
+
+#[test]
 fn capabilities_advertise_anchor_implementation_provider() {
     let capabilities = server_capabilities(DiagnosticsTransport::Push);
 
@@ -38,6 +48,16 @@ fn capabilities_advertise_anchor_implementation_provider() {
         Some(ImplementationProviderCapability::Simple(true))
     ));
     assert!(capabilities.code_lens_provider.is_some());
+}
+
+#[test]
+fn capabilities_advertise_document_formatting_provider() {
+    let capabilities = server_capabilities(DiagnosticsTransport::Push);
+
+    assert!(matches!(
+        capabilities.document_formatting_provider,
+        Some(OneOf::Left(true))
+    ));
 }
 
 #[test]
@@ -120,14 +140,14 @@ fn completion_triggers_do_not_include_delimiters_without_anchor_slot_value() {
 }
 
 #[test]
-fn text_document_sync_advertises_full_changes_and_save_notifications() {
+fn text_document_sync_advertises_incremental_changes_and_save_notifications() {
     let capabilities = server_capabilities(DiagnosticsTransport::Push);
     let Some(TextDocumentSyncCapability::Options(options)) = capabilities.text_document_sync else {
         panic!("expected text document sync options");
     };
 
     assert_eq!(options.open_close, Some(true));
-    assert_eq!(options.change, Some(TextDocumentSyncKind::FULL));
+    assert_eq!(options.change, Some(TextDocumentSyncKind::INCREMENTAL));
     assert!(matches!(
         options.save,
         Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
@@ -209,6 +229,93 @@ fn full_sync_change_range_tracks_current_edit_span() {
 }
 
 #[test]
+fn incremental_sync_applies_range_edits_in_order() {
+    let previous = "pub fn handler() {\n    msg!(\"old\");\n}\n";
+    let changes = vec![
+        tower_lsp::lsp_types::TextDocumentContentChangeEvent {
+            range: Some(tower_lsp::lsp_types::Range {
+                start: tower_lsp::lsp_types::Position {
+                    line: 1,
+                    character: 10,
+                },
+                end: tower_lsp::lsp_types::Position {
+                    line: 1,
+                    character: 13,
+                },
+            }),
+            range_length: None,
+            text: "new".to_string(),
+        },
+        tower_lsp::lsp_types::TextDocumentContentChangeEvent {
+            range: Some(tower_lsp::lsp_types::Range {
+                start: tower_lsp::lsp_types::Position {
+                    line: 2,
+                    character: 0,
+                },
+                end: tower_lsp::lsp_types::Position {
+                    line: 2,
+                    character: 0,
+                },
+            }),
+            range_length: None,
+            text: "    Ok(())\n".to_string(),
+        },
+    ];
+
+    let (text, range) = text_after_content_changes(Some(previous), changes)
+        .expect("incremental changes should apply");
+
+    assert_eq!(
+        text,
+        "pub fn handler() {\n    msg!(\"new\");\n    Ok(())\n}\n"
+    );
+    assert_eq!(
+        range,
+        Some(tower_lsp::lsp_types::Range {
+            start: tower_lsp::lsp_types::Position {
+                line: 2,
+                character: 0,
+            },
+            end: tower_lsp::lsp_types::Position {
+                line: 2,
+                character: 0,
+            },
+        })
+    );
+}
+
+#[test]
+fn incremental_sync_rejects_out_of_bounds_range_with_log_payload() {
+    let previous = "pub fn handler() {}\n";
+    let uri = Url::parse("file:///workspace/programs/demo/src/lib.rs").unwrap();
+    let changes = vec![tower_lsp::lsp_types::TextDocumentContentChangeEvent {
+        range: Some(tower_lsp::lsp_types::Range {
+            start: tower_lsp::lsp_types::Position {
+                line: 10,
+                character: 0,
+            },
+            end: tower_lsp::lsp_types::Position {
+                line: 10,
+                character: 1,
+            },
+        }),
+        range_length: None,
+        text: "bad".to_string(),
+    }];
+
+    let error = text_after_content_changes(Some(previous), changes)
+        .expect_err("out-of-bounds incremental edits must not apply to stale text");
+    let payload = invalid_content_change_log_data(&uri, 42, &error);
+
+    assert_eq!(error.reason(), "rangeOutsideDocument");
+    assert_eq!(payload["uri"], "file:///workspace/programs/demo/src/lib.rs");
+    assert_eq!(payload["version"], 42);
+    assert_eq!(payload["reason"], "rangeOutsideDocument");
+    assert_eq!(payload["documentCache"], "cleared");
+    assert!(payload.get("range").is_some());
+}
+
+#[test]
 fn status_text_reports_observable_server_state() {
     let settings = ServerSettings {
         agent_mode: false,
@@ -236,7 +343,7 @@ fn status_text_reports_observable_server_state() {
     assert!(status.contains("workspace roots: file:///workspace"));
     assert!(status.contains("indexed files: 17"));
     assert!(status.contains("open documents: 2"));
-    assert!(status.contains("sync: full"));
+    assert!(status.contains("sync: incremental"));
     assert!(status.contains("diagnostics: push"));
     assert!(status.contains("coldPath=save"));
     assert!(status.contains(
@@ -459,7 +566,7 @@ fn agent_mode_fills_unset_server_settings() {
         crate::server_types::DiagnosticsColdPath::Idle
     );
     assert!(settings.trace_server);
-    assert_eq!(settings.security_levels.len(), 9);
+    assert_eq!(settings.security_levels.len(), 10);
     assert_eq!(
         settings.security_levels.get("security.ownerChecks"),
         Some(&diagnostics::DiagnosticLevel::Warn)
@@ -498,7 +605,7 @@ fn agent_mode_preserves_explicit_server_settings() {
         crate::server_types::DiagnosticsColdPath::Manual
     );
     assert!(!settings.trace_server);
-    assert_eq!(settings.security_levels.len(), 9);
+    assert_eq!(settings.security_levels.len(), 10);
     assert_eq!(
         settings.security_levels.get("security.ownerChecks"),
         Some(&diagnostics::DiagnosticLevel::Error)

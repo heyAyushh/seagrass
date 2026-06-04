@@ -1,3 +1,4 @@
+mod analyze;
 mod diagnostics;
 mod sarif;
 
@@ -39,6 +40,7 @@ struct Cli {
 impl Cli {
     fn run(self) -> Result<bool, Box<dyn Error>> {
         match self.command {
+            CliCommand::Analyze(command) => command.run(),
             CliCommand::Diagnostics(command) => command.run(),
         }
     }
@@ -46,6 +48,10 @@ impl Cli {
 
 #[derive(Debug, Subcommand)]
 enum CliCommand {
+    /// Print a Solana codebase intelligence report for a Rust file or directory.
+    #[command(after_help = analyze::ANALYZE_HELP)]
+    Analyze(analyze::AnalyzeCommand),
+
     /// Run Seagrass diagnostics on a Rust file or directory and print JSON.
     #[command(after_help = diagnostics::DIAGNOSTICS_HELP)]
     Diagnostics(diagnostics::DiagnosticsCommand),

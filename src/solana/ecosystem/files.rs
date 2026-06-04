@@ -1,11 +1,12 @@
-use std::{
-    fs,
-    path::{Path, PathBuf},
+use {
+    crate::file_text,
+    std::{
+        fs,
+        path::{Path, PathBuf},
+    },
 };
 
 use super::MAX_SCAN_DEPTH;
-
-const MAX_FILE_BYTES: u64 = 512 * 1024;
 
 pub(super) fn shallow_files_named(
     root: &Path,
@@ -42,11 +43,7 @@ pub(super) fn rust_files(root: &Path, max_files: usize) -> Vec<PathBuf> {
 }
 
 pub(super) fn read_limited_text(path: &Path) -> Option<String> {
-    let metadata = fs::metadata(path).ok()?;
-    if metadata.len() > MAX_FILE_BYTES {
-        return None;
-    }
-    fs::read_to_string(path).ok()
+    file_text::read_limited_text(path).ok().flatten()
 }
 
 pub(super) fn path_to_string(path: &Path) -> String {

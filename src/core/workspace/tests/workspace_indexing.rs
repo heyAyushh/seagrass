@@ -1,4 +1,5 @@
 use super::*;
+use std::fs;
 
 #[test]
 fn indexes_open_document_symbols() {
@@ -161,6 +162,48 @@ fn upsert_open_document_replaces_existing_indexed_file() {
     assert!(index.symbol_locations("OldState").is_empty());
     assert_eq!(index.symbol_locations("NewState")[0].uri, uri);
     assert_eq!(index.indexed_file_count(), 1);
+}
+
+#[test]
+fn workspace_file_update_indexes_only_changed_rust_file() {
+    let root = unique_temp_dir("seagrass-incremental-index");
+    let program_src = root.join("programs").join("demo").join("src");
+    fs::create_dir_all(&program_src).unwrap();
+    let source_path = program_src.join("lib.rs");
+    fs::write(&source_path, "#[account]\npub struct IncrementalState {}").unwrap();
+    let root_uri = Url::from_directory_path(&root).unwrap();
+    let uri = Url::from_file_path(&source_path).unwrap();
+
+    let mut index = WorkspaceIndex::default();
+    let update =
+        WorkspaceIndex::update_for_workspace_file(std::slice::from_ref(&root_uri), uri.clone())
+            .expect("workspace Rust file should produce an index update");
+    index.upsert_open_document_update(update);
+
+    assert_eq!(index.symbol_locations("IncrementalState")[0].uri, uri);
+    assert_eq!(index.indexed_file_count(), 1);
+
+    index.remove_document(&uri);
+
+    assert!(index.symbol_locations("IncrementalState").is_empty());
+    assert_eq!(index.indexed_file_count(), 0);
+
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn workspace_file_update_ignores_non_anchor_rust_file() {
+    let root = unique_temp_dir("seagrass-incremental-ignore");
+    let tests_dir = root.join("tests");
+    fs::create_dir_all(&tests_dir).unwrap();
+    let source_path = tests_dir.join("helper.rs");
+    fs::write(&source_path, "#[account]\npub struct IgnoredState {}").unwrap();
+    let root_uri = Url::from_directory_path(&root).unwrap();
+    let uri = Url::from_file_path(&source_path).unwrap();
+
+    assert!(WorkspaceIndex::update_for_workspace_file(&[root_uri], uri).is_none());
+
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]

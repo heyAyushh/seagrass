@@ -6,6 +6,7 @@ pub(crate) mod completions;
 pub(crate) mod diagnostics;
 pub(crate) mod document_links;
 pub(crate) mod folding;
+pub(crate) mod formatting;
 pub(crate) mod hover;
 pub(crate) mod inlay_hints;
 pub(crate) mod local_types;

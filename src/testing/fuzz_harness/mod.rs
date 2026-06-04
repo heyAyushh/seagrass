@@ -1,5 +1,5 @@
 use {
-    crate::{document::ParsedDocument, project, solana_project, syntax::RustSyntax},
+    crate::{diagnostics, document::ParsedDocument, project, solana_project, syntax::RustSyntax},
     tower_lsp::lsp_types::Position,
 };
 
@@ -44,6 +44,11 @@ pub fn manifest_parse(cargo_toml: &str, anchor_toml: &str, source: &str) {
     let _ = solana_project::classify_manifest_text(cargo_toml, source);
 }
 
+pub fn semantic_diagnostics(source: &str) {
+    let document = ParsedDocument::parse_or_empty(source);
+    let _ = diagnostics::collect_with_workspace(&document, None);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -79,6 +84,18 @@ cluster = "localnet"
 demo = "11111111111111111111111111111111"
 "#,
             "entrypoint!(process_instruction);",
+        );
+    }
+
+    #[test]
+    fn fuzz_harness_semantic_diagnostics_smoke() {
+        semantic_diagnostics(
+            r#"
+pub fn process_instruction() {
+    let account_data = account.try_borrow_data().unwrap();
+    let signer = accounts[0].key();
+}
+"#,
         );
     }
 }

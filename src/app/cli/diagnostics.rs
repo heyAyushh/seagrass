@@ -1,6 +1,7 @@
 use {
     crate::{
-        diagnostics as diagnostic_engine, document::ParsedDocument, workspace::WorkspaceIndex,
+        diagnostics as diagnostic_engine, document::ParsedDocument, file_text,
+        workspace::WorkspaceIndex,
     },
     clap::Args,
     serde::Serialize,
@@ -15,10 +16,44 @@ use {
 
 const RUST_EXTENSION: &str = "rs";
 const STDIN_DISPLAY_PATH: &str = "<stdin>";
+const MAX_STDIN_SOURCE_BYTES: u64 = file_text::MAX_PROJECT_FILE_BYTES;
 const DIAGNOSTICS_FILE_EXAMPLE: &str = "seagrass diagnostics programs/demo/src/lib.rs --json";
 const DIAGNOSTICS_DIRECTORY_EXAMPLE: &str = "seagrass diagnostics programs/demo/src --json";
 const DIAGNOSTICS_STDIN_EXAMPLE: &str =
     "cat programs/demo/src/lib.rs | seagrass diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json";
+
+#[derive(Debug)]
+struct OversizedSourceFile {
+    path: PathBuf,
+}
+
+impl fmt::Display for OversizedSourceFile {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "source file exceeds {} bytes: {}",
+            file_text::MAX_PROJECT_FILE_BYTES,
+            self.path.display()
+        )
+    }
+}
+
+impl Error for OversizedSourceFile {}
+
+#[derive(Debug)]
+struct OversizedStdinSource;
+
+impl fmt::Display for OversizedStdinSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "stdin source exceeds {} bytes",
+            MAX_STDIN_SOURCE_BYTES
+        )
+    }
+}
+
+impl Error for OversizedStdinSource {}
 
 pub(super) const DIAGNOSTICS_HELP: &str = "\
 Examples:
@@ -156,13 +191,20 @@ fn diagnostics_for_file(
     path: &Path,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
-    let source = fs::read_to_string(path)?;
+    let source = file_text::read_limited_text(path)?.ok_or_else(|| OversizedSourceFile {
+        path: path.to_path_buf(),
+    })?;
     diagnostics_for_source(display_path(path), source, workspace_index)
 }
 
 fn diagnostics_for_stdin(source_path: Option<&Path>) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
     let mut source = String::new();
-    io::stdin().read_to_string(&mut source)?;
+    io::stdin()
+        .take(MAX_STDIN_SOURCE_BYTES.saturating_add(1))
+        .read_to_string(&mut source)?;
+    if source.len() as u64 > MAX_STDIN_SOURCE_BYTES {
+        return Err(Box::new(OversizedStdinSource));
+    }
     diagnostics_for_stdin_source(source_path, source)
 }
 
@@ -329,7 +371,7 @@ fn display_path(path: &Path) -> String {
 }
 
 impl CliDiagnostic {
-    fn from_lsp(file: String, diagnostic: Diagnostic) -> Self {
+    pub(super) fn from_lsp(file: String, diagnostic: Diagnostic) -> Self {
         let topic = diagnostic_data_string(&diagnostic, "topic");
         let docs_url = diagnostic
             .code_description

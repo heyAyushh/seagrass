@@ -2,9 +2,14 @@ use {
     super::diagnostics::{CliDiagnostic, SeverityLabel},
     serde::Serialize,
     serde_json::{json, Value},
+    std::path::Path,
+    tower_lsp::lsp_types::Url,
 };
 
+const STDIN_ARTIFACT_URI: &str = "stdin";
+
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifLog {
     #[serde(rename = "$schema")]
     schema: &'static str,
@@ -13,17 +18,20 @@ struct SarifLog {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifRun {
     tool: SarifTool,
     results: Vec<SarifResult>,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifTool {
     driver: SarifDriver,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifDriver {
     name: &'static str,
     version: String,
@@ -32,6 +40,7 @@ struct SarifDriver {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifRule {
     id: String,
     name: String,
@@ -43,11 +52,13 @@ struct SarifRule {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifMessage {
     text: String,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifResult {
     rule_id: String,
     level: &'static str,
@@ -58,22 +69,26 @@ struct SarifResult {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifLocation {
     physical_location: SarifPhysicalLocation,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifPhysicalLocation {
     artifact_location: SarifArtifactLocation,
     region: SarifRegion,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifArtifactLocation {
     uri: String,
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SarifRegion {
     start_line: u32,
     start_column: u32,
@@ -153,7 +168,7 @@ fn diagnostic_to_result(diagnostic: &CliDiagnostic) -> SarifResult {
         locations: vec![SarifLocation {
             physical_location: SarifPhysicalLocation {
                 artifact_location: SarifArtifactLocation {
-                    uri: diagnostic.file.clone(),
+                    uri: artifact_uri(&diagnostic.file),
                 },
                 region: SarifRegion {
                     start_line: diagnostic.range.start.line + 1,
@@ -171,6 +186,28 @@ fn diagnostic_to_result(diagnostic: &CliDiagnostic) -> SarifResult {
             })
         }),
     }
+}
+
+fn artifact_uri(file: &str) -> String {
+    if file == "<stdin>" {
+        return STDIN_ARTIFACT_URI.to_string();
+    }
+    if file.starts_with("file://") {
+        return file.to_string();
+    }
+
+    let path = Path::new(file);
+    let uri_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else if let Ok(current_dir) = std::env::current_dir() {
+        current_dir.join(path)
+    } else {
+        return file.replace('\\', "/");
+    };
+    Url::from_file_path(&uri_path)
+        .ok()
+        .map(Into::into)
+        .unwrap_or_else(|| file.replace('\\', "/"))
 }
 
 fn rule_id(diagnostic: &CliDiagnostic) -> String {

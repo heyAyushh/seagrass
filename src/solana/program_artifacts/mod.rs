@@ -1,7 +1,7 @@
 use {
     crate::{
         document::ParsedDocument,
-        ecosystem, project,
+        ecosystem, file_text, project,
         solana_project::{self, SolanaProgram, SolanaProjectKind},
     },
     serde_json::Value,
@@ -18,6 +18,8 @@ const MAX_SOURCE_INPUTS: usize = 512;
 const MAX_SOURCE_DEPTH: usize = 16;
 const EM_BPF: u16 = 247;
 const BASE58_ALPHABET: &[u8; 58] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const IDL_ARTIFACT_TOO_LARGE_REASON: &str = "IDL artifact exceeds project file read limit";
+const PROGRAM_KEYPAIR_TOO_LARGE_REASON: &str = "program keypair exceeds project file read limit";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProgramArtifactReport {
@@ -366,8 +368,9 @@ fn idl_state(path: &Path) -> IdlArtifactState {
         return IdlArtifactState::Missing;
     };
 
-    match fs::read_to_string(path)
+    match file_text::read_limited_text(path)
         .map_err(|err| err.to_string())
+        .and_then(|text| text.ok_or_else(|| IDL_ARTIFACT_TOO_LARGE_REASON.to_string()))
         .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|err| err.to_string()))
     {
         Ok(value) => IdlArtifactState::Present {
@@ -384,8 +387,9 @@ fn keypair_state(path: &Path) -> ProgramKeypairState {
         return ProgramKeypairState::Missing;
     };
 
-    match fs::read_to_string(path)
+    match file_text::read_limited_text(path)
         .map_err(|err| err.to_string())
+        .and_then(|text| text.ok_or_else(|| PROGRAM_KEYPAIR_TOO_LARGE_REASON.to_string()))
         .and_then(|text| keypair_public_key(&text))
     {
         Ok(public_key) => ProgramKeypairState::Present { file, public_key },

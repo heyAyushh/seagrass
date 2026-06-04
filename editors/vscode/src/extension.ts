@@ -50,7 +50,7 @@ const LAUNCH_CONFIGURATION_KEYS = [
   "seagrass.dev.useCargoFromCheckout",
 ];
 const SERVER_CAPABILITIES = [
-  "full document sync",
+  "incremental document sync",
   "push diagnostics with document versions",
   "pull diagnostics when enabled",
   "completion + completion resolve",
@@ -693,6 +693,9 @@ function clientOptions(
     outputChannel,
     initializationOptions: {
       seagrass: {
+        agent: {
+          mode: readAgentMode(),
+        },
         diagnostics: {
           transport: readDiagnosticsTransport(),
         },
@@ -749,6 +752,10 @@ function readDiagnosticsTransport(): DiagnosticsTransport {
   return value === "pull" || value === "both" ? value : "push";
 }
 
+function readAgentMode(): boolean {
+  return vscode.workspace.getConfiguration("seagrass").get<boolean>("agent.mode", false);
+}
+
 function stringEnv(env: Record<string, string>): Record<string, string> {
   return Object.fromEntries(Object.entries(env).filter((entry): entry is [string, string] => typeof entry[1] === "string"));
 }
@@ -757,7 +764,7 @@ function logStartup(launch: ServerLaunchConfig, workspaceFolders: readonly vscod
   outputChannel?.appendLine("Seagrass");
   outputChannel?.appendLine(`server: ${launch.command} ${launch.args.join(" ")}`);
   outputChannel?.appendLine(`cwd: ${launch.cwd}`);
-  outputChannel?.appendLine("sync: full");
+  outputChannel?.appendLine("sync: incremental");
   outputChannel?.appendLine(`diagnostics: ${launch.diagnosticsTransport}`);
   outputChannel?.appendLine("rust tooling: standalone");
   outputChannel?.appendLine(

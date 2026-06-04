@@ -3,16 +3,17 @@ use {
         definition_bridge::{self, BridgeSymbol},
         document::{AccountConstraint, InstructionAttributeArgument, ParsedDocument},
         document_stub::DocumentStub,
+        file_text,
     },
     std::{
         collections::{HashMap, HashSet},
-        fs,
         sync::Arc,
     },
     tower_lsp::lsp_types::{Location, SymbolInformation, SymbolKind, Url},
 };
 
 mod associated_values;
+mod file_updates;
 mod files;
 mod function_returns;
 mod indexing;
@@ -153,7 +154,7 @@ impl WorkspaceIndex {
                     let Ok(uri) = Url::from_file_path(&file) else {
                         continue;
                     };
-                    let Ok(source) = fs::read_to_string(&file) else {
+                    let Ok(Some(source)) = file_text::read_limited_text(&file) else {
                         continue;
                     };
                     let document = ParsedDocument::parse_or_empty(source);
@@ -187,6 +188,17 @@ impl WorkspaceIndex {
         // Keep per-keystroke updates in-memory only. Persisting on every edit
         // adds synchronous filesystem overhead to the completion/diagnostics path.
         self.insert_indexed_document(update);
+    }
+
+    pub(crate) fn remove_document(&mut self, uri: &Url) {
+        self.remove_index_entries_for_uri(uri);
+    }
+
+    pub(crate) fn update_for_workspace_file(
+        roots: &[Url],
+        uri: Url,
+    ) -> Option<WorkspaceDocumentUpdate> {
+        file_updates::update_for_workspace_file(roots, uri)
     }
 
     pub fn indexed_file_count(&self) -> usize {

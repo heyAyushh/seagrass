@@ -2,7 +2,7 @@ use {
     super::*,
     crate::{project, solana_project::SolanaProjectKind},
     std::{
-        env,
+        env, fs,
         time::{SystemTime, UNIX_EPOCH},
     },
     tower_lsp::lsp_types::Range,
@@ -181,6 +181,54 @@ mollusk-svm = "0.4"
         report.surfpool.status,
         SurfpoolStatus::ConfiguredMissingDeployArtifact
     );
+    let _ = fs::remove_dir_all(root);
+}
+
+#[test]
+fn accepts_well_formed_program_ids() {
+    assert!(is_valid_program_id(
+        "Fg6PaFpoGXkYsidMpWTK6W2BeZ7FEfcYkg476zPFsLnS"
+    ));
+    assert!(is_valid_program_id(
+        "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+    ));
+}
+
+#[test]
+fn rejects_shell_injection_in_program_id() {
+    // Untrusted program ids must never reach a suggested command string.
+    assert!(!is_valid_program_id("$(rm -rf ~)"));
+    assert!(!is_valid_program_id("Demo111; rm -rf /"));
+    assert!(!is_valid_program_id("")); // empty
+    assert!(!is_valid_program_id("0OIl00000000000000000000000000000000")); // non-base58 chars
+    assert!(!is_valid_program_id("short")); // too short
+}
+
+#[test]
+fn suppresses_suggested_program_metadata_command_for_invalid_program_id() {
+    let root = unique_temp_dir("seagrass-program-metadata-invalid-id");
+    fs::write(
+        root.join("package.json"),
+        r#"{"devDependencies":{"@solana-program/program-metadata":"latest"}}"#,
+    )
+    .unwrap();
+    fs::create_dir_all(root.join("idls")).unwrap();
+    fs::write(root.join("codama.json"), r#"{ "idl": "idls/demo.json" }"#).unwrap();
+    fs::write(
+            root.join("idls/demo.json"),
+            r#"{"kind":"rootNode","standard":"codama","program":{"kind":"programNode","name":"demo","publicKey":"Demo111111111111111111111111111111111","instructions":[]}}"#,
+        )
+        .unwrap();
+    let mut program = program(&root, "demo");
+    program.id = Some("$(touch /tmp/seagrass-owned)".to_string());
+
+    let report = report_for_program(&program);
+
+    assert_eq!(
+        report.program_metadata.status,
+        ProgramMetadataStatus::ConfiguredMissingPayload
+    );
+    assert!(report.program_metadata.suggested_idl_command.is_none());
     let _ = fs::remove_dir_all(root);
 }
 

@@ -258,15 +258,39 @@ pub struct Create<'info> {
 }
 "#;
     let document = ParsedDocument::parse(source).unwrap();
+    let file = std::env::temp_dir().join("seagrass-sarif-smoke.rs");
     let diagnostics = diagnostic_engine::collect_with_workspace(&document, None)
         .into_iter()
-        .map(|diagnostic| CliDiagnostic::from_lsp("smoke.rs".to_string(), diagnostic))
+        .map(|diagnostic| CliDiagnostic::from_lsp(file.display().to_string(), diagnostic))
         .collect::<Vec<_>>();
     let mut buffer = Vec::new();
     serde_json::to_writer_pretty(&mut buffer, &sarif_log(&diagnostics)).unwrap();
     let stdout = String::from_utf8(buffer).unwrap();
     assert!(stdout.contains("\"version\": \"2.1.0\""));
     assert!(stdout.contains("\"name\": \"seagrass\""));
+
+    let sarif = serde_json::from_str::<serde_json::Value>(&stdout).unwrap();
+    let driver = &sarif["runs"][0]["tool"]["driver"];
+    assert!(driver.get("informationUri").is_some());
+    assert!(driver.get("information_uri").is_none());
+    assert!(driver["rules"][0].get("shortDescription").is_some());
+    assert!(driver["rules"][0].get("short_description").is_none());
+
+    let result = &sarif["runs"][0]["results"][0];
+    assert!(result.get("ruleId").is_some());
+    assert!(result.get("rule_id").is_none());
+    let physical_location = &result["locations"][0]["physicalLocation"];
+    assert!(physical_location.get("artifactLocation").is_some());
+    assert!(physical_location.get("physical_location").is_none());
+    assert!(
+        physical_location["artifactLocation"]["uri"]
+            .as_str()
+            .is_some_and(|uri| uri.starts_with("file://")),
+        "expected SARIF artifactLocation.uri to be a file URI, got {:?}",
+        physical_location["artifactLocation"]["uri"]
+    );
+    assert!(physical_location["region"].get("startLine").is_some());
+    assert!(physical_location["region"].get("start_line").is_none());
 }
 
 fn sarif_log(diagnostics: &[CliDiagnostic]) -> serde_json::Value {

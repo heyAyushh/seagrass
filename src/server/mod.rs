@@ -3,7 +3,7 @@ use {
         account_semantics, actions, anchor_errors, anchor_support, assists, code_lens, completions,
         debounce, diagnostics, document,
         document::ParsedDocument,
-        document_links, ecosystem, evidence, folding, hover, inlay_hints, navigation,
+        document_links, ecosystem, evidence, file_text, folding, hover, inlay_hints, navigation,
         program_artifacts, project, query_cache, renaming,
         salsa_db::{LspDatabase, LspSalsaDb},
         selection_ranges, semantic_tokens, server_observability,
@@ -15,7 +15,6 @@ use {
     dashmap::DashMap,
     std::{
         collections::{BTreeMap, BTreeSet, VecDeque},
-        fs,
         panic::{catch_unwind, AssertUnwindSafe},
         sync::{
             atomic::{AtomicBool, AtomicI32, Ordering},
@@ -39,21 +38,22 @@ use {
             DidChangeWatchedFilesRegistrationOptions, DidChangeWorkspaceFoldersParams,
             DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
             DocumentDiagnosticParams, DocumentDiagnosticReport, DocumentDiagnosticReportResult,
-            DocumentHighlightParams, DocumentLink, DocumentLinkOptions, DocumentLinkParams,
-            DocumentSymbolParams, DocumentSymbolResponse, ExecuteCommandOptions,
-            ExecuteCommandParams, FileSystemWatcher, FoldingRangeParams,
-            FoldingRangeProviderCapability, FullDocumentDiagnosticReport, GlobPattern,
-            GotoDefinitionParams, GotoDefinitionResponse, HoverParams, HoverProviderCapability,
-            ImplementationProviderCapability, InitializeParams, InitializeResult, InlayHint,
-            InlayHintParams, Location, MessageType, OneOf, PrepareRenameResponse, ReferenceParams,
-            Registration, RelatedFullDocumentDiagnosticReport, RenameOptions, RenameParams,
-            SaveOptions, SelectionRangeParams, SelectionRangeProviderCapability,
-            SemanticTokensParams, SemanticTokensRangeParams, SemanticTokensRangeResult,
-            SemanticTokensResult, SemanticTokensServerCapabilities, ServerCapabilities,
-            SignatureHelpOptions, SignatureHelpParams, SymbolInformation, SymbolKind,
-            TextDocumentPositionParams, TextDocumentSyncCapability, TextDocumentSyncKind,
-            TextDocumentSyncOptions, TextDocumentSyncSaveOptions, TypeDefinitionProviderCapability,
-            Url, WorkDoneProgressOptions, WorkspaceEdit, WorkspaceFoldersServerCapabilities,
+            DocumentFormattingParams, DocumentHighlightParams, DocumentLink, DocumentLinkOptions,
+            DocumentLinkParams, DocumentSymbolParams, DocumentSymbolResponse,
+            ExecuteCommandOptions, ExecuteCommandParams, FileChangeType, FileSystemWatcher,
+            FoldingRangeParams, FoldingRangeProviderCapability, FullDocumentDiagnosticReport,
+            GlobPattern, GotoDefinitionParams, GotoDefinitionResponse, HoverParams,
+            HoverProviderCapability, ImplementationProviderCapability, InitializeParams,
+            InitializeResult, InlayHint, InlayHintParams, Location, MessageType, OneOf,
+            PrepareRenameResponse, ReferenceParams, Registration,
+            RelatedFullDocumentDiagnosticReport, RenameOptions, RenameParams, SaveOptions,
+            SelectionRangeParams, SelectionRangeProviderCapability, SemanticTokensParams,
+            SemanticTokensRangeParams, SemanticTokensRangeResult, SemanticTokensResult,
+            SemanticTokensServerCapabilities, ServerCapabilities, SignatureHelpOptions,
+            SignatureHelpParams, SymbolInformation, SymbolKind, TextDocumentPositionParams,
+            TextDocumentSyncCapability, TextDocumentSyncKind, TextDocumentSyncOptions,
+            TextDocumentSyncSaveOptions, TextEdit, TypeDefinitionProviderCapability, Url,
+            WorkDoneProgressOptions, WorkspaceEdit, WorkspaceFoldersServerCapabilities,
             WorkspaceServerCapabilities, WorkspaceSymbolParams,
         },
         Client, LanguageServer, LspService, Server,
@@ -63,10 +63,12 @@ use {
 mod backend_features;
 mod code_action_epoch;
 mod diagnostic_pipeline;
+mod formatting_handlers;
 mod helpers;
 mod navigation_handlers;
 mod reports;
 mod snippet_edits;
+mod workspace_indexing;
 
 use {helpers::*, reports::*};
 
@@ -140,8 +142,6 @@ struct Backend {
     client: Client,
     documents: DashMap<Url, OpenDocument>,
     workspace_roots: Arc<Mutex<Vec<Url>>>,
-    // RwLock allows concurrent read-only LSP handlers (hover, completion, goto, etc.)
-    // while serializing the infrequent write operations (workspace refresh).
     workspace_index: Arc<RwLock<workspace::WorkspaceIndex>>,
     settings: Arc<Mutex<ServerSettings>>,
     client_supports_snippet_edits: Arc<AtomicBool>,
@@ -155,15 +155,9 @@ struct Backend {
     /// Used as a freshness token by the code-action cache.
     code_action_epoch: Arc<DashMap<Url, AtomicI32>>,
     query_cache: query_cache::QueryCache,
-    // Salsa DB (wrapped in Mutex for thread safety - LspSalsaDb uses RefCell internally and is not Sync).
-    // Architecture:
-    // - ParsedDocument is the raw parsing layer (Tree-sitter + syn::File + symbols); never rewritten.
-    // - Salsa tracked queries (document_symbols, constraint_diagnostics) take (Arc<str> source, version) as input.
-    //   This completely solves the "clone blocker" - Arc<str> clone is O(1) refcount bump; Salsa handles incrementality
-    //   when source text changes (new Arc or different version invalidates dependent queries).
-    // - QueryCache kept on top for LSP-specific versioned caching of results (e.g. hover, completion).
-    // - Real queries for symbols and Anchor diagnostics now route through Salsa for zero-cost, type-driven caching.
-    // Follows Stacc rules: type-driven, ownership (Arc), concurrency (Mutex), zero-cost abstractions.
+    // Salsa DB is mutex-wrapped because LspSalsaDb uses RefCell internally.
+    // ParsedDocument stays raw; Salsa tracks (Arc<str>, version) query inputs
+    // while QueryCache owns LSP-specific versioned results.
     salsa_db: Arc<Mutex<LspSalsaDb>>,
 }
 
@@ -304,16 +298,30 @@ impl LanguageServer for Backend {
     async fn did_change(&self, params: DidChangeTextDocumentParams) {
         let uri = params.text_document.uri;
         let version = params.text_document.version;
-        let Some(change) = params.content_changes.into_iter().last() else {
+        if params.content_changes.is_empty() {
             return;
-        };
+        }
+
+        let previous_text = self
+            .documents
+            .get(&uri)
+            .map(|document| document.text.clone());
+        let (text, changed_range) =
+            match text_after_content_changes(previous_text.as_deref(), params.content_changes) {
+                Ok(update) => update,
+                Err(error) => {
+                    self.handle_invalid_incremental_change(uri, version, error)
+                        .await;
+                    return;
+                }
+            };
 
         self.handle_document_update(
             uri,
-            change.text,
+            text,
             Some(version),
             DocumentUpdateKind::Change,
-            change.range,
+            changed_range,
         )
         .await;
     }
@@ -391,7 +399,8 @@ impl LanguageServer for Backend {
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
         let changed_file_count = params.changes.len();
-        self.refresh_workspace_index().await;
+        self.refresh_workspace_index_for_watched_files(&params.changes)
+            .await;
         let republished_open_documents = self.republish_open_documents().await;
         self.emit_log(
             MessageType::INFO,
@@ -439,6 +448,9 @@ impl LanguageServer for Backend {
         };
 
         Ok(Some(document_links::document_links(&document)))
+    }
+    async fn formatting(&self, params: DocumentFormattingParams) -> Result<Option<Vec<TextEdit>>> {
+        self.formatting_impl(params).await
     }
 
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
@@ -531,11 +543,13 @@ impl LanguageServer for Backend {
             .only
             .as_ref()
             .is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str().starts_with("source")));
+        let context_diagnostics = params.context.diagnostics;
+        let has_context_diagnostics = !context_diagnostics.is_empty();
         let diagnostics = self.code_action_diagnostics(
             &uri,
             &document,
             range,
-            params.context.diagnostics,
+            context_diagnostics,
             wants_source_action,
         );
 
@@ -548,7 +562,9 @@ impl LanguageServer for Backend {
             uri.clone(),
             query_cache::QueryKind::CodeActions(uri.clone()),
         );
-        let unfiltered = if let Some(query_cache::CacheValue::CodeActions(cached)) =
+        let unfiltered = if has_context_diagnostics {
+            actions::code_actions_unfiltered(&document, uri.clone(), &diagnostics)
+        } else if let Some(query_cache::CacheValue::CodeActions(cached)) =
             self.query_cache.get(cache_key.clone(), epoch)
         {
             cached

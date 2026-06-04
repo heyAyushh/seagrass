@@ -1,5 +1,8 @@
 use {
-    crate::document::{has_attr, ParsedDocument, PdaSeeds},
+    crate::{
+        document::{has_attr, ParsedDocument, PdaSeeds},
+        file_text,
+    },
     std::{error::Error, fs, path::Path},
     syn::{Item, ItemFn, ItemMod},
     tower_lsp::lsp_types::Url,
@@ -537,7 +540,7 @@ impl DocumentStub {
         if cache_meta.modified().ok()? <= source_meta.modified().ok()? {
             return None;
         }
-        let json = fs::read_to_string(&cache_path).ok()?;
+        let json = file_text::read_limited_text(&cache_path).ok().flatten()?;
         serde_json::from_str(&json).ok()
     }
 }

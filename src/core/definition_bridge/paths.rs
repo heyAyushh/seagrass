@@ -6,6 +6,17 @@ use {
     tower_lsp::lsp_types::{Position, Range},
 };
 
+const RUST_SOURCE_TRAVERSAL_BUDGET: TraversalBudget = TraversalBudget {
+    max_depth: 4,
+    max_files: 512,
+};
+
+#[derive(Clone, Copy)]
+struct TraversalBudget {
+    max_depth: usize,
+    max_files: usize,
+}
+
 pub(super) fn anchor_toml_paths(root: &Path) -> Vec<PathBuf> {
     let direct = root.join("Anchor.toml");
     if direct.is_file() {
@@ -44,8 +55,12 @@ pub(super) fn idl_paths(root: &Path) -> Vec<PathBuf> {
 }
 
 pub(super) fn rust_source_files(root: &Path) -> Vec<PathBuf> {
+    rust_source_files_with_budget(root, RUST_SOURCE_TRAVERSAL_BUDGET)
+}
+
+fn rust_source_files_with_budget(root: &Path, budget: TraversalBudget) -> Vec<PathBuf> {
     let mut files = Vec::new();
-    collect_rust_source_files(root, root, &mut files);
+    collect_rust_source_files(root, root, budget, &mut files);
     files.sort_by_key(|path| {
         (
             path.file_name().is_some_and(|name| name == "lib.rs"),
@@ -62,11 +77,22 @@ pub(super) fn range_for_json_value(text: &str, name: &str) -> Option<Range> {
     range_for_offset(text, offset, name.chars().count())
 }
 
-fn collect_rust_source_files(root: &Path, path: &Path, files: &mut Vec<PathBuf>) {
+fn collect_rust_source_files(
+    root: &Path,
+    path: &Path,
+    budget: TraversalBudget,
+    files: &mut Vec<PathBuf>,
+) {
+    if files.len() >= budget.max_files {
+        return;
+    }
     let Ok(entries) = fs::read_dir(path) else {
         return;
     };
     for entry in entries.flatten() {
+        if files.len() >= budget.max_files {
+            return;
+        }
         let path = entry.path();
         if should_skip_path(&path) {
             continue;
@@ -75,9 +101,9 @@ fn collect_rust_source_files(root: &Path, path: &Path, files: &mut Vec<PathBuf>)
             if path
                 .strip_prefix(root)
                 .map_or(0, |relative| relative.components().count())
-                <= 4
+                <= budget.max_depth
             {
-                collect_rust_source_files(root, &path, files);
+                collect_rust_source_files(root, &path, budget, files);
             }
         } else if path.extension().is_some_and(|extension| extension == "rs") {
             files.push(path);
@@ -163,4 +189,82 @@ fn range_for_offset(text: &str, offset: usize, len: usize) -> Option<Range> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use {
+        super::*,
+        std::{
+            fs::{create_dir_all, remove_dir_all, write},
+            time::{SystemTime, UNIX_EPOCH},
+        },
+    };
+
+    const TEST_TRAVERSAL_BUDGET: TraversalBudget = TraversalBudget {
+        max_depth: 2,
+        max_files: 2,
+    };
+
+    #[test]
+    fn rust_source_collection_respects_depth_budget() {
+        let root = temp_root("rust-source-depth");
+        let shallow = root.join("src").join("lib.rs");
+        let deep = root
+            .join("src")
+            .join("generated")
+            .join("nested")
+            .join("ignored.rs");
+        create_file(&shallow);
+        create_file(&deep);
+
+        let files = rust_source_files_with_budget(&root, TEST_TRAVERSAL_BUDGET);
+
+        assert!(
+            files.contains(&shallow),
+            "missing shallow Rust file: {files:?}"
+        );
+        assert!(
+            !files.contains(&deep),
+            "collected Rust file beyond depth budget: {files:?}"
+        );
+        cleanup_temp_root(&root);
+    }
+
+    #[test]
+    fn rust_source_collection_respects_file_budget() {
+        let root = temp_root("rust-source-file-count");
+        for name in ["one.rs", "two.rs", "three.rs"] {
+            create_file(&root.join("src").join(name));
+        }
+
+        let files = rust_source_files_with_budget(&root, TEST_TRAVERSAL_BUDGET);
+
+        assert_eq!(
+            files.len(),
+            TEST_TRAVERSAL_BUDGET.max_files,
+            "Rust source collection should stop at the file budget: {files:?}"
+        );
+        cleanup_temp_root(&root);
+    }
+
+    fn create_file(path: &Path) {
+        create_dir_all(path.parent().expect("test file should have a parent"))
+            .expect("test directory should be created");
+        write(path, "pub fn smoke() {}\n").expect("test file should be written");
+    }
+
+    fn temp_root(label: &str) -> PathBuf {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system clock should be after Unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!("seagrass-{label}-{nonce}"))
+    }
+
+    fn cleanup_temp_root(root: &Path) {
+        if root.exists() {
+            remove_dir_all(root).expect("test directory should be removed");
+        }
+    }
 }

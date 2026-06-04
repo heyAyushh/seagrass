@@ -1,6 +1,7 @@
 use {
     super::{paths, push_unique_symbol, BridgeSymbol},
-    std::{collections::HashSet, fs, path::Path},
+    crate::file_text,
+    std::{collections::HashSet, path::Path},
     tower_lsp::lsp_types::{Location, SymbolKind, Url},
 };
 
@@ -15,7 +16,7 @@ pub(super) fn collect_idl_symbols(
         .into_iter()
         .take(MAX_IDL_FILES_PER_ROOT)
     {
-        let Ok(text) = fs::read_to_string(&path) else {
+        let Ok(Some(text)) = file_text::read_limited_text(&path) else {
             continue;
         };
         let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {

@@ -8,6 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 type JsonObject = Record<string, unknown>;
 
 const SERVER_EXIT_TIMEOUT_MILLIS = 5_000;
+const LSP_REQUEST_TIMEOUT_MILLIS = 45_000;
 const MIN_ANCHOR_TUTORIAL_SMOKE_FIXTURES = 3;
 
 type LspMessage = {
@@ -192,6 +193,7 @@ type InitializeResult = {
     documentHighlightProvider?: unknown;
     selectionRangeProvider?: unknown;
     foldingRangeProvider?: unknown;
+    documentFormattingProvider?: unknown;
     signatureHelpProvider?: unknown;
     semanticTokensProvider?: unknown;
     inlayHintProvider?: unknown;
@@ -263,6 +265,7 @@ const missingAccountsUri = pathToFileURL(resolve(repoRoot, "target/seagrass-miss
 const emptyContextUri = pathToFileURL(resolve(repoRoot, "target/seagrass-empty-context.rs")).href;
 const accountsAliasUri = pathToFileURL(resolve(repoRoot, "target/seagrass-accounts-alias.rs")).href;
 const foldingUri = pathToFileURL(resolve(repoRoot, "target/seagrass-folding.rs")).href;
+const formattingUri = pathToFileURL(resolve(repoRoot, "target/seagrass-formatting.rs")).href;
 const multilineCompletionUri = pathToFileURL(resolve(repoRoot, "target/seagrass-multiline-completion.rs")).href;
 const completionGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-completion-guardrails.rs")).href;
 const hoverGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-hover-guardrails.rs")).href;
@@ -378,6 +381,8 @@ pub struct Create<'info> {
     pub authority: Signer<'info>,
 }
 `;
+
+const formattingSmokeSource = "pub fn formatting_smoke(){let value=1;}\n";
 
 const basicEmptyTutorialSource = `
 use anchor_lang::prelude::*;
@@ -1064,7 +1069,7 @@ function request<T>(method: string, params?: unknown): Promise<T> {
     const timeout = setTimeout(() => {
       pending.delete(id);
       reject(new Error(`timed out waiting for ${method}`));
-    }, 15_000);
+    }, LSP_REQUEST_TIMEOUT_MILLIS);
     pending.set(id, { resolveResponse, reject, timeout });
   });
 }
@@ -1499,6 +1504,7 @@ try {
     ["documentHighlightProvider", "document highlight provider"],
     ["selectionRangeProvider", "selection range provider"],
     ["foldingRangeProvider", "folding range provider"],
+    ["documentFormattingProvider", "document formatting provider"],
     ["signatureHelpProvider", "signature help provider"],
     ["semanticTokensProvider", "semantic tokens provider"],
     ["inlayHintProvider", "inlay hint provider"],
@@ -1533,6 +1539,22 @@ try {
   }
 
   notify("initialized", {});
+
+  openDocument(formattingUri, formattingSmokeSource);
+  const formattingEdits = await request<TextEdit[] | null>("textDocument/formatting", {
+    textDocument: { uri: formattingUri },
+    options: {
+      tabSize: 4,
+      insertSpaces: true,
+    },
+  });
+  const formattedText = formattingEdits?.[0]?.newText;
+  if (
+    !formattedText?.includes("pub fn formatting_smoke()") ||
+    !formattedText.includes("let value = 1;")
+  ) {
+    throw new Error(`document formatting did not return a rustfmt edit: ${JSON.stringify(formattingEdits)}`);
+  }
 
   openDocument(anchorDebugSmokeUri, checkCfgSmokeSource);
   const anchorDebugDiagnostics = await pullDiagnostics(anchorDebugSmokeUri);

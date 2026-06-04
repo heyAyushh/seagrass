@@ -54,6 +54,13 @@ pub(crate) fn diagnostics_transport(settings: Option<&zed::serde_json::Value>) -
         .unwrap_or_else(|| DEFAULT_DIAGNOSTICS_TRANSPORT.to_string())
 }
 
+pub(crate) fn agent_mode(settings: Option<&zed::serde_json::Value>) -> bool {
+    let Some(settings) = settings else {
+        return false;
+    };
+    bool_setting(settings, "agent.mode").unwrap_or(false)
+}
+
 fn bool_setting(settings: &zed::serde_json::Value, key: &str) -> Option<bool> {
     setting_value(settings, key).and_then(|value| value.as_bool())
 }
@@ -104,6 +111,7 @@ mod tests {
             "agent.mode": true
         })));
 
+        assert!(agent_mode(Some(&config)));
         assert_eq!(config["diagnostics.security.enabled"], true);
         assert_eq!(config["diagnostics.experimental.enabled"], true);
         assert_eq!(config["security.strictNative.enabled"], true);
@@ -137,6 +145,19 @@ mod tests {
         assert_eq!(config["diagnostics.security.ownerChecks"], "error");
         assert_eq!(config["diagnostics.security.typeCosplay"], "off");
         assert_eq!(config["diagnostics.security.arbitraryCpi"], "warn");
+    }
+
+    #[test]
+    fn initialization_agent_mode_reads_flat_and_nested_settings() {
+        assert!(!agent_mode(None));
+        assert!(agent_mode(Some(&zed::serde_json::json!({
+            "agent.mode": true
+        }))));
+        assert!(agent_mode(Some(&zed::serde_json::json!({
+            "agent": {
+                "mode": true
+            }
+        }))));
     }
 
     #[test]

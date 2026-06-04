@@ -1,4 +1,4 @@
-use super::*;
+use {super::*, std::fs};
 
 #[test]
 fn parses_relevant_dependency_names_without_toml_dependency() {

@@ -1,6 +1,5 @@
 pub(crate) mod account_members;
 pub(crate) mod account_semantics;
-pub(crate) mod analysis;
 pub(crate) mod constraint_catalog;
 pub(crate) mod constraint_ranges;
 pub(crate) mod constraint_text;

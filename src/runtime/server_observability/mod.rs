@@ -16,7 +16,7 @@ pub(crate) fn status_text_from_parts(
     settings: &ServerSettings,
 ) -> String {
     format!(
-        "Seagrass {version}\nworkspace roots: {roots}\nindexed files: {indexed}\nopen documents: {open}\nsync: full\ndiagnostics: {}, coldPath={}\nfeatures: security={}, experimental={}, strictNative={}, workspaceIndex={}, trace={}, editor={}",
+        "Seagrass {version}\nworkspace roots: {roots}\nindexed files: {indexed}\nopen documents: {open}\nsync: incremental\ndiagnostics: {}, coldPath={}\nfeatures: security={}, experimental={}, strictNative={}, workspaceIndex={}, trace={}, editor={}",
         diagnostics_transport.as_str(),
         settings.diagnostics_cold_path.as_str(),
         settings.security_diagnostics,
