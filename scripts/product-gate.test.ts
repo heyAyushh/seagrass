@@ -8,6 +8,8 @@ const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
 const smokeScriptPath = resolve(repoRoot, "scripts/smoke-install.sh");
 const readmePath = resolve(repoRoot, "README.md");
 const productFramingPath = resolve(repoRoot, "docs/product-framing.md");
+const agentSkillHelpPath = resolve(repoRoot, "docs/agent-skill-help.md");
+const skillsReadmePath = resolve(repoRoot, "skills/README.md");
 
 describe("product gate guardrails", () => {
   test("verify-production runs golden-path smoke and lint index freshness", () => {
@@ -38,5 +40,24 @@ describe("product gate guardrails", () => {
     expect(productFraming).toContain("Actual compute-unit usage per instruction");
     expect(productFraming).toContain("Required evidence before claim");
     expect(productFraming).toContain("If any edge case fails this contract");
+  });
+
+  test("agent skill discovery is served by the installed CLI", () => {
+    const readme = readFileSync(readmePath, "utf8");
+    const agentSkillHelp = readFileSync(agentSkillHelpPath, "utf8");
+    const skillsReadme = readFileSync(skillsReadmePath, "utf8");
+
+    expect(readme).toContain("seagrass skills list --json");
+    expect(readme).toContain("seagrass skills get audit --full");
+    expect(readme).toContain("docs/agent-skill-help.md");
+    expect(agentSkillHelp).toContain("seagrass skills list --json");
+    expect(agentSkillHelp).toContain("seagrass skills get lint --full --json");
+    expect(agentSkillHelp).toContain("binaryVersion");
+    expect(agentSkillHelp).toContain("src/app/cli/skills.rs");
+    expect(agentSkillHelp).toContain("bun scripts/verify-production.ts");
+    expect(skillsReadme).toContain("seagrass skills get lint --full");
+    expect(skillsReadme).toContain("version-matched to the installed");
+    expect(skillsReadme).toContain("binaryVersion");
+    expect(skillsReadme).toContain("docs/agent-skill-help.md");
   });
 });

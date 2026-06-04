@@ -37,7 +37,8 @@ Use this guide for changes in the Seagrass repository root, especially:
 - `skills/seagrass-*` — high-level agent skills (Claude Code, Cursor, etc.) that
   wrap the diagnostics CLI, suppression syntax, and `docs/lints/`. When lint
   topics, CLI output shape, or suppression forms change, the corresponding
-  SKILL.md files and `skills/README.md` must be updated in the same PR.
+  SKILL.md files, `skills/README.md`, and `docs/agent-skill-help.md` must be
+  updated in the same PR.
 
 ## Working Rules
 
@@ -170,6 +171,8 @@ release process, or repository layout changes. At minimum, refresh it quarterly.
 When adding or modifying lint topics, CLI flags/output, suppression syntax, or
 the `docs/lints/` catalog, also update the matching entries in `skills/`.
 The agent skills are the primary on-ramp for Claude Code / Cursor users.
+Follow `docs/agent-skill-help.md` for the installed `seagrass skills`
+discovery contract and verification steps.
 
 Keep examples concrete and local. If a command or path no longer works in this
 checkout, update the guide in the same change that breaks it.

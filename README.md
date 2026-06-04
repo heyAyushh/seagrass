@@ -22,6 +22,8 @@ bash scripts/smoke-install.sh
 seagrass diagnostics <path> --json
 seagrass diagnostics <path> --sarif > out.sarif
 seagrass analyze <path> --json
+seagrass skills list --json
+seagrass skills get lint --full
 ```
 
 `1`=ERROR · `2`=usage · checkout: `cargo run -p seagrass-cli -- diagnostics …`
@@ -34,7 +36,7 @@ VS Code `editors/vscode` · Zed [`editors/zed/README.md`](editors/zed/README.md)
 
 ## Agents
 
-Paste. Agent fetches raw `SKILL.md` or reads `skills/*/SKILL.md`. Symlink optional.
+Use the installed binary first. It serves version-matched workflow guidance:
 
 **Edit Solana** — copy:
 
@@ -42,23 +44,21 @@ Paste. Agent fetches raw `SKILL.md` or reads `skills/*/SKILL.md`. Symlink option
 Before accounts/constraints/CPIs/security:
 seagrass diagnostics <path> --json
 seagrass analyze <path> --json
+seagrass skills list --json
 https://raw.githubusercontent.com/heyAyushh/seagrass/main/AGENTS.md
 https://raw.githubusercontent.com/heyAyushh/seagrass/main/docs/agents.md
 No Anchor from rust-analyzer. Seagrass quick fixes if machineApplicable.
 ```
 
-**Task** — copy one (`Follow ` + URL if agent needs verb):
+**Task** — load from the installed CLI:
 
 ```text
-lint     https://raw.githubusercontent.com/heyAyushh/seagrass/main/skills/seagrass-lint/SKILL.md
-audit    https://raw.githubusercontent.com/heyAyushh/seagrass/main/skills/seagrass-audit/SKILL.md
-explain  https://raw.githubusercontent.com/heyAyushh/seagrass/main/skills/seagrass-explain/SKILL.md
-suppress https://raw.githubusercontent.com/heyAyushh/seagrass/main/skills/seagrass-suppress/SKILL.md
-debug-fp https://raw.githubusercontent.com/heyAyushh/seagrass/main/skills/seagrass-debug-fp/SKILL.md
-install  https://raw.githubusercontent.com/heyAyushh/seagrass/main/skills/seagrass-install/SKILL.md
+seagrass skills get lint
+seagrass skills get audit --full
+seagrass skills path suppress --json
 ```
 
-Flow: install → lint\|audit → explain → suppress\|debug-fp · [`skills/README.md`](skills/README.md)
+Flow: install → lint\|audit → explain → suppress\|debug-fp · fallback catalog [`skills/README.md`](skills/README.md)
 
 **Optional slash/rules:**
 
@@ -72,4 +72,4 @@ ln -sfn editors/opencode/opencode.json opencode.json
 
 ## Docs
 
-[`docs/lints/`](docs/lints/) · [`CONTRIBUTING.md`](CONTRIBUTING.md) · `mkdocs build --strict` · MIT · [`NOTICE`](NOTICE)
+[`docs/lints/`](docs/lints/) · [`docs/agent-skill-help.md`](docs/agent-skill-help.md) · [`CONTRIBUTING.md`](CONTRIBUTING.md) · `mkdocs build --strict` · MIT · [`NOTICE`](NOTICE)

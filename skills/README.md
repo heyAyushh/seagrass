@@ -5,6 +5,22 @@ OpenCode, Cursor, Codex, Aider, CI, and plain-shell automation.
 
 ## What's here
 
+The installed binary exposes these same workflow topics without needing a
+checkout or website:
+
+```bash
+seagrass skills list --json
+seagrass skills get lint
+seagrass skills get lint --full
+seagrass skills path lint --json
+```
+
+Use the CLI first when it is available; it is version-matched to the installed
+binary, and JSON output includes `binaryVersion` for auditability. The files
+below remain the source catalog for checkouts and editors that load `SKILL.md`
+directories directly. Keep this catalog aligned with
+[`docs/agent-skill-help.md`](../docs/agent-skill-help.md).
+
 | Skill | Trigger | Purpose |
 |---|---|---|
 | [`seagrass-install`](./seagrass-install/SKILL.md) | "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim" | Install binary + per-editor config + smoke check |
@@ -74,6 +90,7 @@ Use the CLI directly:
 seagrass diagnostics <path> --json
 cat <file>.rs | seagrass diagnostics --stdin --stdin-path <file>.rs --json
 seagrass diagnostics <path> --sarif > seagrass.sarif
+seagrass skills get lint --full
 ```
 
 Use `docs/agents.md` when an LSP bridge can call Seagrass execute-command

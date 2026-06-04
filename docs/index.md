@@ -8,6 +8,8 @@ security, and release-proof semantics while rust-analyzer owns generic Rust.
 
 - [Agent and automation commands](agents.md) covers `seagrass diagnostics`,
   SARIF, stdin mode, and LSP `workspace/executeCommand` payloads.
+- [Agent skill help process](agent-skill-help.md) defines how installed
+  `seagrass skills` help stays aligned with checked-in `SKILL.md` files.
 - [Product framing](product-framing.md) defines the shipped static intelligence
   layer and the evidence requirements for runtime compute/traffic claims.
 - [Lint catalog](lints/README.md) describes every diagnostic topic, false-positive

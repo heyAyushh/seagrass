@@ -41,6 +41,27 @@ Usage and input errors exit with code `2` and include a retryable example
 invocation. Run `cargo run -p seagrass-cli -- diagnostics --help` for the layered
 CLI help.
 
+## Skill Discovery
+
+The installed `seagrass` binary also serves agent-facing workflow instructions
+from the same version that is on disk:
+
+```sh
+seagrass skills list --json
+seagrass skills get lint
+seagrass skills get audit --full
+seagrass skills path suppress --json
+```
+
+Use `skills get <name>` for compact current instructions and `--full` for the
+bundled `SKILL.md` body. Names accept both short topics such as `lint` and full
+skill names such as `seagrass-lint`. Use raw files in `skills/` only as a
+fallback when the binary is unavailable. JSON output includes `binaryVersion`
+so agents can prove the guidance came from the installed Seagrass build.
+Maintainers should follow [`agent-skill-help.md`](agent-skill-help.md) when
+updating these topics so the installed help, checkout catalog, and raw fallback
+files do not drift.
+
 For GitHub code scanning and review UIs, emit SARIF:
 
 ```sh
@@ -290,7 +311,14 @@ Zed adapter checks plus the release wasm freshness check.
 
 ### Claude Code
 
-Claude Code should load the Seagrass `SKILL.md` folders:
+Claude Code should prefer the installed CLI for current workflow text:
+
+```sh
+seagrass skills list --json
+seagrass skills get lint --full
+```
+
+For slash-command style local installs, symlink the Seagrass `SKILL.md` folders:
 
 ```sh
 mkdir -p ~/.claude/skills
@@ -299,9 +327,9 @@ for skill in skills/seagrass-*; do
 done
 ```
 
-Use `skills/README.md` as the catalog. The skills route normal requests to the
-CLI diagnostics path above and route false-positive work to minimal repro
-fixtures.
+Use `seagrass skills list --json` as the current catalog. `skills/README.md` is
+the checkout fallback. The skills route normal requests to the CLI diagnostics
+path above and route false-positive work to minimal repro fixtures.
 
 ### OpenCode
 
