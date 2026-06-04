@@ -1,9 +1,8 @@
-// The shared rule contract lands before every diagnostic rule has migrated to
-// it. Keep the unused pieces visible so future ports reuse one vocabulary.
-#![allow(dead_code)]
-
 use {
-    crate::{document::ParsedDocument, range::byte_offset_at},
+    crate::{
+        diagnostics::FrameworkDocument,
+        range::{byte_offset_at, range_from_span},
+    },
     std::marker::PhantomData,
     syn::{
         punctuated::Punctuated,
@@ -15,7 +14,7 @@ use {
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Region {
+pub enum Region {
     InstructionBody,
     HelperFnBody,
     AccountsStructField,
@@ -28,14 +27,14 @@ pub(crate) enum Region {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Confidence {
+pub enum Confidence {
     Heuristic,
     Derived,
     Authoritative,
 }
 
 impl Confidence {
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Heuristic => "heuristic",
             Self::Derived => "derived",
@@ -45,7 +44,7 @@ impl Confidence {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Applicability {
+pub enum Applicability {
     MachineApplicable,
     MaybeIncorrect,
     HasPlaceholders,
@@ -53,7 +52,7 @@ pub(crate) enum Applicability {
 }
 
 impl Applicability {
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::MachineApplicable => "MachineApplicable",
             Self::MaybeIncorrect => "MaybeIncorrect",
@@ -63,7 +62,7 @@ impl Applicability {
     }
 }
 
-pub(crate) trait LintVisitor<'ast>: Visit<'ast> {
+pub trait LintVisitor<'ast>: Visit<'ast> {
     const SCOPE: &'static [Region];
     const CONFIDENCE: Confidence;
     const APPLICABILITY: Applicability;
@@ -72,12 +71,12 @@ pub(crate) trait LintVisitor<'ast>: Visit<'ast> {
     fn finish(self) -> Vec<Diagnostic>;
 }
 
-pub(crate) struct FunctionBody<'ast> {
-    pub(crate) inputs: &'ast Punctuated<syn::FnArg, Comma>,
+pub struct FunctionBody<'ast> {
+    pub inputs: &'ast Punctuated<syn::FnArg, Comma>,
 }
 
-pub(crate) fn run_lint_visitor<'ast, V>(
-    document: &'ast ParsedDocument,
+pub fn run_lint_visitor<'ast, V>(
+    document: FrameworkDocument<'ast>,
     mut visitor: V,
 ) -> Vec<Diagnostic>
 where
@@ -91,8 +90,8 @@ where
     diagnostics_in_scope::<V>(document, visitor.finish())
 }
 
-pub(crate) fn run_lint_visitor_on_functions<'ast, V, F>(
-    document: &'ast ParsedDocument,
+pub fn run_lint_visitor_on_functions<'ast, V, F>(
+    document: FrameworkDocument<'ast>,
     mut visitor_for_function: F,
 ) -> Vec<Diagnostic>
 where
@@ -160,7 +159,7 @@ where
 }
 
 fn diagnostics_in_scope<'ast, V>(
-    document: &'ast ParsedDocument,
+    document: FrameworkDocument<'ast>,
     diagnostics: Vec<Diagnostic>,
 ) -> Vec<Diagnostic>
 where
@@ -181,7 +180,7 @@ where
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct RegionMap {
+pub struct RegionMap {
     spans: Vec<RegionSpan>,
 }
 
@@ -193,7 +192,7 @@ struct RegionSpan {
 }
 
 impl RegionMap {
-    pub(crate) fn from_document(document: &ParsedDocument) -> Self {
+    pub fn from_document(document: FrameworkDocument<'_>) -> Self {
         let mut visitor = RegionVisitor {
             source: document.source(),
             in_program_module: false,
@@ -205,7 +204,7 @@ impl RegionMap {
         }
     }
 
-    pub(crate) fn region_at(&self, byte_offset: usize) -> Region {
+    pub fn region_at(&self, byte_offset: usize) -> Region {
         self.spans
             .iter()
             .filter(|span| span.contains(byte_offset))
@@ -214,17 +213,10 @@ impl RegionMap {
             .unwrap_or(Region::Other)
     }
 
-    pub(crate) fn allows_executable_lints(&self, byte_offset: usize) -> bool {
+    pub fn allows_executable_lints(&self, byte_offset: usize) -> bool {
         matches!(
             self.region_at(byte_offset),
             Region::InstructionBody | Region::HelperFnBody
-        )
-    }
-
-    pub(crate) fn allows_constraint_lints(&self, byte_offset: usize) -> bool {
-        matches!(
-            self.region_at(byte_offset),
-            Region::AccountsStructField | Region::AttributeArguments
         )
     }
 }
@@ -259,7 +251,7 @@ impl RegionVisitor<'_> {
     }
 
     fn push_spanned(&mut self, span: proc_macro2::Span, region: Region) {
-        self.push_span(crate::range::range_from_span(span), region);
+        self.push_span(range_from_span(span), region);
     }
 }
 
@@ -338,123 +330,6 @@ fn derives_accounts(item_struct: &syn::ItemStruct) -> bool {
     })
 }
 
-pub(crate) fn byte_offset_for_position(source: &str, position: Position) -> Option<usize> {
+pub fn byte_offset_for_position(source: &str, position: Position) -> Option<usize> {
     byte_offset_at(source, position)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn region_map_classifies_account_attribute_and_instruction_body() {
-        let source = r#"
-use anchor_lang::prelude::*;
-
-#[program]
-pub mod demo {
-    use super::*;
-    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
-        let amount = 1;
-        Ok(())
-    }
-}
-
-#[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(mut)]
-    pub payer: Signer<'info>,
-}
-"#;
-        let document = ParsedDocument::parse_or_empty(source);
-        let regions = RegionMap::from_document(&document);
-
-        let amount_offset = offset_after(source, "let amount");
-        let account_offset = offset_after(source, "#[account");
-        let field_offset = offset_after(source, "pub payer");
-
-        assert_eq!(regions.region_at(amount_offset), Region::InstructionBody);
-        assert_eq!(
-            regions.region_at(account_offset),
-            Region::AttributeArguments
-        );
-        assert_eq!(regions.region_at(field_offset), Region::AccountsStructField);
-        assert!(regions.allows_executable_lints(amount_offset));
-        assert!(regions.allows_constraint_lints(account_offset));
-        assert!(!regions.allows_executable_lints(account_offset));
-    }
-
-    #[test]
-    fn lint_metadata_strings_match_diagnostic_contract() {
-        assert_eq!(Confidence::Heuristic.as_str(), "heuristic");
-        assert_eq!(Confidence::Derived.as_str(), "derived");
-        assert_eq!(Confidence::Authoritative.as_str(), "authoritative");
-        assert_eq!(
-            Applicability::MachineApplicable.as_str(),
-            "MachineApplicable"
-        );
-        assert_eq!(Applicability::MaybeIncorrect.as_str(), "MaybeIncorrect");
-        assert_eq!(Applicability::HasPlaceholders.as_str(), "HasPlaceholders");
-        assert_eq!(Applicability::Unspecified.as_str(), "Unspecified");
-    }
-
-    #[test]
-    fn lint_runner_filters_emissions_to_declared_scope() {
-        let source = r#"
-#[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(space = 8)]
-    pub payer: Signer<'info>,
-}
-
-fn helper() {
-    let amount = 1;
-}
-"#;
-        let document = ParsedDocument::parse_or_empty(source);
-        let diagnostics = run_lint_visitor(
-            &document,
-            LiteralVisitor {
-                diagnostics: Vec::new(),
-            },
-        );
-
-        assert_eq!(diagnostics.len(), 1);
-        assert_eq!(diagnostics[0].range.start.line, 8);
-    }
-
-    struct LiteralVisitor {
-        diagnostics: Vec<Diagnostic>,
-    }
-
-    impl<'ast> LintVisitor<'ast> for LiteralVisitor {
-        const SCOPE: &'static [Region] = &[Region::HelperFnBody];
-        const CONFIDENCE: Confidence = Confidence::Heuristic;
-        const APPLICABILITY: Applicability = Applicability::Unspecified;
-        const TOPIC: &'static str = concat!("seagrass/", "test.literal");
-
-        fn finish(self) -> Vec<Diagnostic> {
-            self.diagnostics
-        }
-    }
-
-    impl<'ast> Visit<'ast> for LiteralVisitor {
-        fn visit_lit_int(&mut self, node: &'ast syn::LitInt) {
-            self.diagnostics.push(Diagnostic {
-                range: crate::range::range_from_span(node.span()),
-                severity: None,
-                code: None,
-                code_description: None,
-                source: None,
-                message: "literal".to_string(),
-                related_information: None,
-                tags: None,
-                data: None,
-            });
-        }
-    }
-
-    fn offset_after(source: &str, needle: &str) -> usize {
-        source.find(needle).expect("needle") + needle.len()
-    }
 }

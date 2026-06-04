@@ -3,7 +3,7 @@ use {
         document::ParsedDocument,
         solana_project::{SolanaProgram, SolanaProjectKind},
     },
-    cargo_toml::{DepsSet, Manifest},
+    cargo_toml::{Dependency, DepsSet, Manifest},
     std::collections::HashSet,
     syn::visit::{self, Visit},
 };
@@ -12,6 +12,7 @@ const ANCHOR_LANG_V2_DEPENDENCY: &str = "anchor-lang-v2";
 const ANCHOR_SPL_V2_DEPENDENCY: &str = "anchor-spl-v2";
 const ANCHOR_LANG_DEPENDENCY: &str = "anchor-lang";
 const ANCHOR_SPL_DEPENDENCY: &str = "anchor-spl";
+const ANCHOR_V2_MAJOR_PREFIX: char = '2';
 const ANCHOR_SOURCE_HINTS: &[&str] = &[
     "anchor_lang::",
     "anchor_spl::",
@@ -223,6 +224,9 @@ fn framework_from_manifest(manifest_text: &str) -> Option<FrameworkId> {
         extend_dependency_names(&target.build_dependencies, &mut dependencies);
     }
 
+    if manifest_has_anchor_v2_dependency(&manifest) {
+        return Some(FrameworkId::AnchorV2Preview);
+    }
     if dependencies.contains(ANCHOR_LANG_V2_DEPENDENCY)
         || dependencies.contains(ANCHOR_SPL_V2_DEPENDENCY)
     {
@@ -254,6 +258,47 @@ fn extend_dependency_names(dependencies: &DepsSet, names: &mut HashSet<String>) 
             names.insert(package.clone());
         }
     }
+}
+
+fn manifest_has_anchor_v2_dependency(manifest: &Manifest) -> bool {
+    dependency_sets(manifest).any(dependencies_have_anchor_v2_dependency)
+}
+
+fn dependency_sets(manifest: &Manifest) -> impl Iterator<Item = &DepsSet> {
+    std::iter::once(&manifest.dependencies)
+        .chain(std::iter::once(&manifest.dev_dependencies))
+        .chain(std::iter::once(&manifest.build_dependencies))
+        .chain(manifest.target.values().flat_map(|target| {
+            [
+                &target.dependencies,
+                &target.dev_dependencies,
+                &target.build_dependencies,
+            ]
+        }))
+}
+
+fn dependencies_have_anchor_v2_dependency(dependencies: &DepsSet) -> bool {
+    dependencies.iter().any(|(name, dependency)| {
+        let package_name = dependency.package().unwrap_or(name);
+        matches!(package_name, ANCHOR_LANG_DEPENDENCY | ANCHOR_SPL_DEPENDENCY)
+            && dependency_declares_v2(dependency)
+    })
+}
+
+fn dependency_declares_v2(dependency: &Dependency) -> bool {
+    dependency
+        .try_req()
+        .ok()
+        .is_some_and(version_requirement_starts_at_v2)
+}
+
+fn version_requirement_starts_at_v2(requirement: &str) -> bool {
+    let trimmed = requirement.trim_start_matches([' ', '^', '~', '=', '>', '<']);
+    trimmed.starts_with(ANCHOR_V2_MAJOR_PREFIX)
+        && trimmed
+            .chars()
+            .nth(1)
+            .is_none_or(|character| !character.is_ascii_digit())
 }
 
 fn framework_from_document(document: &ParsedDocument) -> FrameworkId {
@@ -351,6 +396,23 @@ name = "demo"
 [dependencies]
 anchor-lang-v2 = { git = "https://github.com/solana-foundation/anchor.git", branch = "anchor-next" }
 pinocchio = "0.11"
+"#;
+
+        assert_eq!(
+            framework_from_manifest(manifest),
+            Some(FrameworkId::AnchorV2Preview)
+        );
+    }
+
+    #[test]
+    fn detects_anchor_v2_preview_from_real_anchor_lang_major_version() {
+        let manifest = r#"
+[package]
+name = "demo"
+
+[dependencies]
+anchor-lang = "2"
+anchor-spl-legacy = { package = "anchor-spl", version = "^2.0" }
 "#;
 
         assert_eq!(

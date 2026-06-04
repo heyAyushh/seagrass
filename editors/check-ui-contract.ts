@@ -36,6 +36,7 @@ const securityFamilies = [
   "initialization",
   "staleCpiReload",
   "signerAuthorization",
+  "writableAccounts",
   "arbitraryCpi",
   "instructionDataBounds",
   "pdaSeedCollision",

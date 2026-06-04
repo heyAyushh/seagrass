@@ -322,6 +322,17 @@
           "default": "warn",
           "description": "Severity for signer-authorization security diagnostics."
         },
+        "seagrass.diagnostics.security.writableAccounts": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for writable-account security diagnostics."
+        },
         "seagrass.diagnostics.security.arbitraryCpi": {
           "type": "string",
           "enum": [

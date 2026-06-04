@@ -115,6 +115,10 @@
       "description": "Type-cosplay and discriminator validation diagnostics."
     },
     {
+      "name": "seagrass/security.writable-account",
+      "description": "Writable account validation security diagnostics."
+    },
+    {
       "name": "seagrass/solana.artifact.idl",
       "description": "Solana IDL artifact diagnostics."
     },

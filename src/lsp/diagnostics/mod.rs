@@ -497,6 +497,7 @@ fn quickfix_preview(quickfix: &str) -> String {
         "reject-reinit" => "guard against reinitializing account data",
         "insert-reload-after-cpi" => "reload account data after CPI before reading it",
         "add-signer-check" => "add a signer validation check",
+        "add-writable-check" => "add a writable account validation check",
         "add-program-id-check" => "add a program id validation check",
         "add-owner-check" => "add an owner validation check",
         "add-discriminator-check" => "add an account discriminator validation check",

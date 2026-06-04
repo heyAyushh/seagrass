@@ -101,6 +101,7 @@ pub(crate) const SECURITY_LEVEL_SETTINGS: &[&str] = &[
     "diagnostics.security.initialization",
     "diagnostics.security.staleCpiReload",
     "diagnostics.security.signerAuthorization",
+    "diagnostics.security.writableAccounts",
     "diagnostics.security.arbitraryCpi",
     "diagnostics.security.instructionDataBounds",
     "diagnostics.security.pdaSeedCollision",

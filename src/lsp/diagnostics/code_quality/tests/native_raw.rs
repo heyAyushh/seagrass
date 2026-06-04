@@ -55,6 +55,91 @@ pub fn process(_accounts: &[AccountInfo]) -> ProgramResult {
 }
 
 #[test]
+fn reports_pinocchio_unchecked_borrow_without_owner_validation() {
+    let source = r#"
+use pinocchio::{account_info::AccountInfo, ProgramResult};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let account = &accounts[0];
+    let _state = unsafe { load::<State>(account.borrow_data_unchecked())? };
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_has_attack(&diagnostics, "owner-checks");
+    assert_has_attack(&diagnostics, "type-cosplay");
+}
+
+#[test]
+fn reports_pinocchio_destructured_account_borrow_in_impl_method() {
+    let source = r#"
+use pinocchio::{account_info::AccountInfo, program_error::ProgramError};
+
+pub struct Init<'a> {
+    pub authority: &'a AccountInfo,
+    pub config: &'a AccountInfo,
+}
+
+impl<'a> TryFrom<&'a [AccountInfo]> for Init<'a> {
+    type Error = ProgramError;
+
+    fn try_from(accounts: &'a [AccountInfo]) -> Result<Self, Self::Error> {
+        let [authority, config] = accounts else {
+            return Err(ProgramError::NotEnoughAccountKeys);
+        };
+        let _state = unsafe { load::<State>(config.borrow_data_unchecked())? };
+        Ok(Self { authority, config })
+    }
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    let owner = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.data.as_ref().and_then(|data| data.get("attack"))
+                == Some(&serde_json::json!("owner-checks"))
+        })
+        .unwrap_or_else(|| panic!("missing owner-checks: {diagnostics:#?}"));
+    assert_eq!(
+        owner
+            .data
+            .as_ref()
+            .and_then(|data| data.get("accountIndex")),
+        Some(&serde_json::json!(1))
+    );
+    assert_has_attack(&diagnostics, "type-cosplay");
+}
+
+#[test]
+fn accepts_pinocchio_is_owned_by_owner_validation() {
+    let source = r#"
+use pinocchio::{account_info::AccountInfo, program_error::ProgramError, ProgramResult};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let account = &accounts[0];
+    if !account.is_owned_by(&crate::ID) {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let data = unsafe { account.borrow_data_unchecked() };
+    if data[0] != State::DISCRIMINATOR {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let _state = State::try_from_slice(&data[1..])?;
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_no_attack(&diagnostics, "owner-checks");
+    assert_no_attack(&diagnostics, "type-cosplay");
+}
+
+#[test]
 fn ignores_raw_account_text_in_comments_and_strings() {
     let source = r#"
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult};

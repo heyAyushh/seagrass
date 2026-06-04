@@ -9,6 +9,7 @@ use {
         document::{ParsedDocument, SymbolRange},
         workspace::WorkspaceIndex,
     },
+    std::collections::HashSet,
     syn::visit::{self, Visit},
     tower_lsp::lsp_types::Diagnostic,
 };
@@ -574,17 +575,17 @@ fn account_used_as_cpi_program(
     accounts: &SymbolRange,
     field: &SymbolRange,
 ) -> bool {
-    let local_usage = document.symbols().callable_functions().any(|instruction| {
-        instruction
-            .context
-            .as_ref()
-            .is_some_and(|context| context.name == accounts.name)
-            && instruction
-                .cpi_program_usages
-                .iter()
-                .any(|usage| usage.name == field.name)
-    });
-    if local_usage {
+    if let Some(usages) =
+        reachable_local_account_usage_names_for_context(document, &accounts.name, |function| {
+            &function.cpi_program_usages
+        })
+    {
+        return usages.contains(&field.name);
+    }
+
+    if local_account_usage_exists(document, accounts, field, |function| {
+        &function.cpi_program_usages
+    }) {
         return true;
     }
 
@@ -599,17 +600,17 @@ fn account_used_as_signer(
     accounts: &SymbolRange,
     field: &SymbolRange,
 ) -> bool {
-    let local_usage = document.symbols().callable_functions().any(|instruction| {
-        instruction
-            .context
-            .as_ref()
-            .is_some_and(|context| context.name == accounts.name)
-            && instruction
-                .signer_usages
-                .iter()
-                .any(|usage| usage.name == field.name)
-    });
-    if local_usage {
+    if let Some(usages) =
+        reachable_local_account_usage_names_for_context(document, &accounts.name, |function| {
+            &function.signer_usages
+        })
+    {
+        return usages.contains(&field.name);
+    }
+
+    if local_account_usage_exists(document, accounts, field, |function| {
+        &function.signer_usages
+    }) {
         return true;
     }
 
@@ -624,23 +625,89 @@ fn has_manual_signer_check(
     accounts: &SymbolRange,
     field: &SymbolRange,
 ) -> bool {
-    let local_check = document.symbols().callable_functions().any(|instruction| {
-        instruction
-            .context
-            .as_ref()
-            .is_some_and(|context| context.name == accounts.name)
-            && instruction
-                .signer_checks
-                .iter()
-                .any(|usage| usage.name == field.name)
-    });
-    if local_check {
+    if let Some(checks) =
+        reachable_local_account_usage_names_for_context(document, &accounts.name, |function| {
+            &function.signer_checks
+        })
+    {
+        return checks.contains(&field.name);
+    }
+
+    if local_account_usage_exists(document, accounts, field, |function| {
+        &function.signer_checks
+    }) {
         return true;
     }
 
     workspace_index
         .and_then(|index| index.reachable_signer_check_names_for_context(&accounts.name))
         .is_some_and(|checks| checks.contains(&field.name))
+}
+
+fn local_account_usage_exists(
+    document: &ParsedDocument,
+    accounts: &SymbolRange,
+    field: &SymbolRange,
+    usages: impl Fn(&crate::document::InstructionSymbol) -> &[crate::document::AccountUsage],
+) -> bool {
+    document.symbols().callable_functions().any(|function| {
+        function
+            .context
+            .as_ref()
+            .is_some_and(|context| context.name == accounts.name)
+            && usages(function)
+                .iter()
+                .any(|usage| usage.name == field.name)
+    })
+}
+
+fn reachable_local_account_usage_names_for_context(
+    document: &ParsedDocument,
+    context_name: &str,
+    usages: impl Fn(&crate::document::InstructionSymbol) -> &[crate::document::AccountUsage],
+) -> Option<HashSet<String>> {
+    let mut reachable = document
+        .symbols()
+        .instructions
+        .iter()
+        .filter(|instruction| {
+            instruction
+                .context
+                .as_ref()
+                .is_some_and(|context| context.name == context_name)
+        })
+        .map(|instruction| instruction.name.clone())
+        .collect::<HashSet<_>>();
+    if reachable.is_empty() {
+        return None;
+    }
+
+    let mut changed = true;
+    while changed {
+        changed = false;
+        let called_names = document
+            .symbols()
+            .callable_functions()
+            .filter(|function| reachable.contains(&function.name))
+            .flat_map(|function| function.function_calls.iter())
+            .map(|call| call.name.clone())
+            .collect::<HashSet<_>>();
+        for function in &document.symbols().functions {
+            if called_names.contains(&function.name) && reachable.insert(function.name.clone()) {
+                changed = true;
+            }
+        }
+    }
+
+    Some(
+        document
+            .symbols()
+            .callable_functions()
+            .filter(|function| reachable.contains(&function.name))
+            .flat_map(usages)
+            .map(|usage| usage.name.clone())
+            .collect(),
+    )
 }
 
 fn typed_cpi_program_quickfix(field: &SymbolRange) -> Option<serde_json::Value> {

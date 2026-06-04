@@ -6,8 +6,9 @@ Source: `seagrass`
 
 ## What It Catches
 
-Native Solana or Pinocchio handlers that build a CPI `Instruction` from a
-dynamic `program_id` without visible program-id validation before `invoke`.
+Native Solana or Pinocchio handlers that build a CPI `Instruction` or
+Pinocchio `InstructionView` from a dynamic `program_id` without visible
+program-id validation before `invoke`.
 
 ## What It Does Not Catch
 
@@ -23,6 +24,7 @@ dynamic `program_id` without visible program-id validation before `invoke`.
 | --- | --- |
 | comments and strings containing `Instruction { program_id }` | no diagnostic |
 | helper function validates program id, handler does not | diagnostic |
+| Pinocchio `InstructionView { program_id, ... }` without validation | diagnostic |
 | same function validates dynamic program id before invoke | no diagnostic |
 | `Instruction { program_id: system_program::ID, ... }` | no diagnostic |
 | SDK-built instruction passed to `invoke` | no diagnostic |

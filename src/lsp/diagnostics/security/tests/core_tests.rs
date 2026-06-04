@@ -647,6 +647,35 @@ pub mod demo {
 }
 
 #[test]
+fn ignores_unchecked_cpi_program_in_unreachable_context_reference_helper() {
+    let diagnostics = security_diagnostics(
+        r#"
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn read(ctx: Context<Cpi>) -> Result<()> {
+        let _ = ctx.accounts.external_program.key();
+        Ok(())
+    }
+}
+
+pub fn call_external(ctx: &Context<Cpi>) -> Result<()> {
+    let cpi_ctx = CpiContext::new(ctx.accounts.external_program.to_account_info(), ());
+    Ok(())
+}
+
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    pub external_program: AccountInfo<'info>,
+}
+"#,
+    );
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_CPI_PROGRAM_CODE);
+}
+
+#[test]
 fn accepts_cpi_program_account_with_spaced_address_constraint() {
     let diagnostics = security_diagnostics(
         r#"

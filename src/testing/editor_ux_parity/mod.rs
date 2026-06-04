@@ -22,6 +22,7 @@ mod handler_struct_literals;
 mod handler_tuple_patterns;
 mod handler_value_completions;
 mod handler_wrapper_outputs;
+mod pinocchio_native;
 mod proactive_assists;
 
 struct EditorCase<'a> {

@@ -3,6 +3,7 @@ name = "seagrass-pinocchio"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = true
@@ -13,3 +14,8 @@ categories = ["development-tools"]
 
 [dependencies]
 seagrass-framework = { path = "../seagrass-framework", version = "1.0.2" }
+
+[dev-dependencies]
+serde_json = "1"
+syn = { workspace = true, features = ["full", "parsing"] }
+tower-lsp = "0.20"

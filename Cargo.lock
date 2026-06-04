@@ -1467,6 +1467,9 @@ dependencies = [
  "proptest",
  "quote",
  "salsa",
+ "seagrass-framework",
+ "seagrass-native",
+ "seagrass-pinocchio",
  "serde",
  "serde_json",
  "syn",
@@ -1476,6 +1479,7 @@ dependencies = [
  "tower-lsp",
  "tree-sitter",
  "tree-sitter-rust",
+ "wait-timeout",
 ]
 
 [[package]]
@@ -1505,6 +1509,13 @@ dependencies = [
 [[package]]
 name = "seagrass-framework"
 version = "1.0.2"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "serde_json",
+ "syn",
+ "tower-lsp",
+]
 
 [[package]]
 name = "seagrass-fuzz"
@@ -1519,6 +1530,8 @@ name = "seagrass-native"
 version = "1.0.2"
 dependencies = [
  "seagrass-framework",
+ "serde_json",
+ "syn",
 ]
 
 [[package]]
@@ -1526,6 +1539,9 @@ name = "seagrass-pinocchio"
 version = "1.0.2"
 dependencies = [
  "seagrass-framework",
+ "serde_json",
+ "syn",
+ "tower-lsp",
 ]
 
 [[package]]
