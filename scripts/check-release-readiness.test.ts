@@ -273,14 +273,25 @@ function completeReadiness(): ReleaseReadiness {
       commit: gitHead(),
       startedAt: "2026-05-25T12:00:00.000Z",
       completedAt,
-      aggregateFuzzHours: 24,
+      aggregateFuzzHours: 32,
       corpusSha256: corpusTreeSha256(),
-      targets: ["fuzz_anchor_attr", "fuzz_document_parse", "fuzz_manifest_parse"],
-      workflowMatrixTargets: ["fuzz_anchor_attr", "fuzz_document_parse", "fuzz_manifest_parse"],
+      targets: [
+        "fuzz_anchor_attr",
+        "fuzz_document_parse",
+        "fuzz_manifest_parse",
+        "fuzz_semantic_diagnostics",
+      ],
+      workflowMatrixTargets: [
+        "fuzz_anchor_attr",
+        "fuzz_document_parse",
+        "fuzz_manifest_parse",
+        "fuzz_semantic_diagnostics",
+      ],
       targetRuns: [
         targetRun("fuzz_anchor_attr"),
         targetRun("fuzz_document_parse"),
         targetRun("fuzz_manifest_parse"),
+        targetRun("fuzz_semantic_diagnostics"),
       ],
     },
     externalReview: {

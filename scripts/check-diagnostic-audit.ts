@@ -7,7 +7,9 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const sourceRoot = resolve(repoRoot, "src");
+const cratesRoot = resolve(repoRoot, "crates");
 const diagnosticsRoot = resolve(sourceRoot, "lsp/diagnostics");
+const frameworkNativeRulesRoot = resolve(cratesRoot, "seagrass-framework/src/native_rules");
 const registryPath = resolve(diagnosticsRoot, "registry.rs");
 const auditPath = resolve(repoRoot, "docs/diagnostic-audit.md");
 const topicsPath = resolve(repoRoot, "docs/topics.json");
@@ -110,16 +112,19 @@ export function checkDiagnosticAudit(): { failures: string[]; rowCount: number }
   const rows = auditRowsFromMarkdown(auditText);
   const quickfixRows = quickfixRowsFromMarkdown(auditText);
   const manifestTopics = parseManifestTopics(readFileSync(topicsPath, "utf8"));
-  const emittedTopics = sourceDiagnosticTopics(diagnosticsRoot);
+  const emittedTopics = sourceDiagnosticTopics(diagnosticsRoot, [frameworkNativeRulesRoot]);
   const diagnosticCodes = registryDiagnosticCodes(registryPath);
-  const emittedQuickfixTags = sourceDiagnosticQuickfixTags(sourceRoot, diagnosticsRoot);
-  const coverage = auditCoverageFromSource(sourceRoot);
+  const emittedQuickfixTags = sourceDiagnosticQuickfixTags(sourceRoot, diagnosticsRoot, [
+    frameworkNativeRulesRoot,
+  ]);
+  const coverage = auditCoverageFromSourceRoots([sourceRoot, cratesRoot]);
   const existingPaths = new Set(rustFiles(sourceRoot));
+  const existingWorkspacePaths = new Set([...existingPaths, ...rustFiles(cratesRoot)]);
   const sourcePaths = [...existingPaths]
     .map((path) => path.slice(`${sourceRoot}${sep}`.length).replaceAll(sep, "/"))
     .sort(compareStrings);
   const failures = [
-    ...sourcePathFailures(rows, sourceRoot, existingPaths),
+    ...sourcePathFailures(rows, sourceRoot, existingPaths, repoRoot, existingWorkspacePaths),
     ...auditTopicFailures(rows, manifestTopics, emittedTopics),
     ...auditCellFailures(rows, coverage),
     ...auditCoverageFailures(rows),
@@ -253,18 +258,23 @@ export function sourcePathFailures(
   rows: AuditRow[],
   root: string,
   existingSourcePaths: Set<string>,
+  workspaceRoot = root,
+  existingWorkspacePaths = existingSourcePaths,
 ): string[] {
   return rows.flatMap((row) => {
+    const isWorkspaceRelative = row.file.startsWith("crates/");
+    const rowRoot = isWorkspaceRelative ? workspaceRoot : root;
+    const existingPaths = isWorkspaceRelative ? existingWorkspacePaths : existingSourcePaths;
     if (row.file.endsWith("/*")) {
-      return wildcardPathFailures(row.file, root, existingSourcePaths);
+      return wildcardPathFailures(row.file, rowRoot, existingPaths);
     }
-    const resolvedPath = resolve(root, row.file);
-    if (!isInsideRoot(root, resolvedPath)) {
-      return [`${row.file} escapes ${root}`];
+    const resolvedPath = resolve(rowRoot, row.file);
+    if (!isInsideRoot(rowRoot, resolvedPath)) {
+      return [`${row.file} escapes ${rowRoot}`];
     }
-    return existingSourcePaths.has(resolvedPath)
+    return existingPaths.has(resolvedPath)
       ? []
-      : [`${row.file} does not exist under ${root}`];
+      : [`${row.file} does not exist under ${rowRoot}`];
   });
 }
 
@@ -279,20 +289,28 @@ export function registryDiagnosticCodes(path: string): Set<string> {
 export function sourceDiagnosticQuickfixTags(
   sourceRootPath: string,
   diagnosticsRootPath: string,
+  extraDiagnosticRootPaths: string[] = [],
 ): Set<string> {
   const constants = rustStringConstants(sourceRootPath);
+  for (const rootPath of extraDiagnosticRootPaths) {
+    for (const [name, value] of rustStringConstants(rootPath)) {
+      constants.set(name, value);
+    }
+  }
   const tags = new Set<string>();
 
-  for (const file of rustFiles(diagnosticsRootPath).filter((path) =>
-    isProductionDiagnosticSourcePath(diagnosticsRootPath, path),
-  )) {
-    const text = readFileSync(file, "utf8");
-    for (const match of text.matchAll(diagnosticQuickfixRegex)) {
-      const literal = match.groups?.literal;
-      const identifier = match.groups?.identifier;
-      const tag = literal ?? (identifier ? constants.get(identifier) : undefined);
-      if (tag) {
-        tags.add(tag);
+  for (const rootPath of [diagnosticsRootPath, ...extraDiagnosticRootPaths]) {
+    for (const file of rustFiles(rootPath).filter((path) =>
+      isProductionDiagnosticSourcePath(rootPath, path),
+    )) {
+      const text = readFileSync(file, "utf8");
+      for (const match of text.matchAll(diagnosticQuickfixRegex)) {
+        const literal = match.groups?.literal;
+        const identifier = match.groups?.identifier;
+        const tag = literal ?? (identifier ? constants.get(identifier) : undefined);
+        if (tag) {
+          tags.add(tag);
+        }
       }
     }
   }
@@ -539,10 +557,12 @@ function falsePositiveFixtureNames(value: string): string[] {
   );
 }
 
-function auditCoverageFromSource(root: string): AuditCoverage {
+function auditCoverageFromSourceRoots(roots: string[]): AuditCoverage {
   return {
     rustTestNames: new Set(
-      rustFiles(root).flatMap((path) => rustTestFunctionNames(readFileSync(path, "utf8"))),
+      roots.flatMap((root) =>
+        rustFiles(root).flatMap((path) => rustTestFunctionNames(readFileSync(path, "utf8"))),
+      ),
     ),
   };
 }
@@ -599,12 +619,16 @@ function parseManifestTopics(text: string): Set<string> {
   return new Set(parsed.topics.map((topic) => topic.name));
 }
 
-function sourceDiagnosticTopics(root: string): Set<string> {
+function sourceDiagnosticTopics(root: string, extraRoots: string[] = []): Set<string> {
   const topics = new Set<string>();
-  for (const file of rustFiles(root).filter((path) => isProductionDiagnosticSourcePath(root, path))) {
-    const text = readFileSync(file, "utf8");
-    for (const topic of sourceTopicsFromText(text)) {
-      topics.add(topic);
+  for (const rootPath of [root, ...extraRoots]) {
+    for (const file of rustFiles(rootPath).filter((path) =>
+      isProductionDiagnosticSourcePath(rootPath, path),
+    )) {
+      const text = readFileSync(file, "utf8");
+      for (const topic of sourceTopicsFromText(text)) {
+        topics.add(topic);
+      }
     }
   }
   return topics;

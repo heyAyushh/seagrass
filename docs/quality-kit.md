@@ -5,6 +5,10 @@ Status: Active
 Seagrass uses four complementary checks: regression tests, hotpath replay,
 libFuzzer, and property tests.
 
+Checkout builds use Rust `1.89.0`, pinned in `rust-toolchain.toml`. Nightly Rust
+is reserved for libFuzzer targets because `cargo-fuzz` runs those targets on the
+nightly toolchain.
+
 ## Regression Tests
 
 Run the LSP suite:
@@ -22,7 +26,7 @@ Replay protocol sessions and enforce latency budgets:
 
 ```sh
 bun scripts/perf-replay.ts
-bun scripts/hotpath-replay-session.ts --fixture fixtures/broken.rs
+bun scripts/hotpath-replay-session.ts
 ```
 
 The CI hotpath job blocks regressions against the latency budgets enforced by
@@ -35,13 +39,16 @@ Nightly fuzzing runs the LSP fuzz targets and uploads crash/corpus artifacts.
 The long workflow runs target shards sequentially and uploads
 `fuzz-readiness-<sha>.json`, which is the machine-readable source for release
 readiness evidence.
-Local runs require nightly Rust:
+Local runs require nightly Rust for execution and the pinned stable cargo for
+installing `cargo-fuzz`:
 
 ```sh
+cargo +1.89.0 install cargo-fuzz --locked
 cd fuzz
 cargo +nightly fuzz run fuzz_document_parse
 cargo +nightly fuzz run fuzz_anchor_attr
 cargo +nightly fuzz run fuzz_manifest_parse
+cargo +nightly fuzz run fuzz_semantic_diagnostics
 ```
 
 Treat parser panics on malformed source as security-relevant until triaged.
@@ -61,7 +68,7 @@ Prefer invariants that survive formatting, renaming, and input order changes.
 ## Release Evidence
 
 Release readiness also requires evidence that cannot be produced by unit tests:
-a clean 24 aggregate fuzz-hour run and external review signoff. Generate the machine-readable
+a clean 32 aggregate fuzz-hour run and external review signoff. Generate the machine-readable
 objects with:
 
 ```sh

@@ -7,6 +7,8 @@ import { fileURLToPath } from "node:url";
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
 const diagnosticsRoot = resolve(repoRoot, "src/lsp/diagnostics");
+const frameworkDiagnosticsRoot = resolve(repoRoot, "crates/seagrass-framework/src");
+const diagnosticSourceRoots = [diagnosticsRoot, frameworkDiagnosticsRoot];
 const topicsPath = resolve(repoRoot, "docs/topics.json");
 export const topicPattern = /^seagrass\/[a-z0-9][a-z0-9.-]*$/;
 const sourceTopicEvidenceRegexes = [
@@ -128,10 +130,12 @@ export function topicDriftFailures(manifestTopics: string[], sourceTopics: strin
 
 function sourceDiagnosticTopics(): Set<string> {
   const topics = new Set<string>();
-  for (const file of rustFiles(diagnosticsRoot).filter(isProductionDiagnosticSourcePath)) {
-    const text = readFileSync(file, "utf8");
-    for (const topic of sourceTopicsFromText(text)) {
-      topics.add(topic);
+  for (const root of diagnosticSourceRoots) {
+    for (const file of rustFiles(root).filter(isProductionDiagnosticSourcePath)) {
+      const text = readFileSync(file, "utf8");
+      for (const topic of sourceTopicsFromText(text)) {
+        topics.add(topic);
+      }
     }
   }
   return topics;
@@ -148,7 +152,7 @@ export function sourceTopicsFromText(text: string): string[] {
 }
 
 export function isProductionDiagnosticSourcePath(path: string): boolean {
-  const relativePath = relative(diagnosticsRoot, path).replaceAll("\\", "/");
+  const relativePath = relative(repoRoot, path).replaceAll("\\", "/");
   return (
     relativePath.endsWith(".rs") &&
     !relativePath.endsWith("_tests.rs") &&

@@ -33,16 +33,14 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          toolchain: stable
+          toolchain: 1.89.0
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: ""
       - name: Install Bun
-        run: |
-          npm install --global "bun@${BUN_VERSION}"
-          bun --version
+        run: node scripts/install-bun-ci.mjs
       - name: Replay LSP request stream with hotpath budgets
         run: bun scripts/perf-replay.ts
       - name: Upload hotpath report
@@ -64,16 +62,14 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          toolchain: stable
+          toolchain: 1.89.0
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: ""
       - name: Install Bun
-        run: |
-          npm install --global "bun@${BUN_VERSION}"
-          bun --version
+        run: node scripts/install-bun-ci.mjs
       - name: Measure N=${{ matrix.programs }} workspace scale
         run: |
           bun scripts/scale-benchmark.ts \

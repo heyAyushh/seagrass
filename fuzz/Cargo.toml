@@ -3,6 +3,7 @@ name = "seagrass-fuzz"
 version = "0.0.0"
 publish = false
 edition = "2021"
+rust-version.workspace = true
 
 [package.metadata]
 cargo-fuzz = true
@@ -28,6 +29,13 @@ bench = false
 [[bin]]
 name = "fuzz_manifest_parse"
 path = "fuzz_targets/fuzz_manifest_parse.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_semantic_diagnostics"
+path = "fuzz_targets/fuzz_semantic_diagnostics.rs"
 test = false
 doc = false
 bench = false

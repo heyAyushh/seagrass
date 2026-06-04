@@ -8,7 +8,7 @@ export const MILLISECONDS_PER_SECOND = 1_000;
 export const SECONDS_PER_HOUR = 60 * 60;
 export const MILLISECONDS_PER_HOUR = SECONDS_PER_HOUR * MILLISECONDS_PER_SECOND;
 export const MILLISECONDS_PER_DAY = 24 * MILLISECONDS_PER_HOUR;
-export const REQUIRED_FUZZ_HOURS = 24;
+export const REQUIRED_FUZZ_HOURS = 32;
 export const REQUIRED_COMMUNITY_AUDIT_DAYS = 30;
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));

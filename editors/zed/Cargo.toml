@@ -2,6 +2,7 @@
 name = "seagrass-zed"
 version = "1.0.2"
 edition = "2021"
+rust-version.workspace = true
 publish = false
 license = "MIT"
 

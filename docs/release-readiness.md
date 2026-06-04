@@ -4,7 +4,7 @@ Status: Active
 
 Two release proofs cannot be produced by local tests:
 
-- clean fuzz workflow covering 24 aggregate fuzz-hours
+- clean fuzz workflow covering 32 aggregate fuzz-hours
 - external review signoff, either paid review or the 30-day community audit path
 
 The release workflow enforces those proofs with:
@@ -46,7 +46,7 @@ bun scripts/check-release-readiness.ts \
 | `fuzzCleanRun.workflowRunUrl` | concrete GitHub Actions run URL under this repo with a positive run id. |
 | `fuzzCleanRun.commit` | Must match the release commit. |
 | `fuzzCleanRun.startedAt` / `completedAt` | Must be valid workflow timestamps with `completedAt` after `startedAt`. |
-| `fuzzCleanRun.aggregateFuzzHours` | Must be at least 24 aggregate fuzz-hours across the sharded targets. |
+| `fuzzCleanRun.aggregateFuzzHours` | Must be at least 32 aggregate fuzz-hours across the sharded targets. |
 | `fuzzCleanRun.corpusSha256` | Required after `status` is `passed`; SHA-256 tree hash of `fuzz/corpus` after importing the workflow artifacts. |
 | `fuzzCleanRun.targets` | Must list the fuzz targets covered. |
 | `fuzzCleanRun.workflowMatrixTargets` | Must match `.github/workflows/fuzz.yaml` and `fuzz/Cargo.toml`. |

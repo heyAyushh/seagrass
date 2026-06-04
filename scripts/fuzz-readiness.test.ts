@@ -3,6 +3,12 @@ import { describe, expect, test } from "bun:test";
 import { buildFuzzEvidence } from "./fuzz-readiness.ts";
 
 const expectedRepoSlug = "heyAyushh/seagrass";
+const fuzzTargets = [
+  "fuzz_anchor_attr",
+  "fuzz_document_parse",
+  "fuzz_manifest_parse",
+  "fuzz_semantic_diagnostics",
+];
 
 describe("fuzz readiness evidence", () => {
   test("computes aggregate fuzz hours across targets and shards", () => {
@@ -13,23 +19,25 @@ describe("fuzz readiness evidence", () => {
       secondsPerShard: 3_600,
       shards: 8,
       completedAt: "2026-05-26T12:00:00.000Z",
-      targets: ["fuzz_manifest_parse", "fuzz_document_parse", "fuzz_anchor_attr"],
-      workflowMatrixTargets: ["fuzz_document_parse", "fuzz_anchor_attr", "fuzz_manifest_parse"],
+      targets: [
+        "fuzz_manifest_parse",
+        "fuzz_document_parse",
+        "fuzz_anchor_attr",
+        "fuzz_semantic_diagnostics",
+      ],
+      workflowMatrixTargets: [
+        "fuzz_document_parse",
+        "fuzz_anchor_attr",
+        "fuzz_manifest_parse",
+        "fuzz_semantic_diagnostics",
+      ],
     });
 
     expect(evidence.status).toBe("passed");
-    expect(evidence.aggregateFuzzHours).toBe(24);
-    expect(evidence.startedAt).toBe("2026-05-25T12:00:00.000Z");
-    expect(evidence.targets).toEqual([
-      "fuzz_anchor_attr",
-      "fuzz_document_parse",
-      "fuzz_manifest_parse",
-    ]);
-    expect(evidence.workflowMatrixTargets).toEqual([
-      "fuzz_anchor_attr",
-      "fuzz_document_parse",
-      "fuzz_manifest_parse",
-    ]);
+    expect(evidence.aggregateFuzzHours).toBe(32);
+    expect(evidence.startedAt).toBe("2026-05-25T04:00:00.000Z");
+    expect(evidence.targets).toEqual(fuzzTargets);
+    expect(evidence.workflowMatrixTargets).toEqual(fuzzTargets);
     expect(evidence.targetRuns).toEqual([
       {
         target: "fuzz_anchor_attr",
@@ -52,6 +60,13 @@ describe("fuzz readiness evidence", () => {
         secondsPerShard: 3_600,
         fuzzHours: 8,
       },
+      {
+        target: "fuzz_semantic_diagnostics",
+        status: "passed",
+        shards: 8,
+        secondsPerShard: 3_600,
+        fuzzHours: 8,
+      },
     ]);
   });
 
@@ -64,11 +79,21 @@ describe("fuzz readiness evidence", () => {
       shards: 8,
       startedAt: "2026-05-26T11:00:00.000Z",
       completedAt: "2026-05-26T12:00:00.000Z",
-      targets: ["fuzz_manifest_parse", "fuzz_document_parse", "fuzz_anchor_attr"],
-      workflowMatrixTargets: ["fuzz_document_parse", "fuzz_anchor_attr", "fuzz_manifest_parse"],
+      targets: [
+        "fuzz_manifest_parse",
+        "fuzz_document_parse",
+        "fuzz_anchor_attr",
+        "fuzz_semantic_diagnostics",
+      ],
+      workflowMatrixTargets: [
+        "fuzz_document_parse",
+        "fuzz_anchor_attr",
+        "fuzz_manifest_parse",
+        "fuzz_semantic_diagnostics",
+      ],
     });
 
-    expect(evidence.aggregateFuzzHours).toBe(24);
+    expect(evidence.aggregateFuzzHours).toBe(32);
     expect(evidence.startedAt).toBe("2026-05-26T11:00:00.000Z");
   });
 
@@ -81,7 +106,12 @@ describe("fuzz readiness evidence", () => {
         secondsPerShard: 3_600,
         shards: 8,
         completedAt: "2026-05-26T12:00:00.000Z",
-        targets: ["fuzz_manifest_parse", "fuzz_document_parse", "fuzz_anchor_attr"],
+        targets: [
+          "fuzz_manifest_parse",
+          "fuzz_document_parse",
+          "fuzz_anchor_attr",
+          "fuzz_semantic_diagnostics",
+        ],
         workflowMatrixTargets: ["fuzz_manifest_parse", "fuzz_document_parse"],
       }),
     ).toThrow(/workflowMatrixTargets/);
@@ -96,8 +126,18 @@ describe("fuzz readiness evidence", () => {
         secondsPerShard: 4_200,
         shards: 7,
         completedAt: "2026-05-26T12:00:00.000Z",
-        targets: ["fuzz_manifest_parse", "fuzz_document_parse", "fuzz_anchor_attr"],
-        workflowMatrixTargets: ["fuzz_manifest_parse", "fuzz_document_parse", "fuzz_anchor_attr"],
+        targets: [
+          "fuzz_manifest_parse",
+          "fuzz_document_parse",
+          "fuzz_anchor_attr",
+          "fuzz_semantic_diagnostics",
+        ],
+        workflowMatrixTargets: [
+          "fuzz_manifest_parse",
+          "fuzz_document_parse",
+          "fuzz_anchor_attr",
+          "fuzz_semantic_diagnostics",
+        ],
       }),
     ).toThrow(/workflow shard count/);
   });

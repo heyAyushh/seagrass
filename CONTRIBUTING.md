@@ -9,7 +9,11 @@ Anchor changes.
 
 ## Development Setup
 
+Seagrass pins checkout builds to Rust `1.89.0` via `rust-toolchain.toml`, and
+all Rust packages declare the same MSRV through workspace metadata.
+
 ```sh
+rustup toolchain install 1.89.0 --profile minimal --component clippy rustfmt
 cargo build -p seagrass-cli
 cargo test -p seagrass
 cargo install --path crates/seagrass --locked
@@ -84,7 +88,30 @@ bash scripts/smoke-install.sh
 bun scripts/verify-production.ts
 ```
 
-See `docs/quality-kit.md` for fuzzing, property tests, and hotpath replay.
+`bun scripts/verify-production.ts` is the full gate: formatting, editor UX
+parity, full LSP tests, protocol smoke, shared editor UI contract, diagnostic
+rule hygiene, VS Code, Zed, version alignment, generated support, and checked-in
+Zed wasm freshness. See `docs/quality-kit.md` for fuzzing, property tests, and
+hotpath replay.
+
+## Releasing
+
+Cut a signed release tag only after `VERSION` and every LSP/editor manifest
+match the intended version:
+
+```sh
+git tag -s v1.0.2
+git push origin v1.0.2
+```
+
+The release workflow builds and attaches:
+
+- `seagrass-<version>-<target>.tar.gz`
+- `seagrass-zed-<version>.tar.gz`
+- `seagrass-vscode-<version>.vsix`
+- matching `.sha256` files
+
+Pre-release tags such as `v1.0.2-rc.1` create GitHub pre-releases.
 
 ## Commit Messages
 

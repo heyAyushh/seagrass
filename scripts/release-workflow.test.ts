@@ -8,6 +8,7 @@ import { repoRoot } from "./release-evidence.ts";
 const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/release.yaml");
 const releasePlzWorkflowPath = resolve(repoRoot, ".github/workflows/release-plz.yaml");
 const prWorkflowPath = resolve(repoRoot, ".github/workflows/pr.yaml");
+const rustToolchainPath = resolve(repoRoot, "rust-toolchain.toml");
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
 const packageReleasePath = resolve(repoRoot, "scripts/package-release.ts");
 const releaseReadinessDocPath = resolve(repoRoot, "docs/release-readiness.md");
@@ -18,8 +19,9 @@ const seagrassWorkflowPaths = [
   ".github/workflows/property-tests.yaml",
   ".github/workflows/release-plz.yaml",
   ".github/workflows/release.yaml",
+  ".github/workflows/seagrass-diagnostics.yaml",
 ];
-const pinnedActionReferencePattern = /^[a-z0-9._-]+\/[a-z0-9._-]+@[a-f0-9]{40}$/i;
+const pinnedActionReferencePattern = /^[a-z0-9._-]+\/[a-z0-9._/-]+@[a-f0-9]{40}$/i;
 
 describe("release workflow packaging", () => {
   test("publishes release readiness evidence with the fuzz corpus package", () => {
@@ -126,6 +128,8 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain('".github/workflows/property-tests.yaml"');
     expect(workflow).toContain('".github/workflows/release-plz.yaml"');
     expect(workflow).toContain('".github/workflows/release.yaml"');
+    expect(workflow).toContain('".github/workflows/seagrass-diagnostics.yaml"');
+    expect(workflow).toContain('"rust-toolchain.toml"');
     expect(workflow).toContain('"release-plz.toml"');
     expect(workflow).toContain('"VERSION"');
     expect(workflow).toContain('"bump-version.sh"');
@@ -179,6 +183,20 @@ describe("release workflow packaging", () => {
     expect(failures).toEqual([]);
   });
 
+  test("pins stable Rust workflow jobs to the repository toolchain", () => {
+    const supportedToolchain = rustToolchainChannel();
+    const failures = seagrassWorkflowPaths.flatMap((path) =>
+      floatingRustToolchainReferences(path, readFileSync(resolve(repoRoot, path), "utf8")),
+    );
+
+    expect(failures).toEqual([]);
+    for (const path of seagrassWorkflowPaths) {
+      expect(readFileSync(resolve(repoRoot, path), "utf8")).toContain(
+        `toolchain: ${supportedToolchain}`,
+      );
+    }
+  });
+
   test("runs workflow commands from the standalone repository root", () => {
     const failures = seagrassWorkflowPaths.flatMap((path) =>
       staleOverlayPathReferences(path, readFileSync(resolve(repoRoot, path), "utf8")),
@@ -187,12 +205,13 @@ describe("release workflow packaging", () => {
     expect(failures).toEqual([]);
   });
 
-  test("installs cargo-fuzz with stable cargo before nightly fuzzing", () => {
+  test("installs cargo-fuzz with pinned stable cargo before nightly fuzzing", () => {
     const fuzzWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/fuzz.yaml"), "utf8");
     const releaseWorkflow = readFileSync(releaseWorkflowPath, "utf8");
+    const installCommand = `cargo +${rustToolchainChannel()} install cargo-fuzz --locked`;
 
-    expect(fuzzWorkflow).toContain("cargo +stable install cargo-fuzz --locked");
-    expect(releaseWorkflow).toContain("cargo +stable install cargo-fuzz --locked");
+    expect(fuzzWorkflow).toContain(installCommand);
+    expect(releaseWorkflow).toContain(installCommand);
     expect(fuzzWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
     expect(releaseWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
   });
@@ -216,6 +235,25 @@ function workflowSection(contents: string, start: string, end: string): string {
 
 function occurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
+}
+
+function rustToolchainChannel(): string {
+  const toolchain = readFileSync(rustToolchainPath, "utf8");
+  const match = /^channel = "([^"]+)"$/m.exec(toolchain);
+  if (!match) {
+    throw new Error("rust-toolchain.toml is missing a channel");
+  }
+  return match[1];
+}
+
+function floatingRustToolchainReferences(path: string, contents: string): string[] {
+  const failures: string[] = [];
+  for (const needle of ["toolchain: stable", "cargo +stable"]) {
+    if (contents.includes(needle)) {
+      failures.push(`${path}: ${needle}`);
+    }
+  }
+  return failures;
 }
 
 function unpinnedActionReferences(path: string, contents: string): string[] {
