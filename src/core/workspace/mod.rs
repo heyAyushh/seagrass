@@ -2,17 +2,17 @@ use {
     crate::{
         definition_bridge::{self, BridgeSymbol},
         document::{AccountConstraint, InstructionAttributeArgument, ParsedDocument},
-        document_stub::DocumentStub,
+        file_text,
     },
     std::{
         collections::{HashMap, HashSet},
-        fs,
         sync::Arc,
     },
     tower_lsp::lsp_types::{Location, SymbolInformation, SymbolKind, Url},
 };
 
 mod associated_values;
+mod file_updates;
 mod files;
 mod function_returns;
 mod indexing;
@@ -26,9 +26,8 @@ use {
     files::anchor_rust_files,
     indexing::{
         document_indexed_references, document_indexed_symbols, indexed_accounts_structs,
-        indexed_functions, IndexedAccountsStruct, IndexedDocument, IndexedFunction,
-        IndexedFunctionEntry, IndexedReference, IndexedReferenceEntry, IndexedSymbol,
-        IndexedSymbolEntry,
+        indexed_functions, IndexedAccountsStruct, IndexedFunction, IndexedFunctionEntry,
+        IndexedReference, IndexedReferenceEntry, IndexedSymbol, IndexedSymbolEntry,
     },
     instruction_arguments::{
         instruction_argument_names_match, instruction_argument_ranges_in_constraint,
@@ -47,7 +46,7 @@ const ACCOUNT_DATA_CONTAINER: &str = "#[account]";
 
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndex {
-    documents: HashMap<Url, IndexedDocument>,
+    documents: HashSet<Url>,
     symbols_by_name: HashMap<SymbolName, Vec<IndexedSymbolEntry>>,
     references_by_name: HashMap<SymbolName, Vec<IndexedReferenceEntry>>,
     functions_by_name: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
@@ -59,7 +58,6 @@ pub struct WorkspaceIndex {
 pub(crate) struct WorkspaceDocumentUpdate {
     uri: Url,
     is_open: bool,
-    stub: DocumentStub,
     symbols: Vec<IndexedSymbol>,
     references: Vec<IndexedReference>,
     functions: Vec<IndexedFunction>,
@@ -70,7 +68,6 @@ impl WorkspaceDocumentUpdate {
     pub(crate) fn from_parsed_open_document(uri: Url, document: &ParsedDocument) -> Self {
         Self {
             is_open: true,
-            stub: DocumentStub::from_parsed(document),
             symbols: document_indexed_symbols(document),
             references: document_indexed_references(document),
             functions: indexed_functions(document),
@@ -146,29 +143,24 @@ impl WorkspaceIndex {
     pub fn build(roots: &[Url], open_documents: impl IntoIterator<Item = (Url, String)>) -> Self {
         let mut index = Self::default();
 
-        // Root files: try wincode cache first (fresh via mtime); else parse+save.
         for root in roots {
             if let Ok(path) = root.to_file_path() {
                 for file in anchor_rust_files(&path) {
                     let Ok(uri) = Url::from_file_path(&file) else {
                         continue;
                     };
-                    let Ok(source) = fs::read_to_string(&file) else {
+                    let Ok(Some(source)) = file_text::read_limited_text(&file) else {
                         continue;
                     };
                     let document = ParsedDocument::parse_or_empty(source);
-                    let stub = DocumentStub::from_parsed(&document);
-                    let _ = stub.save_to_cache(&uri);
-                    index.insert_parsed_document(uri, &document, false, stub);
+                    index.insert_parsed_document(uri, &document, false);
                 }
             }
         }
 
         for (uri, source) in open_documents {
-            let document = ParsedDocument::parse_or_empty(source.clone());
-            let stub = DocumentStub::from_parsed(&document);
-            let _ = stub.save_to_cache(&uri);
-            index.insert_parsed_document(uri, &document, true, stub);
+            let document = ParsedDocument::parse_or_empty(source);
+            index.insert_parsed_document(uri, &document, true);
         }
 
         index.insert_bridge_symbols(definition_bridge::collect(roots));
@@ -189,13 +181,19 @@ impl WorkspaceIndex {
         self.insert_indexed_document(update);
     }
 
-    pub fn indexed_file_count(&self) -> usize {
-        self.documents.len()
+    pub(crate) fn remove_document(&mut self, uri: &Url) {
+        self.remove_index_entries_for_uri(uri);
     }
 
-    #[allow(dead_code)]
-    pub fn stub_for(&self, uri: &Url) -> Option<&DocumentStub> {
-        self.documents.get(uri).map(|d| &d.stub)
+    pub(crate) fn update_for_workspace_file(
+        roots: &[Url],
+        uri: Url,
+    ) -> Option<WorkspaceDocumentUpdate> {
+        file_updates::update_for_workspace_file(roots, uri)
+    }
+
+    pub fn indexed_file_count(&self) -> usize {
+        self.documents.len()
     }
 
     pub fn symbol_locations(&self, name: &str) -> Vec<Location> {
@@ -647,13 +645,7 @@ impl WorkspaceIndex {
             .collect()
     }
 
-    fn insert_parsed_document(
-        &mut self,
-        uri: Url,
-        document: &ParsedDocument,
-        is_open: bool,
-        stub: DocumentStub,
-    ) {
+    fn insert_parsed_document(&mut self, uri: Url, document: &ParsedDocument, is_open: bool) {
         let accounts_structs = indexed_accounts_structs(document, &uri, is_open);
         let functions = indexed_functions(document);
         let references = document_indexed_references(document);
@@ -661,7 +653,6 @@ impl WorkspaceIndex {
         self.insert_indexed_document(WorkspaceDocumentUpdate {
             uri,
             is_open,
-            stub,
             symbols,
             references,
             functions,
@@ -673,7 +664,6 @@ impl WorkspaceIndex {
         let WorkspaceDocumentUpdate {
             uri,
             is_open,
-            stub,
             symbols,
             references,
             functions,
@@ -689,7 +679,7 @@ impl WorkspaceIndex {
             functions,
             accounts_structs,
         );
-        self.documents.insert(uri.clone(), IndexedDocument { stub });
+        self.documents.insert(uri);
     }
 
     fn remove_index_entries_for_uri(&mut self, uri: &Url) {

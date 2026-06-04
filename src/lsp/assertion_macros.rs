@@ -52,10 +52,8 @@ pub(crate) fn has_open_expression_assertion_macro(source: &str, offset: usize) -
                 close: matching_close(ch),
                 macro_name: macro_name_before_delimiter(prefix, index),
             }),
-            ')' | ']' | '}' => {
-                if stack.last().is_some_and(|frame| frame.close == ch) {
-                    stack.pop();
-                }
+            ')' | ']' | '}' if stack.last().is_some_and(|frame| frame.close == ch) => {
+                stack.pop();
             }
             _ => {}
         }

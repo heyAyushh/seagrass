@@ -1,9 +1,9 @@
 ---
 name: seagrass-install
-description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through binary install (`cargo install seagrass`), per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
+description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
 user-invocable: true
 license: MIT
-compatibility: Requires Rust toolchain (1.78+), cargo, and one of VSCode, Zed, Helix, or a Neovim LSP client.
+compatibility: Requires Rust 1.89.0, cargo, and one of VS Code, Zed, Helix, or a Neovim LSP client.
 metadata:
   author: Seagrass Maintainers
   version: 1.0.0
@@ -15,26 +15,54 @@ Install Seagrass and verify it actually fires diagnostics on a real Solana progr
 
 ## When to use
 
-The user wants to start using Seagrass in their editor or in CI. They have a Solana program project (Anchor, Pinocchio, or native) and want diagnostics, completions, and hovers.
+The user wants to start using Seagrass in their editor or in CI. They have a
+Solana program project (Anchor, Pinocchio, or native) and want supported
+diagnostics plus the applicable editor surfaces for that framework.
 
 ## What Seagrass is
 
-A language server for Solana framework programs:
+Codebase intelligence for Solana framework programs. The shipped static layer is
+a language server and CLI for:
 
 - **Anchor v1** — stable catalog (constraint shapes, init/payer/space rules, account references)
 - **Anchor v2 preview** — pre-generated `anchor-next` catalog
-- **Pinocchio** — native invariants
-- **Native Solana** — owner checks, type cosplay, signer authorization
+- **Pinocchio** — native-style owner/type, signer, CPI, bounds, PDA, and
+  arithmetic invariants where parsed evidence is available
+- **Native Solana** — owner checks, type cosplay, signer authorization, CPI
+  program validation, instruction bounds, PDA, and arithmetic invariants
 
-40 lint topics today. All diagnostics carry `(source, code, confidence, topic, applicability)` metadata.
+Anchor v1/v2-preview get constraint completions, hovers, signatures, IDL/types
+artifact checks, and generated account-rule coverage. Pinocchio and native
+Solana do not use Anchor account constraints, so those Anchor-only surfaces are
+non-applicable. Use `docs/framework-parity.md` for the exact boundary.
+
+Diagnostics carry `(source, code, confidence, topic, applicability)` metadata.
+Read the current topic catalog from `docs/topics.json` instead of hardcoding a
+count.
+
+Runtime compute-unit and traffic claims require explicit imported evidence such
+as Trident, validator logs, indexer output, or application telemetry. Do not
+present production CU usage, CU regressions, or cold-path deletion evidence as
+available unless the user has provided or configured that runtime data source.
 
 ## Steps
 
 ### 1. Install the binary
 
+From a Seagrass checkout:
+
 ```bash
-cargo install seagrass
+rustup toolchain install 1.89.0 --profile minimal --component clippy rustfmt
+cargo install --path crates/seagrass --locked
 ```
+
+From an already-published crates.io CLI package:
+
+```bash
+cargo install seagrass-cli --locked
+```
+
+Both commands install the user-facing binary as `seagrass`.
 
 Confirm:
 
@@ -42,12 +70,8 @@ Confirm:
 seagrass --version
 ```
 
-If `cargo install` fails:
-
-- `seagrass` may not yet be on crates.io. Fall back:
-  ```bash
-  cargo install --git https://github.com/heyAyushh/seagrass --locked
-  ```
+If crates.io install fails because the CLI package is not published yet, use the
+source-checkout install above.
 
 ### 2. Configure the editor
 
@@ -57,18 +81,20 @@ Pick the user's editor and apply the relevant block. Default to VSCode if unknow
 
 Install the extension. Two paths:
 
-- **Marketplace** (once published):
+- **Marketplace** (when published):
   ```
   ext install seagrass-local.seagrass-vscode
   ```
 
-- **Local development** (from a checkout of the seagrass repo — recommended while the extension is private):
+- **Local development** (from a checkout of the seagrass repo):
   ```bash
   cd editors/vscode
   bun install
   bun run build
   ```
-  Then point the server at the local binary (no .vsix packaging script is currently defined; run the language server directly):
+  Then point the server at the local binary. Release VSIX packaging is owned by
+  the root `scripts/package-release.ts --vscode` command; do not invent an
+  editor-local package script.
 
 Settings (`.vscode/settings.json`):
 
@@ -77,9 +103,12 @@ Settings (`.vscode/settings.json`):
   "seagrass.serverCommand": "seagrass",
   "seagrass.serverArgs": [],
   "seagrass.diagnostics.security.enabled": true,
+  "seagrass.diagnostics.confidenceDecorations": true,
   "seagrass.inlayHints.enabled": true,
   "seagrass.workspaceIndex.enabled": true,
-  "seagrass.trace.server": "off"
+  "seagrass.tridentCoverage.reportPath": "",
+  "seagrass.tridentCoverage.showExecutionCount": true,
+  "seagrass.trace.server": false
 }
 ```
 
@@ -170,7 +199,7 @@ Expected: at least one diagnostic with `topic: "seagrass/solana.code-quality.unc
 If empty:
 
 - Re-run with `RUST_LOG=debug seagrass diagnostics /tmp/seagrass-smoke.rs --json 2>&1 | head -40` and report.
-- Verify `seagrass --version` matches the latest release.
+- Verify `seagrass --version` matches the intended checkout or release version.
 
 ### 4. (Optional) Wire into CI
 
@@ -179,10 +208,29 @@ Add to the project's CI:
 ```yaml
 - name: Seagrass lint
   run: |
-    cargo install seagrass --locked
+    cargo install seagrass-cli --locked
     seagrass diagnostics ./programs --json > seagrass-report.json
     test "$(jq '[.[] | select(.severity == "ERROR")] | length' seagrass-report.json)" = "0"
 ```
+
+For GitHub code scanning, use SARIF:
+
+```yaml
+- name: Seagrass SARIF
+  run: |
+    cargo install seagrass-cli --locked
+    seagrass diagnostics ./programs --sarif > seagrass.sarif
+- uses: github/codeql-action/upload-sarif@v3
+  if: always()
+  with:
+    sarif_file: seagrass.sarif
+```
+
+If the project has Trident coverage JSON, point VS Code at it with
+`seagrass.tridentCoverage.reportPath` or leave that empty and let the extension
+discover reports under `trident-tests/`. Keep
+`seagrass.tridentCoverage.showExecutionCount` enabled when using coverage to
+decide whether heuristic lint gaps are ready to promote.
 
 ## What to do AFTER install
 

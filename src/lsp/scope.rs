@@ -85,6 +85,11 @@ pub(crate) fn is_const_like_identifier(identifier: &str) -> bool {
             .all(|ch| ch.is_ascii_uppercase() || ch.is_ascii_digit() || ch == '_')
 }
 
+pub(crate) fn handler_identifier_should_be_resolved(identifier: &str) -> bool {
+    matches!(identifier.as_bytes().first(), Some(b'a'..=b'z'))
+        || is_const_like_identifier(identifier)
+}
+
 pub(crate) fn program_module_value_names(items: &[syn::Item]) -> Vec<String> {
     items
         .iter()
@@ -107,6 +112,27 @@ pub(crate) fn program_module_value_names_from_document(
     names.sort();
     names.dedup();
     names
+}
+
+pub(crate) fn text_file_value_names(source: &str) -> Vec<String> {
+    let mut names = text_block_item_value_names(source);
+    names.extend(text_imported_value_names(source));
+    names.extend(text_program_module_value_names(source));
+    names.sort();
+    names.dedup();
+    names
+}
+
+pub(crate) fn block_item_value_names(block: &syn::Block) -> Vec<String> {
+    block
+        .stmts
+        .iter()
+        .filter_map(|stmt| match stmt {
+            syn::Stmt::Item(item) => Some(item_value_names(item)),
+            _ => None,
+        })
+        .flatten()
+        .collect()
 }
 
 pub(crate) fn item_fn_has_anchor_context_arg(item_fn: &syn::ItemFn) -> bool {
@@ -151,6 +177,7 @@ impl TextHandlerScope {
         bindings.extend(text_active_pattern_bindings(completed_body_lines(
             body_prefix,
         )));
+        bindings.extend(text_block_item_bindings(completed_body_lines(body_prefix)));
         bindings.extend(text_local_binding_bindings(completed_body_lines(
             body_prefix,
         )));
@@ -167,6 +194,18 @@ impl TextHandlerScope {
     pub(crate) fn bindings(&self) -> &[TextHandlerBinding] {
         &self.bindings
     }
+}
+
+pub(crate) fn text_enclosing_function_body(source: &str, position: Position) -> Option<&str> {
+    let offset = byte_offset_at(source, position)?;
+    let before_cursor = source.get(..offset.min(source.len()))?;
+    let function_start = last_function_keyword_before(before_cursor)?;
+    let open = function_start + source.get(function_start..)?.find('{')?;
+    if open > offset {
+        return None;
+    }
+    let close = matching_close_delimiter(source, open, '{', '}').unwrap_or(source.len());
+    source.get(open + '{'.len_utf8()..close)
 }
 
 pub(crate) fn type_has_anchor_context_arg(ty: &Type) -> bool {
@@ -219,10 +258,37 @@ fn collect_use_tree_names(tree: &syn::UseTree, names: &mut Vec<String>) {
     }
 }
 
+fn text_imported_value_names(source: &str) -> Vec<String> {
+    let mut names = Vec::new();
+    let mut depth = 0usize;
+    for line in source.lines() {
+        if depth == 0 {
+            collect_line_imported_value_names(line, &mut names);
+        }
+        depth = line.chars().fold(depth, |depth, ch| match ch {
+            '{' => depth + 1,
+            '}' => depth.saturating_sub(1),
+            _ => depth,
+        });
+    }
+    names
+}
+
+fn collect_line_imported_value_names(line: &str, names: &mut Vec<String>) {
+    let trimmed = line.trim();
+    if !trimmed.starts_with("use ") {
+        return;
+    }
+    let Ok(item) = syn::parse_str::<syn::ItemUse>(trimmed) else {
+        return;
+    };
+    collect_use_tree_names(&item.tree, names);
+}
+
 fn text_program_module_value_names(source: &str) -> Vec<String> {
     text_program_module_bodies(source)
         .into_iter()
-        .flat_map(text_top_level_value_names)
+        .flat_map(text_block_item_value_names)
         .collect()
 }
 
@@ -250,13 +316,20 @@ fn text_program_module_bodies(source: &str) -> Vec<&str> {
     bodies
 }
 
-fn text_top_level_value_names(body: &str) -> Vec<String> {
+pub(crate) fn text_block_item_value_names(body: &str) -> Vec<String> {
+    text_block_item_value_bindings(body)
+        .into_iter()
+        .map(|binding| binding.name)
+        .collect()
+}
+
+pub(crate) fn text_block_item_value_bindings(body: &str) -> Vec<TextHandlerBinding> {
     let mut names = Vec::new();
     let mut depth = 0usize;
     for line in body.lines() {
         if depth == 0 {
-            if let Some(name) = text_value_declaration_name(line) {
-                names.push(name);
+            if let Some(binding) = text_value_declaration_binding(line) {
+                names.push(binding);
             }
         }
         depth = line.chars().fold(depth, |depth, ch| match ch {
@@ -268,17 +341,41 @@ fn text_top_level_value_names(body: &str) -> Vec<String> {
     names
 }
 
-fn text_value_declaration_name(line: &str) -> Option<String> {
+fn text_block_item_bindings(body_prefix: &str) -> Vec<TextHandlerBinding> {
+    text_block_item_value_bindings(body_prefix)
+}
+
+fn text_value_declaration_binding(line: &str) -> Option<TextHandlerBinding> {
     let trimmed = line.trim();
-    let declaration = VALUE_DECLARATION_PREFIXES
-        .iter()
-        .find_map(|prefix| trimmed.strip_prefix(prefix))?;
+    let (prefix, declaration) = VALUE_DECLARATION_PREFIXES.iter().find_map(|prefix| {
+        trimmed
+            .strip_prefix(prefix)
+            .map(|declaration| (*prefix, declaration))
+    })?;
     let name_end = declaration
         .char_indices()
         .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx))
         .unwrap_or(declaration.len());
     let name = declaration.get(..name_end)?;
-    is_identifier(name).then(|| name.to_string())
+    is_identifier(name).then(|| TextHandlerBinding {
+        name: name.to_string(),
+        type_display: text_value_declaration_type(prefix, &declaration[name_end..]),
+        initializer_text: None,
+    })
+}
+
+fn text_value_declaration_type(prefix: &str, declaration_after_name: &str) -> Option<String> {
+    if !prefix.contains("const") && !prefix.contains("static") {
+        return None;
+    }
+    let typed = declaration_after_name.trim_start().strip_prefix(':')?;
+    let ty = typed
+        .split_once('=')
+        .map_or(typed, |(ty, _)| ty)
+        .trim()
+        .trim_end_matches(';')
+        .trim();
+    (!ty.is_empty()).then(|| ty.to_string())
 }
 
 fn completed_body_lines(body_prefix: &str) -> &str {

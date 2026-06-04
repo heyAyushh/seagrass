@@ -4,7 +4,7 @@ Status: Active
 
 Two release proofs cannot be produced by local tests:
 
-- nightly fuzz clean for 24h
+- clean fuzz workflow covering 40 aggregate fuzz-hours
 - external review signoff, either paid review or the 30-day community audit path
 
 The release workflow enforces those proofs with:
@@ -12,6 +12,16 @@ The release workflow enforces those proofs with:
 ```sh
 bun scripts/check-release-readiness.ts --version "$(tr -d '[:space:]' < VERSION)"
 ```
+
+Before tagging locally, run the full production preflight in release mode:
+
+```sh
+bun scripts/verify-production.ts --release
+```
+
+Release mode runs the normal production gate but switches release-readiness
+validation from pending-shape checks to strict evidence checks for the current
+commit.
 
 Use `--readiness-path <path>` to validate a generated evidence artifact before
 copying it into `docs/release-readiness.json`.
@@ -35,8 +45,8 @@ bun scripts/check-release-readiness.ts \
 | `fuzzCleanRun.status` | Must be `passed`. |
 | `fuzzCleanRun.workflowRunUrl` | concrete GitHub Actions run URL under this repo with a positive run id. |
 | `fuzzCleanRun.commit` | Must match the release commit. |
-| `fuzzCleanRun.startedAt` / `completedAt` | Must span at least 24 elapsed hours for final evidence. |
-| `fuzzCleanRun.aggregateFuzzHours` | Must be at least 24 and no more than elapsed workflow time. |
+| `fuzzCleanRun.startedAt` / `completedAt` | Must be valid workflow timestamps with `completedAt` after `startedAt`. |
+| `fuzzCleanRun.aggregateFuzzHours` | Must be at least 40 aggregate fuzz-hours across the sharded targets. |
 | `fuzzCleanRun.corpusSha256` | Required after `status` is `passed`; SHA-256 tree hash of `fuzz/corpus` after importing the workflow artifacts. |
 | `fuzzCleanRun.targets` | Must list the fuzz targets covered. |
 | `fuzzCleanRun.workflowMatrixTargets` | Must match `.github/workflows/fuzz.yaml` and `fuzz/Cargo.toml`. |
@@ -53,7 +63,7 @@ bun scripts/check-release-readiness.ts \
 
 ## Updating The Evidence
 
-After the nightly fuzz workflow has produced the required clean run, update
+After the fuzz workflow has produced the required clean run, update
 `fuzzCleanRun` with the workflow URL, release commit, timestamps, target list,
 and aggregate hours.
 
@@ -72,8 +82,8 @@ bun scripts/import-fuzz-artifacts.ts \
 ```
 
 The importer rejects stale target matrices, stale shard counts, missing shard
-archives, unsafe tar members, placeholder workflow run ids, non-24h readiness
-evidence, and mismatched commits. It also writes `fuzzCleanRun.corpusSha256`,
+archives, unsafe tar members, placeholder workflow run ids, insufficient
+aggregate fuzz-hour evidence, and mismatched commits. It also writes `fuzzCleanRun.corpusSha256`,
 which the strict readiness gate compares against the checked-in
 `fuzz/corpus` tree before release packaging can proceed.
 The release-readiness regression suite rejects placeholder workflow run ids,

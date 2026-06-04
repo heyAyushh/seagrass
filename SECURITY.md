@@ -18,8 +18,10 @@ to the affected upstream project.
 
 Preferred: use GitHub private vulnerability reporting for this repository.
 
-Fallback: email the maintainers listed in the package metadata and include
-`[seagrass-security]` in the subject.
+Fallback: if private vulnerability reporting is unavailable, open a public issue
+asking maintainers to enable a private reporting channel. Do not include exploit
+details, crash inputs, credentials, or unreleased vulnerability details in the
+public issue.
 
 Please include:
 

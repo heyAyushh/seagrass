@@ -1,0 +1,35 @@
+---
+description: Use Seagrass diagnostics and reports before editing Solana Rust programs.
+globs: ["**/*.rs", "**/Anchor.toml", "**/Seagrass.toml", "**/Cargo.toml"]
+alwaysApply: false
+---
+
+# Seagrass Solana Workflow
+
+Use Seagrass as the source of truth for Anchor, Pinocchio, and native Solana
+framework semantics. Rust-analyzer can still cover generic Rust, but do not
+infer Anchor account constraints, PDA seeds, or Solana security requirements
+from names when Seagrass exposes parsed evidence.
+
+Before changing a Solana Rust program:
+
+```sh
+seagrass diagnostics <path> --json
+```
+
+For unsaved buffers or generated snippets, preserve workspace context:
+
+```sh
+cat <file>.rs | seagrass diagnostics --stdin --stdin-path <file>.rs --json
+```
+
+When an LSP bridge is available, prefer the structured commands in
+`docs/agents.md`:
+
+- `seagrass/instructionSummary`
+- `seagrass/programReport`
+- `seagrass/proposeAssists`
+
+Apply `machineApplicable` Seagrass edits instead of hand-writing equivalent
+account-structure changes. If a diagnostic looks wrong, minimize it with
+`skills/seagrass-debug-fp/SKILL.md` before suppressing it.

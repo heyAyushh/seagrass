@@ -2,8 +2,8 @@ use {
     crate::{
         diagnostics::{
             bind_current_document_related_uri, collect, diagnostic_from_range,
-            enrich_current_document_related_information, registry::AnchorDiagnosticKind,
-            CURRENT_DOCUMENT_PLACEHOLDER_URI,
+            enrich_confidence_related_information, enrich_current_document_related_information,
+            registry::AnchorDiagnosticKind, CURRENT_DOCUMENT_PLACEHOLDER_URI,
         },
         document::ParsedDocument,
     },
@@ -158,4 +158,40 @@ pub struct Create<'info> {
             "missing related information containing {expected:?}; got {related:?}"
         );
     }
+}
+
+#[test]
+fn confidence_related_information_is_prepended_for_editor_peek() {
+    let mut diagnostics = vec![Diagnostic {
+        range: Range::default(),
+        severity: None,
+        code: None,
+        code_description: None,
+        source: None,
+        message: "synthetic diagnostic".to_string(),
+        related_information: None,
+        tags: None,
+        data: Some(serde_json::json!({
+            "confidence": "heuristic",
+            "topic": "seagrass/security.owner-check",
+            "applicability": "MachineApplicable",
+            "quickfix": "add-owner-check",
+        })),
+    }];
+
+    enrich_confidence_related_information(&mut diagnostics);
+
+    let related = diagnostics[0]
+        .related_information
+        .as_ref()
+        .expect("confidence metadata");
+    assert!(related[0].message.contains(
+        "Seagrass confidence: heuristic; topic: seagrass/security.owner-check; applicability: MachineApplicable; quickfix: add-owner-check"
+    ));
+    assert!(related[1]
+        .message
+        .contains("Why heuristic: Seagrass used conservative pattern evidence"));
+    assert!(related[2]
+        .message
+        .contains("Fix preview: add an owner validation check."));
 }

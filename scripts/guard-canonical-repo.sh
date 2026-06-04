@@ -1,23 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CANONICAL_REPO="/Users/ay/Documents/codes/solana/seagrass"
-repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+REQUIRED_MARKERS=("AGENTS.md" "VERSION" "src")
 
-case "$repo_root" in
-  "$CANONICAL_REPO"|"$CANONICAL_REPO"/*)
-    ;;
-  *)
-    printf 'wrong repository: %s\nexpected: %s\n' "$repo_root" "$CANONICAL_REPO" >&2
+repo_root="$(git rev-parse --show-toplevel 2>/dev/null)"
+
+for marker in "${REQUIRED_MARKERS[@]}"; do
+  if [[ ! -e "$repo_root/$marker" ]]; then
+    printf 'wrong repository: %s\nmissing marker: %s\n' "$repo_root" "$marker" >&2
     exit 1
-    ;;
-esac
+  fi
+done
 
 case "$PWD" in
-  "$CANONICAL_REPO"|"$CANONICAL_REPO"/*)
+  "$repo_root"|"$repo_root"/*)
     ;;
   *)
-    printf 'wrong working directory: %s\nexpected under: %s\n' "$PWD" "$CANONICAL_REPO" >&2
+    printf 'wrong working directory: %s\nexpected under: %s\n' "$PWD" "$repo_root" >&2
     exit 1
     ;;
 esac

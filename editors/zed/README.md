@@ -18,7 +18,7 @@ The shared editor surface is defined in [`../UI_CONTRACT.md`](../UI_CONTRACT.md)
    editors/zed
    ```
 
-3. Open the Anchor checkout or another Anchor project.
+3. Open an Anchor or Solana project.
 
 ## Server Command Resolution
 
@@ -26,8 +26,8 @@ The extension starts `seagrass` in this order:
 
 1. `lsp.seagrass.binary` from Zed settings.
 2. `seagrass` from `PATH`.
-3. `cargo run --manifest-path Cargo.toml --quiet` when the opened worktree is this repository.
-4. `cargo run --manifest-path <this checkout>/Cargo.toml --quiet` as the default dev-extension fallback for any other Anchor project.
+3. `cargo run --manifest-path Cargo.toml --quiet` when the opened worktree is the `crates/seagrass` CLI package.
+4. `cargo run --manifest-path <this checkout>/crates/seagrass/Cargo.toml --quiet` as the default dev-extension fallback for any other Anchor project.
 
 The default dev-extension fallback should work on this machine after installing the extension from this checkout. For another server checkout, point Zed at that checkout's server package:
 
@@ -40,7 +40,7 @@ The default dev-extension fallback should work on this machine after installing 
         "arguments": [
           "run",
           "--manifest-path",
-          "<seagrass-checkout>/Cargo.toml",
+          "<seagrass-checkout>/crates/seagrass/Cargo.toml",
           "--quiet"
         ]
       },
@@ -53,6 +53,7 @@ The default dev-extension fallback should work on this machine after installing 
         "diagnostics.security.initialization": "warn",
         "diagnostics.security.staleCpiReload": "warn",
         "diagnostics.security.signerAuthorization": "warn",
+        "diagnostics.security.writableAccounts": "warn",
         "diagnostics.security.arbitraryCpi": "warn",
         "diagnostics.security.instructionDataBounds": "warn",
         "diagnostics.security.pdaSeedCollision": "warn",
@@ -83,12 +84,12 @@ Use `!rust-analyzer` when you want Seagrass without rust-analyzer while preservi
 As an alternative to the `binary` setting, set `SEAGRASS_MANIFEST_PATH` in the shell environment used to launch Zed:
 
 ```sh
-export SEAGRASS_MANIFEST_PATH=<seagrass-checkout>/Cargo.toml
+export SEAGRASS_MANIFEST_PATH=<seagrass-checkout>/crates/seagrass/Cargo.toml
 ```
 
 ## Capabilities
 
-The extension registers `seagrass` with Rust's `rust` language id and advertises quick-fix/source code-action kinds to Zed. The server still owns the real LSP capability negotiation: diagnostics, completions, hovers, signature help, semantic tokens, code actions, document/workspace symbols, document links to Anchor docs, definition, references, workspace-backed Anchor rename/prepare-rename, highlights, selection ranges, folding ranges, watched files, workspace folders, and execute commands for status/artifacts/recent logs/error coverage/support matrix/generator profile. Artifact reports include Anchor projects plus deployable Pinocchio and native Solana Cargo programs.
+The extension registers `seagrass` with Rust's `rust` language id and advertises quick-fix/source code-action kinds to Zed. The server still owns the real LSP capability negotiation: diagnostics, completions, hovers, signature help, semantic tokens, code actions, document/workspace symbols, document links to Anchor docs, definition, references, workspace-backed Anchor rename/prepare-rename, highlights, selection ranges, folding ranges, watched files, workspace folders, and execute commands for status/artifacts/recent logs/error coverage/support matrix/generator profile. Artifact reports include Anchor projects plus deployable Pinocchio and native Solana Cargo programs, and native/Pinocchio security diagnostics include account-scoped owner/type/signer/writable validation plus expression-scoped CPI program-id checks.
 
 Zed settings under `lsp.seagrass.settings` are passed through to `workspace/didChangeConfiguration`. The extension also sends `diagnostics.transport` during initialization. Zed defaults to `push` so each Seagrass diagnostic has one editor transport. Use `pull` only if your Zed build needs pull-based Problems population. Mixed push-and-pull transport is intentionally rejected because Zed can display duplicate diagnostics for the same range.
 
@@ -98,7 +99,9 @@ Zed currently receives materialized quick-fix edits. `zed_extension_api` 0.7.0 d
 
 `diagnostics.coldPath` defaults to `idle`: hot parser, Anchor-structure, and shallow handler-scope diagnostics stay live while full usage, security, and project diagnostics wait for a typing pause. Use `save` to run full diagnostics on open/save only, or `manual` to leave full checks to explicit pull/command-driven flows.
 
-`agent.mode` defaults to `false`. When enabled, Seagrass fills unset settings with agent-friendly defaults: security and experimental diagnostics on, strict native security on, all nine security families at `warn`, `diagnostics.coldPath` at `idle`, and `trace.server` on. Set any specific key beside it to override that preset.
+`agent.mode` defaults to `false`. When enabled, Seagrass fills unset settings with assistant and automation defaults: security and experimental diagnostics on, strict native security on, all nine security families at `warn`, `diagnostics.coldPath` at `idle`, and `trace.server` on. Set any specific key beside it to override that preset.
+
+`telemetry.completion.enabled` and `telemetry.diagnostics.enabled` control local editor observability only. Seagrass does not upload editor events or recent logs. Use `trace.server: true` when a user needs verbose local debugging for a support report.
 
 During `initialized`, Seagrass dynamically registers `workspace/didChangeWatchedFiles` for `**/Cargo.toml`, `**/Anchor.toml`, and `**/Seagrass.toml`. When Zed's filesystem watcher reports a change to one of those manifests, Seagrass refreshes the workspace index and republishes diagnostics for every open document, so manifest-driven rules like `anchor-check-cfg` clear immediately after you save the manifest — no need to edit the Rust source again. Registration is gated on the client advertising `workspace.didChangeWatchedFiles.dynamicRegistration`; on clients that don't (e.g. Claude Code's built-in LSP tool), Seagrass silently skips the registration and falls back to refreshing on the next text-document edit.
 
@@ -112,21 +115,21 @@ When Zed starts the server, the resolved command should match the shared startup
 Seagrass
 server: <command> <args>
 cwd: <worktree or configured command cwd>
-sync: full
+sync: incremental
 diagnostics: push
 workspaces: <opened worktree>
 features: diagnostics, completion, hover, symbols, fixes, logs
 ```
 
-The server also exposes a bounded in-memory log snapshot over LSP:
+The server also exposes a bounded in-memory log snapshot over LSP. The snapshot is local to the running language-server process and is intended for support/debugging, not analytics export:
 
 ```json
 { "command": "seagrass/logs", "arguments": [] }
 ```
 
-The same execute-command surface exposes `seagrass/status`, `seagrass/artifacts`, `seagrass/feedback`, `seagrass/errorCoverage`, `seagrass/supportMatrix`, `seagrass/generatorProfile`, and `seagrass/analyze`. Zed's adapter stays thin, so these commands are implemented once in the server and remain available to other LSP clients and agent harnesses.
+The same execute-command surface exposes `seagrass/status`, `seagrass/artifacts`, `seagrass/logs`, `seagrass/feedback`, `seagrass/errorCoverage`, `seagrass/supportMatrix`, `seagrass/generatorProfile`, and `seagrass/analyze`. Zed's adapter stays thin, so these commands are implemented once in the server and remain available to other LSP clients and agent harnesses.
 
-Assistant slash commands are registered as `/seagrass-status`, `/seagrass-coverage`, `/seagrass-artifacts`, and `/seagrass-feedback`. Zed 0.7.0 does not expose a direct Assistant-to-running-LSP execute-command bridge, so the adapter sends a one-shot `workspace/executeCommand` request to the resolved Seagrass binary and returns the server JSON. If the binary or cargo fallback is unavailable, the slash command returns a "Start the Seagrass server first" message instead of failing silently.
+Assistant slash commands are registered as `/seagrass-status`, `/seagrass-analyze`, `/seagrass-coverage`, `/seagrass-artifacts`, `/seagrass-program-report`, `/seagrass-error-coverage`, `/seagrass-support-matrix`, `/seagrass-generator-profile`, `/seagrass-logs`, and `/seagrass-feedback`. Zed 0.7.0 does not expose a direct Assistant-to-running-LSP execute-command bridge, so the adapter sends a one-shot `workspace/executeCommand` request to the resolved Seagrass binary and returns the server JSON. If the binary or cargo fallback is unavailable, the slash command returns a "Start the Seagrass server first" message instead of failing silently.
 
 `seagrass/feedback` returns the bundled feedback URL from the server. The Zed extension does not expose a native command for it because `zed_extension_api` 0.7.0 cannot open external URLs from the wasm extension; use `/seagrass-feedback` to print the URL in Assistant.
 

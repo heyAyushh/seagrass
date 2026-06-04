@@ -1,10 +1,17 @@
 pub(crate) const SERVER_ID: &str = "seagrass";
 pub(crate) const SERVER_BINARY: &str = "seagrass";
+pub(crate) const SERVER_PACKAGE: &str = "seagrass-cli";
 pub(crate) const SERVER_MANIFEST_ENV: &str = "SEAGRASS_MANIFEST_PATH";
 pub(crate) const DEFAULT_DIAGNOSTICS_TRANSPORT: &str = "push";
 pub(crate) const SLASH_STATUS: &str = "seagrass-status";
+pub(crate) const SLASH_ANALYZE: &str = "seagrass-analyze";
 pub(crate) const SLASH_COVERAGE: &str = "seagrass-coverage";
 pub(crate) const SLASH_ARTIFACTS: &str = "seagrass-artifacts";
+pub(crate) const SLASH_PROGRAM_REPORT: &str = "seagrass-program-report";
+pub(crate) const SLASH_ERROR_COVERAGE: &str = "seagrass-error-coverage";
+pub(crate) const SLASH_SUPPORT_MATRIX: &str = "seagrass-support-matrix";
+pub(crate) const SLASH_GENERATOR_PROFILE: &str = "seagrass-generator-profile";
+pub(crate) const SLASH_LOGS: &str = "seagrass-logs";
 pub(crate) const SLASH_FEEDBACK: &str = "seagrass-feedback";
 pub(crate) const START_SERVER_FIRST: &str = "Start the Seagrass server first.";
 pub(crate) const NODE_EVAL_FLAG: &str = "-e";
@@ -89,8 +96,10 @@ child.on("close", code => {
 });
 send(config.messages.initialize);
 "#;
-pub(crate) const SERVER_MANIFEST_FROM_EXTENSION: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/../../Cargo.toml");
+pub(crate) const SERVER_MANIFEST_FROM_EXTENSION: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../crates/seagrass/Cargo.toml"
+);
 pub(crate) const SECURITY_LEVEL_SETTINGS: &[&str] = &[
     "diagnostics.security.ownerChecks",
     "diagnostics.security.typeCosplay",
@@ -98,6 +107,7 @@ pub(crate) const SECURITY_LEVEL_SETTINGS: &[&str] = &[
     "diagnostics.security.initialization",
     "diagnostics.security.staleCpiReload",
     "diagnostics.security.signerAuthorization",
+    "diagnostics.security.writableAccounts",
     "diagnostics.security.arbitraryCpi",
     "diagnostics.security.instructionDataBounds",
     "diagnostics.security.pdaSeedCollision",

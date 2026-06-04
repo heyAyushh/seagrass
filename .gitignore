@@ -6,5 +6,13 @@
 .DS_Store
 *.tsbuildinfo
 
+# Fuzz runs expand target-local corpora. Keep only checked-in seed fixtures.
+fuzz/corpus/fuzz_anchor_preflight/*
+!fuzz/corpus/fuzz_anchor_preflight/basic.bin
+
 # Editor build artifacts (not published)
 editors/vscode/dist/
+
+# Local assistant/editor activation files. Tracked templates live in editors/.
+/opencode.json
+/.cursor/

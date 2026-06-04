@@ -8,7 +8,15 @@ Seagrass should feel like the same tool in every editor. Keep the adapter thin, 
 - Server id: `seagrass`
 - Output/log channel label: `Seagrass`
 - Visible status label: `Seagrass`
-- Role: Anchor-specific diagnostics, completions, hovers, symbols, and fixes for Solana programs using Anchor, plus local artifact evidence for Anchor, Pinocchio, and native Solana programs.
+- Role: Anchor-first diagnostics, completions, hovers, symbols, and fixes for
+  Solana programs using Anchor, plus native/Pinocchio security invariants and
+  local artifact evidence for Anchor, Pinocchio, and native Solana programs.
+  Rust document formatting is server-owned and exposed through the standard LSP
+  formatting provider. Native Solana and Pinocchio parity is stable applicable
+  parity: shared Solana diagnostics and artifact evidence use the same LSP
+  surface, with account-scoped owner/type/signer/writable checks and
+  expression-scoped CPI program-id checks, while Anchor-only
+  constraint/account/IDL/type semantics remain non-applicable.
 - Relationship to Rust tooling: Seagrass runs standalone and owns Anchor semantics. Other Rust servers are optional.
 
 ## Commands
@@ -42,6 +50,13 @@ The bundled feedback destination lives in `editors/feedback.toml`. Editor
 adapters may expose native commands or slash commands, but they should request
 `seagrass/feedback` from the server instead of hardcoding the URL.
 
+Zed Assistant slash commands mirror the server-owned command surface:
+
+- `/seagrass-status`
+- `/seagrass-coverage`
+- `/seagrass-artifacts`
+- `/seagrass-feedback`
+
 ## Status Surface
 
 When an editor exposes a persistent status surface, use `Seagrass` as the label and keep it diagnostic-aware for the active file:
@@ -62,7 +77,7 @@ Every adapter that can write startup output should use this shape:
 Seagrass
 server: <command> <args>
 cwd: <working directory>
-sync: full
+sync: incremental
 diagnostics: <push|pull|both>
 workspaces: <comma-separated roots|none>
 features: <short comma-separated feature list>
@@ -77,6 +92,13 @@ Quick fixes may carry snippet tabstops when an editor advertises
 the server's raw snippet text. Editors that do not advertise it receive the same
 materialized edit text without tabstops.
 
+Formatting should use the server's `textDocument/formatting` response. Adapters
+should not shell out to `rustfmt` independently for Seagrass-managed documents.
+
+Framework parity is documented in `docs/framework-parity.md`. Editor adapters
+should not describe native Solana or Pinocchio as having Anchor constraint
+completions, hovers, or IDL/type artifact checks.
+
 ## Settings
 
 VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settings equivalent:
@@ -89,6 +111,7 @@ VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settin
 - `diagnostics.security.initialization`
 - `diagnostics.security.staleCpiReload`
 - `diagnostics.security.signerAuthorization`
+- `diagnostics.security.writableAccounts`
 - `diagnostics.security.arbitraryCpi`
 - `diagnostics.security.instructionDataBounds`
 - `diagnostics.security.pdaSeedCollision`
@@ -107,9 +130,10 @@ VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settin
 
 Security family settings accept `off`, `warn`, `error`, or `hint`. `agent.mode`
 defaults to `false`; when enabled, the server fills unset analysis settings with
-agent-friendly defaults: every security family at `warn`, cold-path diagnostics
-at `idle`, security and experimental diagnostics enabled, strict native security
-enabled, and server tracing enabled. Explicit user settings always win.
+assistant and automation defaults: every security family at `warn`, cold-path
+diagnostics at `idle`, security and experimental diagnostics enabled, strict
+native security enabled, and server tracing enabled. Explicit user settings
+always win.
 
 Server launch settings are editor-specific because each editor models binaries differently. The behavior should still resolve in this order when possible:
 

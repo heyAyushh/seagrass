@@ -10,6 +10,13 @@ use {
 
 mod catalog_tests;
 mod core_tests;
+mod error_annotation_tests;
+mod expression_scope_tests;
+mod instruction_arg_member_tests;
+mod module_path_tests;
+mod parity_tests;
+mod program_id_tests;
+mod seed_tests;
 mod semantic_tests;
 
 struct ReferenceCompletionScenario {

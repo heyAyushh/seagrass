@@ -2,10 +2,10 @@
   "name": "seagrass-vscode",
   "displayName": "Seagrass",
   "description": "Anchor-specific diagnostics, completions, hovers, symbols, and fixes plus local artifact evidence for Anchor, Pinocchio, and native Solana Rust programs.",
-  "version": "1.0.2",
+  "version": "0.1.2",
   "license": "MIT",
   "publisher": "seagrass-local",
-  "private": true,
+  "private": false,
   "packageManager": "bun@1.3.8",
   "engines": {
     "vscode": "^1.90.0"
@@ -15,7 +15,6 @@
   ],
   "activationEvents": [
     "onLanguage:rust",
-    "onCommand:seagrass.status",
     "onCommand:seagrass.analyze",
     "onCommand:seagrass.artifacts",
     "onCommand:seagrass.feedback",
@@ -25,6 +24,14 @@
     "onCommand:seagrass.logs",
     "onCommand:seagrass.restart",
     "onCommand:seagrass.showOutput",
+    "onCommand:seagrass.explainDiagnostic",
+    "onCommand:seagrass.suppressDiagnostic",
+    "onCommand:seagrass.openLintDoc",
+    "onCommand:seagrass.copySuppression",
+    "onCommand:seagrass.reportFalsePositive",
+    "onCommand:seagrass.scanWorkspace",
+    "onCommand:seagrass.showTridentCoverage",
+    "onCommand:seagrass.closeTridentCoverage",
     "workspaceContains:Anchor.toml"
   ],
   "main": "./dist/extension.js",
@@ -69,6 +76,38 @@
       {
         "command": "seagrass.showOutput",
         "title": "Seagrass: Output"
+      },
+      {
+        "command": "seagrass.explainDiagnostic",
+        "title": "Seagrass: Explain Diagnostic"
+      },
+      {
+        "command": "seagrass.suppressDiagnostic",
+        "title": "Seagrass: Suppress Diagnostic"
+      },
+      {
+        "command": "seagrass.openLintDoc",
+        "title": "Seagrass: Open Lint Doc"
+      },
+      {
+        "command": "seagrass.copySuppression",
+        "title": "Seagrass: Copy Suppression"
+      },
+      {
+        "command": "seagrass.reportFalsePositive",
+        "title": "Seagrass: Report False Positive"
+      },
+      {
+        "command": "seagrass.scanWorkspace",
+        "title": "Seagrass: Scan Workspace For Issues"
+      },
+      {
+        "command": "seagrass.showTridentCoverage",
+        "title": "Seagrass: Show Trident Coverage"
+      },
+      {
+        "command": "seagrass.closeTridentCoverage",
+        "title": "Seagrass: Close Trident Coverage"
       }
     ],
     "menus": {
@@ -110,6 +149,60 @@
         },
         {
           "command": "seagrass.showOutput"
+        },
+        {
+          "command": "seagrass.explainDiagnostic",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.suppressDiagnostic",
+          "when": "false"
+        },
+        {
+          "command": "seagrass.openLintDoc",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.copySuppression",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.reportFalsePositive",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.scanWorkspace",
+          "when": "workspaceFolderCount > 0"
+        },
+        {
+          "command": "seagrass.showTridentCoverage",
+          "when": "editorLangId == rust"
+        },
+        {
+          "command": "seagrass.closeTridentCoverage",
+          "when": "editorLangId == rust"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "seagrass.explainDiagnostic",
+          "when": "editorLangId == rust",
+          "group": "seagrass@1"
+        },
+        {
+          "command": "seagrass.openLintDoc",
+          "when": "editorLangId == rust",
+          "group": "seagrass@2"
+        },
+        {
+          "command": "seagrass.copySuppression",
+          "when": "editorLangId == rust",
+          "group": "seagrass@3"
+        },
+        {
+          "command": "seagrass.reportFalsePositive",
+          "when": "editorLangId == rust",
+          "group": "seagrass@4"
         }
       ]
     },
@@ -118,26 +211,26 @@
       "properties": {
         "seagrass.serverCommand": {
           "type": "string",
-          "default": "cargo",
-          "description": "Command used to start Seagrass."
+          "default": "seagrass",
+          "description": "Command used to start Seagrass. Enable seagrass.dev.useCargoFromCheckout for repository development."
         },
         "seagrass.serverArgs": {
           "type": "array",
-          "default": [
-            "run",
-            "-p",
-            "seagrass",
-            "--quiet"
-          ],
+          "default": [],
           "items": {
             "type": "string"
           },
           "description": "Arguments passed to the Seagrass server command."
         },
+        "seagrass.dev.useCargoFromCheckout": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, launch `cargo run -p seagrass-cli --quiet` from seagrass.serverCwd instead of the installed `seagrass` binary."
+        },
         "seagrass.serverCwd": {
           "type": "string",
           "default": "",
-          "description": "Working directory for the server command. For local development, this must be the checkout that contains the seagrass Cargo package."
+          "description": "Working directory for the server command. For local development, this must be the checkout that contains the seagrass-cli Cargo package."
         },
         "seagrass.serverEnv": {
           "type": "object",
@@ -150,7 +243,7 @@
         "seagrass.agent.mode": {
           "type": "boolean",
           "default": false,
-          "description": "Fill unset Seagrass analysis settings with agent-friendly diagnostics, security, and tracing defaults. Explicit settings still win."
+          "description": "Fill unset Seagrass analysis settings with assistant and automation diagnostics, security, and tracing defaults. Explicit settings still win."
         },
         "seagrass.feedback.url": {
           "type": "string",
@@ -228,6 +321,17 @@
           "default": "warn",
           "description": "Severity for signer-authorization security diagnostics."
         },
+        "seagrass.diagnostics.security.writableAccounts": {
+          "type": "string",
+          "enum": [
+            "off",
+            "warn",
+            "error",
+            "hint"
+          ],
+          "default": "warn",
+          "description": "Severity for writable-account security diagnostics."
+        },
         "seagrass.diagnostics.security.arbitraryCpi": {
           "type": "string",
           "enum": [
@@ -270,6 +374,34 @@
           ],
           "default": "push",
           "description": "Diagnostics transport used for VS Code. Use push by default to avoid duplicate diagnostics; pull enables LSP 3.17 pull diagnostics; both is useful only for protocol debugging and can duplicate diagnostics in VS Code."
+        },
+        "seagrass.diagnostics.confidenceDecorations": {
+          "type": "boolean",
+          "default": true,
+          "description": "Underline derived and heuristic Seagrass diagnostics differently and show confidence counts in the status bar tooltip. Confidence metadata is attached by the server as related information."
+        },
+        "seagrass.tridentCoverage.reportPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a Trident llvm-cov JSON report. Leave empty to discover reports under trident-tests/ automatically."
+        },
+        "seagrass.tridentCoverage.searchGlobs": {
+          "type": "array",
+          "default": [
+            "**/trident-tests/**/coverage.json",
+            "**/trident-tests/**/coverage/**/*.json",
+            "**/*-coverage-report/**/*.json",
+            "**/llvm-cov/**/*.json"
+          ],
+          "items": {
+            "type": "string"
+          },
+          "description": "Workspace globs used to discover Trident coverage JSON when reportPath is empty."
+        },
+        "seagrass.tridentCoverage.showExecutionCount": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show per-line execution counts from Trident coverage in the editor gutter."
         },
         "seagrass.diagnostics.coldPath": {
           "type": "string",

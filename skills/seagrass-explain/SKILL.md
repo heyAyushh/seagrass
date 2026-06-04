@@ -55,8 +55,8 @@ Lint doc filename convention: replace `seagrass/` prefix and dots with dashes.
 - `seagrass/security.cpi.program` → `docs/lints/seagrass-security-cpi-program.md`
 - `seagrass/solana.code-quality.unchecked-arithmetic` → `docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md`
 
-The mapping is 1:1 — there are exactly 40 topics in `docs/topics.json` and 40
-lint docs in `docs/lints/`. If a topic does not have a matching doc, run
+The mapping is 1:1: every topic in `docs/topics.json` should have one matching
+lint doc in `docs/lints/`. If a topic does not have a matching doc, run
 `bun scripts/check-lint-catalog.ts` to detect drift.
 
 If exact filename doesn't exist, fuzzy match:
@@ -83,9 +83,9 @@ Present in that order. Don't paraphrase the matrix — copy the table verbatim. 
 Seagrass tags every diagnostic with two extra axes that influence the explanation:
 
 - **Confidence**
-  - `Authoritative` — derived from parsed syntax + context; act on it
-  - `Derived` — multi-step inference; usually correct
-  - `Heuristic` — pattern-based; check before fixing
+  - `authoritative` — derived from parsed syntax + context; act on it
+  - `derived` — multi-step inference; usually correct
+  - `heuristic` — pattern-based; check before fixing
 
 - **Applicability**
   - `MachineApplicable` — quickfix can be auto-applied
@@ -94,6 +94,15 @@ Seagrass tags every diagnostic with two extra axes that influence the explanatio
   - `Unspecified` — no fix offered
 
 If the user's diagnostic carries those metadata fields, surface them — they tell the user whether to act blindly or investigate.
+
+In VS Code, the editor commands mirror this workflow:
+
+- `Seagrass: Open Lint Doc` opens the `docsUrl` or topic-derived lint page.
+- `Seagrass: Copy Suppression` copies the supported `// seagrass-allow: <topic>`
+  form.
+- `Seagrass: Report False Positive` copies a report with topic, confidence,
+  applicability, quickfix, docs URL, source range, and source line before
+  opening the feedback link returned by the language server.
 
 ## Topic taxonomy
 
@@ -104,7 +113,8 @@ If the user's diagnostic carries those metadata fields, surface them — they te
 
 Top-level frameworks: `anchor`, `solana`, `security` (security cuts across the others).
 
-Authoritative list: `jq -r '.topics[].name' docs/topics.json` — 40 topics today.
+Authoritative list: `jq -r '.topics[].name' docs/topics.json`. Count it with
+`jq '.topics | length' docs/topics.json`; do not hardcode the number.
 
 If the user asks "what topics exist?", read from `docs/topics.json` rather than guessing.
 

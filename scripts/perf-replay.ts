@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { existsSync, mkdirSync, readFileSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
@@ -25,7 +25,7 @@ export const handlerBudgets = [
   },
   {
     label: "workspace scan",
-    name: "seagrass::server::backend_features::refresh_workspace_index",
+    name: "seagrass::server::workspace_indexing::refresh_workspace_index",
     p99Millis: 2_000,
   },
 ];
@@ -86,7 +86,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
 function runPerfReplay() {
   const reportPath = process.env.SEAGRASS_HOTPATH_REPORT ?? defaultReportPath;
   mkdirSync(dirname(reportPath), { recursive: true });
-  runChecked("cargo", ["build", "-p", "seagrass", "--features", "hotpath", "--release"]);
+  runChecked("cargo", ["build", "-p", "seagrass-cli", "--features", "hotpath", "--release"]);
 
   const result = spawnSync("bun", ["scripts/hotpath-replay-session.ts"], {
     cwd: repoRoot,
@@ -94,7 +94,7 @@ function runPerfReplay() {
     env: {
       ...process.env,
       SEAGRASS_HOTPATH: "1",
-      SEAGRASS_SERVER_BINARY: hotpathServerBinary,
+      ...hotpathServerBinaryEnv(),
       SEAGRASS_WAIT_FOR_EXIT: "1",
       HOTPATH_OUTPUT_PATH: reportPath,
       HOTPATH_OUTPUT_FORMAT: "json-pretty",
@@ -117,6 +117,22 @@ function runPerfReplay() {
   const report = JSON.parse(readFileSync(reportPath, "utf8"));
   assertHotpathBudgetReport(report);
   console.log(`seagrass hotpath replay passed: ${reportPath}`);
+}
+
+function hotpathServerBinaryEnv() {
+  if (!isExecutableFile(hotpathServerBinary)) {
+    return {};
+  }
+  return { SEAGRASS_SERVER_BINARY: hotpathServerBinary };
+}
+
+function isExecutableFile(path) {
+  try {
+    accessSync(path, constants.X_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function runChecked(command, args) {

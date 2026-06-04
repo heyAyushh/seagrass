@@ -57,22 +57,28 @@ pub fn completions(
         })
         .or_else(|| text_enclosing_context_name(document.source(), position))?;
 
-    let mut candidates = local_candidates(document, &accounts_context, &context.completed_segments)
-        .or_else(|| {
-            text_recovery_candidates(
-                document.source(),
-                workspace_index,
-                &accounts_context,
-                &context.completed_segments,
-            )
-        })
-        .or_else(|| {
-            workspace_candidates(
-                workspace_index?,
-                &accounts_context,
-                &context.completed_segments,
-            )
-        })?;
+    let mut candidates = local_candidates(
+        document,
+        workspace_index,
+        &accounts_context,
+        &context.completed_segments,
+    )
+    .or_else(|| {
+        text_recovery_candidates(
+            document,
+            workspace_index,
+            &accounts_context,
+            &context.completed_segments,
+        )
+    })
+    .or_else(|| {
+        workspace_candidates(
+            document,
+            workspace_index?,
+            &accounts_context,
+            &context.completed_segments,
+        )
+    })?;
     candidates.retain(|candidate| {
         context.prefix.is_empty() || matches_prefix(&candidate.name, &context.prefix)
     });
@@ -104,6 +110,7 @@ pub fn completions(
 
 fn local_candidates(
     document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
     accounts_context: &str,
     completed_segments: &[String],
 ) -> Option<Vec<FieldCandidate>> {
@@ -123,16 +130,15 @@ fn local_candidates(
             .accounts_structs
             .get(&name)
             .map(|accounts| account_field_candidates(&accounts.name, &accounts.fields)),
-        FieldContainer::AccountData(name) => document
-            .symbols()
-            .account_data_structs
-            .get(&name)
-            .map(|account| account_data_field_candidates(&account.name, &account.fields)),
+        FieldContainer::AccountData(name) => {
+            account_data_member_candidates(document, workspace_index, &name)
+        }
         FieldContainer::AccountLoader(name) => Some(account_loader_method_candidates(&name)),
     }
 }
 
 fn workspace_candidates(
+    document: &ParsedDocument,
     workspace_index: &WorkspaceIndex,
     accounts_context: &str,
     completed_segments: &[String],
@@ -167,18 +173,19 @@ fn workspace_candidates(
                 .collect()
         }),
         FieldContainer::AccountData(name) => {
-            workspace_account_data_field_candidates(workspace_index, &name)
+            account_data_member_candidates(document, Some(workspace_index), &name)
         }
         FieldContainer::AccountLoader(name) => Some(account_loader_method_candidates(&name)),
     }
 }
 
 fn text_recovery_candidates(
-    source: &str,
+    document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
     accounts_context: &str,
     completed_segments: &[String],
 ) -> Option<Vec<FieldCandidate>> {
+    let source = document.source();
     if completed_segments.is_empty() {
         return text_account_field_candidates(source, accounts_context);
     }
@@ -203,13 +210,36 @@ fn text_recovery_candidates(
                 })
             })
         }
-        FieldContainer::AccountData(name) => text_account_data_field_candidates(source, &name)
-            .or_else(|| {
-                workspace_index
-                    .and_then(|index| workspace_account_data_field_candidates(index, &name))
-            }),
+        FieldContainer::AccountData(name) => {
+            account_data_member_candidates(document, workspace_index, &name)
+        }
         FieldContainer::AccountLoader(name) => Some(account_loader_method_candidates(&name)),
     }
+}
+
+fn account_data_member_candidates(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    owner_type: &str,
+) -> Option<Vec<FieldCandidate>> {
+    account_members::resolved_struct_chain_completion_members(
+        document,
+        workspace_index,
+        owner_type,
+        &[],
+    )
+    .map(|members| {
+        let owner_type = members.owner_type;
+        members
+            .members
+            .into_iter()
+            .map(|member| FieldCandidate {
+                name: member.name,
+                detail: format!("{} in `{owner_type}`", member.detail),
+                kind: member.completion_kind,
+            })
+            .collect()
+    })
 }
 
 fn account_loader_method_candidates(owner_type: &str) -> Vec<FieldCandidate> {
@@ -221,30 +251,6 @@ fn account_loader_method_candidates(owner_type: &str) -> Vec<FieldCandidate> {
             kind: CompletionItemKind::METHOD,
         })
         .collect()
-}
-
-fn workspace_account_data_field_candidates(
-    workspace_index: &WorkspaceIndex,
-    name: &str,
-) -> Option<Vec<FieldCandidate>> {
-    let names = workspace_index.field_names_in_container(name);
-    (!names.is_empty()).then(|| {
-        names
-            .into_iter()
-            .map(|field_name| {
-                let detail = workspace_index
-                    .field_info_in_container(&field_name, name)
-                    .and_then(|info| info.type_display)
-                    .map(|display| format!("Anchor account data field in `{name}`: `{display}`"))
-                    .unwrap_or_else(|| format!("Anchor account data field in `{name}`"));
-                FieldCandidate {
-                    name: field_name,
-                    detail,
-                    kind: CompletionItemKind::FIELD,
-                }
-            })
-            .collect()
-    })
 }
 
 fn text_account_field_candidates(
@@ -259,26 +265,6 @@ fn text_account_field_candidates(
                 .type_display
                 .map(|display| format!("Anchor account field in `{accounts_context}`: `{display}`"))
                 .unwrap_or_else(|| format!("Anchor account field in `{accounts_context}`")),
-            kind: CompletionItemKind::FIELD,
-        })
-        .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| left.name.cmp(&right.name));
-    (!candidates.is_empty()).then_some(candidates)
-}
-
-fn text_account_data_field_candidates(
-    source: &str,
-    container: &str,
-) -> Option<Vec<FieldCandidate>> {
-    let mut candidates = text_struct_fields(source, container)?
-        .fields
-        .into_iter()
-        .map(|field| FieldCandidate {
-            name: field.name,
-            detail: field
-                .type_display
-                .map(|display| format!("Anchor account data field in `{container}`: `{display}`"))
-                .unwrap_or_else(|| format!("Anchor account data field in `{container}`")),
             kind: CompletionItemKind::FIELD,
         })
         .collect::<Vec<_>>();
@@ -577,19 +563,6 @@ fn account_field_candidates(container: &str, fields: &[SymbolRange]) -> Vec<Fiel
             detail: field_type_display(field)
                 .map(|display| format!("Anchor account field in `{container}`: `{display}`"))
                 .unwrap_or_else(|| format!("Anchor account field in `{container}`")),
-            kind: CompletionItemKind::FIELD,
-        })
-        .collect()
-}
-
-fn account_data_field_candidates(container: &str, fields: &[SymbolRange]) -> Vec<FieldCandidate> {
-    fields
-        .iter()
-        .map(|field| FieldCandidate {
-            name: field.name.clone(),
-            detail: field_type_display(field)
-                .map(|display| format!("Anchor account data field in `{container}`: `{display}`"))
-                .unwrap_or_else(|| format!("Anchor account data field in `{container}`")),
             kind: CompletionItemKind::FIELD,
         })
         .collect()

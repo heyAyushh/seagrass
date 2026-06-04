@@ -1,0 +1,43 @@
+{
+  "invocations": [
+    {
+      "instruction": {
+        "dataLen": 7,
+        "deserializes": false
+      }
+    },
+    {
+      "instruction": {
+        "dataLen": 8,
+        "deserializes": false,
+        "discriminatorMatchesKnownInstruction": false,
+        "fallbackSupported": false,
+        "expectedProgramId": "Prog1111111111111111111111111111111111111",
+        "providedProgramId": "Other11111111111111111111111111111111111",
+        "expectedAccountCount": 3,
+        "providedAccountCount": 2
+      },
+      "accounts": [
+        {
+          "dataLen": 8,
+          "expectedDiscriminator": "0102030405060708",
+          "actualDiscriminator": "0807060504030201",
+          "expectedOwner": "Prog1111111111111111111111111111111111111",
+          "actualOwner": "Other11111111111111111111111111111111111",
+          "initialized": false,
+          "deserializes": false,
+          "expectedZeroDiscriminatorForInit": true
+        },
+        {
+          "dataLen": 4,
+          "expectedDiscriminator": "0102030405060708"
+        }
+      ],
+      "reallocs": [
+        {
+          "requestedDataIncrease": 10241
+        }
+      ]
+    }
+  ]
+}

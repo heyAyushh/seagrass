@@ -1,0 +1,22 @@
+name: Seagrass diagnostics
+
+on:
+  pull_request:
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: heyAyushh/seagrass/.github/actions/seagrass-diagnostics@<tag-or-sha>
+        with:
+          path: programs
+          sarif: "true"
+          seagrass-version: "0.1.2"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: seagrass-diagnostics.out

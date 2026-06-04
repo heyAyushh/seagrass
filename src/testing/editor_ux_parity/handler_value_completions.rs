@@ -58,6 +58,27 @@ pub struct Close<'info> {
     );
 }
 
+#[test]
+fn editor_ux_completes_block_item_handler_values() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+    let selected = LOCAL_
+
+    const LOCAL_LIMIT: u16 = 64;
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    assert_completion_contains(&document, source, "let selected = LOCAL_", "LOCAL_LIMIT");
+}
+
 fn assert_completion_contains(
     document: &ParsedDocument,
     source: &str,

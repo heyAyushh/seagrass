@@ -1,0 +1,11 @@
+[package]
+name = "error-coverage-fixture"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "error_coverage_fixture"
+
+[dependencies]
+anchor-lang = { workspace = true }

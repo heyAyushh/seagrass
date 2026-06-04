@@ -6,8 +6,11 @@ use {
         range::{byte_offset_at, point_at},
     },
     tower_lsp::lsp_types::{Position, Range},
-    tree_sitter::{InputEdit, Node, Parser, Point, Tree},
+    tree_sitter::{Node, Parser, Tree},
 };
+
+#[cfg(test)]
+use tree_sitter::{InputEdit, Point};
 
 mod query;
 mod recovery;
@@ -75,7 +78,7 @@ impl RustSyntax {
     /// let new = RustSyntax::parse_edited("fn new() {}", Some(&old.tree));
     /// assert!(new.is_some());
     /// ```
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn parse_edited(source: &str, old_tree: Option<&Tree>) -> Option<Self> {
         let mut parser = Parser::new();
         parser
@@ -88,7 +91,7 @@ impl RustSyntax {
     ///
     /// This bridges LSP `DidChangeTextDocumentParams.content_changes` to tree-sitter's
     /// incremental API. Supports both full document replacement and range-based edits.
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn edit_for_lsp_change(
         old_source: &str,
         change: &tower_lsp::lsp_types::TextDocumentContentChangeEvent,

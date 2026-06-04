@@ -7,7 +7,6 @@ use {
     serde_json::Value,
     std::{
         collections::HashSet,
-        fs,
         path::{Path, PathBuf},
     },
     tower_lsp::lsp_types::Url,
@@ -28,6 +27,7 @@ const MAX_SCAN_DEPTH: usize = 5;
 const MAX_SCAN_FILES: usize = 256;
 const MAX_TEST_FILES: usize = 96;
 const MAX_SOURCE_FILES: usize = 128;
+const IDL_SOURCE_TOO_LARGE_REASON: &str = "IDL source exceeds project file read limit";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EcosystemReport {
@@ -411,8 +411,8 @@ fn idl_report_from_path(
         });
     }
 
-    match fs::read_to_string(&path)
-        .map_err(|err| err.to_string())
+    match read_limited_text(&path)
+        .ok_or_else(|| IDL_SOURCE_TOO_LARGE_REASON.to_string())
         .and_then(|text| serde_json::from_str::<Value>(&text).map_err(|err| err.to_string()))
     {
         Ok(value) => {
@@ -506,6 +506,19 @@ fn idl_address(value: &Value) -> Option<String> {
         .map(str::to_string)
 }
 
+/// Validates that an untrusted program id is a well-formed Solana public key
+/// before it is interpolated into a suggested shell command. Program ids reach
+/// this layer from `declare_id!` and `Anchor.toml` in the analysed project, so
+/// a value like `$(rm -rf ~)` must never be allowed into a command string.
+fn is_valid_program_id(program_id: &str) -> bool {
+    // base58 alphabet: omits 0, O, I, and l. A 32-byte key encodes to 32–44 chars.
+    const BASE58_ALPHABET: &str = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+    const MIN_PUBKEY_LEN: usize = 32;
+    const MAX_PUBKEY_LEN: usize = 44;
+    (MIN_PUBKEY_LEN..=MAX_PUBKEY_LEN).contains(&program_id.len())
+        && program_id.chars().all(|c| BASE58_ALPHABET.contains(c))
+}
+
 fn program_metadata(
     program: &SolanaProgram,
     hints: &WorkspaceHints,
@@ -520,19 +533,23 @@ fn program_metadata(
     } else {
         ProgramMetadataStatus::NotConfigured
     };
-    let suggested_idl_command = program.id.as_deref().and_then(|program_id| {
-        idl_sources.iter().find_map(|source| {
-            (source.status == EcosystemArtifactStatus::Present)
-                .then_some(source.path.as_ref())
-                .flatten()
-                .map(|path| {
-                    format!(
-                        "npx @solana-program/program-metadata@latest write idl {program_id} {}",
-                        path_to_string(path)
-                    )
-                })
-        })
-    });
+    let suggested_idl_command = program
+        .id
+        .as_deref()
+        .filter(|program_id| is_valid_program_id(program_id))
+        .and_then(|program_id| {
+            idl_sources.iter().find_map(|source| {
+                (source.status == EcosystemArtifactStatus::Present)
+                    .then_some(source.path.as_ref())
+                    .flatten()
+                    .map(|path| {
+                        format!(
+                            "npx @solana-program/program-metadata@latest write idl {program_id} {}",
+                            path_to_string(path)
+                        )
+                    })
+            })
+        });
 
     ProgramMetadataReport {
         status,
@@ -640,7 +657,7 @@ fn surfpool_report(program: &SolanaProgram, hints: &WorkspaceHints) -> SurfpoolR
 fn workspace_hints(root: &Path, source_root: Option<&Path>) -> WorkspaceHints {
     let mut hints = WorkspaceHints::default();
     for manifest_path in shallow_files_named(root, "Cargo.toml", MAX_SCAN_DEPTH, MAX_SCAN_FILES) {
-        let Ok(text) = fs::read_to_string(&manifest_path) else {
+        let Some(text) = read_limited_text(&manifest_path) else {
             continue;
         };
         let Ok(manifest) = Manifest::from_str(&text) else {
@@ -703,7 +720,7 @@ fn codama_config_paths(root: &Path) -> Vec<PathBuf> {
 }
 
 fn codama_config_idl_path(path: &Path) -> Option<PathBuf> {
-    let text = fs::read_to_string(path).ok()?;
+    let text = read_limited_text(path)?;
     let value = serde_json::from_str::<Value>(&text).ok()?;
     value.get("idl").and_then(Value::as_str).map(PathBuf::from)
 }

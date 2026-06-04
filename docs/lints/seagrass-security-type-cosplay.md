@@ -11,7 +11,9 @@ Source: `seagrass`
 ## What It Catches
 
 Unchecked Anchor, native Solana, or Pinocchio accounts whose raw account bytes
-are deserialized without visible discriminator or type validation.
+are deserialized without visible discriminator or type validation. Native
+`AccountInfo` borrows and Pinocchio `borrow_data_unchecked()` reads are
+included.
 
 Example:
 
@@ -33,6 +35,7 @@ let user = UserState::try_from_slice(&ctx.accounts.user.data.borrow())?;
 | --- | --- |
 | `try_from_slice(&ctx.accounts.user.data.borrow())` | diagnostic |
 | `let data = ...; try_from_slice(&data)` without type check | diagnostic |
+| Pinocchio `load::<State>(account.borrow_data_unchecked())` without a type check | diagnostic |
 | same handler checks `UserState::DISCRIMINATOR` | no diagnostic |
 | different handler uses `try_deserialize` | diagnostic |
 | string/comment containing `discriminator` | diagnostic still fires for real unchecked deserialize |

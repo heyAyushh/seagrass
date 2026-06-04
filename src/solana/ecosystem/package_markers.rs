@@ -1,9 +1,6 @@
-use {
-    serde_json::Value,
-    std::{fs, path::Path},
-};
+use {serde_json::Value, std::path::Path};
 
-use super::files::shallow_files_named;
+use super::files::{read_limited_text, shallow_files_named};
 
 #[derive(Debug, Default)]
 pub(super) struct PackageMarkers {
@@ -15,7 +12,7 @@ pub(super) struct PackageMarkers {
 pub(super) fn package_markers(root: &Path) -> PackageMarkers {
     let mut markers = PackageMarkers::default();
     for path in shallow_files_named(root, "package.json", 4, 64) {
-        let Ok(text) = fs::read_to_string(path) else {
+        let Some(text) = read_limited_text(&path) else {
             continue;
         };
         let Ok(value) = serde_json::from_str::<Value>(&text) else {

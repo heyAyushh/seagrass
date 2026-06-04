@@ -23,13 +23,14 @@ import {
 
 const releaseCommit = "abc123def456";
 const completedAt = "2026-05-26T12:00:00.000Z";
-const startedAt = "2026-05-25T12:00:00.000Z";
+const startedAt = "2026-05-26T11:00:00.000Z";
 const fuzzShardCount = 8;
 const secondsPerTargetShard = 3_600;
 const tarBlockSize = 512;
 const tarChecksumOffset = 148;
 const tarChecksumLength = 8;
 const tarTypeOffset = 156;
+const importWorkflowArtifactsTimeoutMillis = 20_000;
 
 process.env.GITHUB_REPOSITORY = "heyAyushh/seagrass";
 
@@ -67,7 +68,7 @@ describe("import fuzz workflow artifacts", () => {
     expect((readiness.fuzzCleanRun as Record<string, unknown>).corpusSha256).toBe(
       corpusTreeSha256(corpusOut),
     );
-  });
+  }, importWorkflowArtifactsTimeoutMillis);
 
   test("refuses incomplete artifact sets without writing outputs", () => {
     const dir = mkdtempSync(resolve(tmpdir(), "seagrass-fuzz-import-missing-"));

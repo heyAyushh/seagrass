@@ -470,16 +470,23 @@ impl<'a> ConstraintEvidence<'a> {
     }
 
     pub fn has_init_like_constraint(&self) -> bool {
-        constraint_catalog::INIT_LIKE_KEYS
-            .iter()
-            .any(|key| self.has_flag_or_key(key))
+        constraint_catalog::CONSTRAINTS.iter().any(|spec| {
+            spec.is_init_like && self.has_flag_or_key(constraint_catalog::key(spec.label))
+        })
     }
 
     pub fn init_constraint_key(&self) -> Option<&'static str> {
-        constraint_catalog::INIT_LIKE_KEYS
+        constraint_catalog::CONSTRAINTS
             .iter()
+            .filter(|spec| spec.is_init_like)
+            .map(|spec| constraint_catalog::key(spec.label))
             .find(|key| self.has_flag_or_key(key))
-            .copied()
+    }
+
+    pub fn implies_mutability(&self) -> bool {
+        constraint_catalog::CONSTRAINTS.iter().any(|spec| {
+            spec.implies_mutability && self.has_flag_or_key(constraint_catalog::key(spec.label))
+        })
     }
 
     pub fn account_references(&self) -> Vec<ConstraintReference<'_>> {

@@ -1,11 +1,10 @@
-// The shared rule contract lands before every diagnostic rule has migrated to
-// it. Keep the unused pieces visible so future ports reuse one vocabulary.
-#![allow(dead_code)]
-
 use {
     crate::{document::ParsedDocument, range::byte_offset_at},
+    std::marker::PhantomData,
     syn::{
+        punctuated::Punctuated,
         spanned::Spanned,
+        token::Comma,
         visit::{self, Visit},
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
@@ -43,18 +42,12 @@ impl Confidence {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Applicability {
-    MachineApplicable,
-    MaybeIncorrect,
-    HasPlaceholders,
     Unspecified,
 }
 
 impl Applicability {
     pub(crate) const fn as_str(self) -> &'static str {
         match self {
-            Self::MachineApplicable => "MachineApplicable",
-            Self::MaybeIncorrect => "MaybeIncorrect",
-            Self::HasPlaceholders => "HasPlaceholders",
             Self::Unspecified => "Unspecified",
         }
     }
@@ -67,6 +60,10 @@ pub(crate) trait LintVisitor<'ast>: Visit<'ast> {
     const TOPIC: &'static str;
 
     fn finish(self) -> Vec<Diagnostic>;
+}
+
+pub(crate) struct FunctionBody<'ast> {
+    pub(crate) inputs: &'ast Punctuated<syn::FnArg, Comma>,
 }
 
 pub(crate) fn run_lint_visitor<'ast, V>(
@@ -90,27 +87,66 @@ pub(crate) fn run_lint_visitor_on_functions<'ast, V, F>(
 ) -> Vec<Diagnostic>
 where
     V: LintVisitor<'ast>,
-    F: FnMut(&'ast syn::ItemFn) -> V,
+    F: FnMut(FunctionBody<'ast>) -> V,
 {
     if document.syntax().items.is_empty() {
         return Vec::new();
     }
 
-    let diagnostics = document
-        .syntax()
-        .items
-        .iter()
-        .filter_map(|item| match item {
-            syn::Item::Fn(item_fn) => Some(item_fn),
-            _ => None,
-        })
-        .flat_map(|item_fn| {
-            let mut visitor = visitor_for_function(item_fn);
-            visitor.visit_item_fn(item_fn);
-            visitor.finish()
-        })
-        .collect::<Vec<_>>();
+    let mut diagnostics = Vec::new();
+    let mut runner = FunctionBodyRunner::<V, F> {
+        visitor_for_function: &mut visitor_for_function,
+        diagnostics: &mut diagnostics,
+        visitor_marker: PhantomData,
+    };
+    runner.visit_file(document.syntax());
     diagnostics_in_scope::<V>(document, diagnostics)
+}
+
+struct FunctionBodyRunner<'a, 'ast, V, F>
+where
+    V: LintVisitor<'ast>,
+    F: FnMut(FunctionBody<'ast>) -> V,
+{
+    visitor_for_function: &'a mut F,
+    diagnostics: &'a mut Vec<Diagnostic>,
+    visitor_marker: PhantomData<(&'ast (), V)>,
+}
+
+impl<'ast, V, F> FunctionBodyRunner<'_, 'ast, V, F>
+where
+    V: LintVisitor<'ast>,
+    F: FnMut(FunctionBody<'ast>) -> V,
+{
+    fn collect(&mut self, body: FunctionBody<'ast>, visit: impl FnOnce(&mut V)) {
+        let mut visitor = (self.visitor_for_function)(body);
+        visit(&mut visitor);
+        self.diagnostics.extend(visitor.finish());
+    }
+}
+
+impl<'ast, V, F> Visit<'ast> for FunctionBodyRunner<'_, 'ast, V, F>
+where
+    V: LintVisitor<'ast>,
+    F: FnMut(FunctionBody<'ast>) -> V,
+{
+    fn visit_item_fn(&mut self, node: &'ast syn::ItemFn) {
+        self.collect(
+            FunctionBody {
+                inputs: &node.sig.inputs,
+            },
+            |visitor| visitor.visit_item_fn(node),
+        );
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        self.collect(
+            FunctionBody {
+                inputs: &node.sig.inputs,
+            },
+            |visitor| visitor.visit_impl_item_fn(node),
+        );
+    }
 }
 
 fn diagnostics_in_scope<'ast, V>(
@@ -166,20 +202,6 @@ impl RegionMap {
             .min_by_key(|span| span.len())
             .map(|span| span.region)
             .unwrap_or(Region::Other)
-    }
-
-    pub(crate) fn allows_executable_lints(&self, byte_offset: usize) -> bool {
-        matches!(
-            self.region_at(byte_offset),
-            Region::InstructionBody | Region::HelperFnBody
-        )
-    }
-
-    pub(crate) fn allows_constraint_lints(&self, byte_offset: usize) -> bool {
-        matches!(
-            self.region_at(byte_offset),
-            Region::AccountsStructField | Region::AttributeArguments
-        )
     }
 }
 
@@ -238,6 +260,12 @@ impl<'ast> Visit<'ast> for RegionVisitor<'_> {
             },
         );
         visit::visit_item_fn(self, node);
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        self.push_spanned(node.sig.span(), Region::ItemDecl);
+        self.push_spanned(node.block.span(), Region::HelperFnBody);
+        visit::visit_impl_item_fn(self, node);
     }
 
     fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
@@ -327,9 +355,18 @@ pub struct Initialize<'info> {
             Region::AttributeArguments
         );
         assert_eq!(regions.region_at(field_offset), Region::AccountsStructField);
-        assert!(regions.allows_executable_lints(amount_offset));
-        assert!(regions.allows_constraint_lints(account_offset));
-        assert!(!regions.allows_executable_lints(account_offset));
+        assert!(matches!(
+            regions.region_at(amount_offset),
+            Region::InstructionBody | Region::HelperFnBody
+        ));
+        assert!(matches!(
+            regions.region_at(account_offset),
+            Region::AccountsStructField | Region::AttributeArguments
+        ));
+        assert!(!matches!(
+            regions.region_at(account_offset),
+            Region::InstructionBody | Region::HelperFnBody
+        ));
     }
 
     #[test]
@@ -337,12 +374,6 @@ pub struct Initialize<'info> {
         assert_eq!(Confidence::Heuristic.as_str(), "heuristic");
         assert_eq!(Confidence::Derived.as_str(), "derived");
         assert_eq!(Confidence::Authoritative.as_str(), "authoritative");
-        assert_eq!(
-            Applicability::MachineApplicable.as_str(),
-            "MachineApplicable"
-        );
-        assert_eq!(Applicability::MaybeIncorrect.as_str(), "MaybeIncorrect");
-        assert_eq!(Applicability::HasPlaceholders.as_str(), "HasPlaceholders");
         assert_eq!(Applicability::Unspecified.as_str(), "Unspecified");
     }
 

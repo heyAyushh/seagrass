@@ -297,6 +297,71 @@ pub(crate) fn missing_member_in_chain(
     None
 }
 
+pub(crate) fn missing_struct_member_in_chain(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    receiver_type: &str,
+    receiver: &str,
+    member_chain: &[String],
+) -> Option<MissingAccountMember> {
+    let mut receiver_segments = vec![receiver.to_string()];
+    let mut members = resolved_struct_members(document, workspace_index, receiver_type)?;
+
+    for member_name in member_chain {
+        let Some(member) = members.member(member_name) else {
+            return Some(MissingAccountMember {
+                receiver_path: receiver_segments.join("."),
+                member: member_name.clone(),
+                owner_type: members.owner_type,
+                candidates: members
+                    .members
+                    .iter()
+                    .map(|member| member.name.clone())
+                    .collect(),
+            });
+        };
+        receiver_segments.push(member_name.clone());
+
+        let next_type = member.type_name.as_ref()?;
+        members = resolved_struct_members(document, workspace_index, next_type)?;
+    }
+
+    None
+}
+
+pub(crate) fn instruction_argument_type_name(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts: &SymbolRange,
+    receiver: &str,
+) -> Option<String> {
+    accounts
+        .instruction_arguments
+        .iter()
+        .find(|argument| instruction_argument_names_match(&argument.name, receiver))
+        .and_then(|argument| argument.type_name.clone())
+        .or_else(|| {
+            document
+                .symbols()
+                .instructions
+                .iter()
+                .filter(|instruction| {
+                    instruction
+                        .context
+                        .as_ref()
+                        .is_some_and(|context| context.name == accounts.name)
+                })
+                .flat_map(|instruction| instruction.arguments.iter())
+                .find(|argument| instruction_argument_names_match(&argument.name, receiver))
+                .and_then(|argument| argument.type_name.clone())
+        })
+        .or_else(|| {
+            workspace_index.and_then(|index| {
+                index.instruction_argument_type_for_context(&accounts.name, receiver)
+            })
+        })
+}
+
 pub(crate) fn resolved_field_members(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
@@ -522,6 +587,10 @@ fn extend_with_inherent_methods(
     members: &mut ResolvedAccountMembers,
 ) {
     let mut method_names = local_inherent_method_names(document, &members.owner_type);
+    method_names.extend(tree_sitter_inherent_method_names(
+        document,
+        &members.owner_type,
+    ));
     method_names.extend(workspace_inherent_method_names(
         workspace_index,
         &members.owner_type,
@@ -557,6 +626,13 @@ fn local_inherent_method_names(document: &ParsedDocument, owner_type: &str) -> V
         .filter(|item| item.kind == AssociatedValueKind::Method)
         .map(|item| item.name.clone())
         .collect()
+}
+
+fn tree_sitter_inherent_method_names(document: &ParsedDocument, owner_type: &str) -> Vec<String> {
+    document
+        .tree_sitter()
+        .map(|syntax| syntax.inherent_method_names(document.source(), owner_type))
+        .unwrap_or_default()
 }
 
 fn workspace_inherent_method_names(
@@ -603,4 +679,8 @@ fn symbol_type_display(field: &SymbolRange) -> Option<String> {
             field.generic_type_names.join(", ")
         ))
     }
+}
+
+fn instruction_argument_names_match(left: &str, right: &str) -> bool {
+    left == right || left.trim_start_matches('_') == right.trim_start_matches('_')
 }

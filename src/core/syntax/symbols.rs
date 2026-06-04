@@ -9,6 +9,14 @@ use {
     tree_sitter::Node,
 };
 
+const DECLARATION_LIST_NODE: &str = "declaration_list";
+const FUNCTION_ITEM_NODE: &str = "function_item";
+const IMPL_ITEM_NODE: &str = "impl_item";
+const PARAMETERS_NODE: &str = "parameters";
+const SELF_PARAMETER_NODE: &str = "self_parameter";
+const STRUCT_ITEM_NODE: &str = "struct_item";
+const TYPE_IDENTIFIER_NODE: &str = "type_identifier";
+
 impl RustSyntax {
     pub fn struct_fields_named(&self, source: &str, struct_name: &str) -> Vec<AnchorFieldSyntax> {
         struct_item_nodes(self.tree.root_node())
@@ -20,6 +28,20 @@ impl RustSyntax {
             })
             .map(|node| struct_field_syntax(source, node))
             .unwrap_or_default()
+    }
+
+    pub fn inherent_method_names(&self, source: &str, owner_type: &str) -> Vec<String> {
+        impl_item_nodes(self.tree.root_node())
+            .into_iter()
+            .filter(|node| impl_owner_type_name(source, *node).as_deref() == Some(owner_type))
+            .flat_map(impl_method_nodes)
+            .filter(|node| function_has_self_receiver(*node))
+            .filter_map(|node| {
+                node.child_by_field_name("name")
+                    .and_then(|name| node_text(source, name))
+                    .map(str::to_string)
+            })
+            .collect()
     }
 
     pub fn anchor_document_symbols(&self, source: &str) -> Vec<DocumentSymbol> {
@@ -240,33 +262,76 @@ fn field_type_text(source: &str, node: Node<'_>) -> Option<String> {
         .map(str::to_string)
 }
 
-fn type_identifier_nodes(root: Node<'_>) -> Vec<Node<'_>> {
-    let mut cursor = root.walk();
-    let mut stack = vec![root];
-    let mut nodes = Vec::new();
+fn impl_item_nodes(root: Node<'_>) -> Vec<Node<'_>> {
+    nodes_of_kind(root, IMPL_ITEM_NODE)
+}
 
-    while let Some(node) = stack.pop() {
-        if node.kind() == "type_identifier" {
-            nodes.push(node);
-            continue;
-        }
+fn impl_method_nodes(node: Node<'_>) -> Vec<Node<'_>> {
+    let Some(declarations) = direct_named_children(node)
+        .into_iter()
+        .find(|child| child.kind() == DECLARATION_LIST_NODE)
+    else {
+        return Vec::new();
+    };
 
-        for child in node.children(&mut cursor) {
-            stack.push(child);
+    direct_named_children(declarations)
+        .into_iter()
+        .filter(|child| child.kind() == FUNCTION_ITEM_NODE)
+        .collect()
+}
+
+fn impl_owner_type_name(source: &str, node: Node<'_>) -> Option<String> {
+    type_identifier_children_before_body(node)
+        .into_iter()
+        .filter_map(|child| node_text(source, child).map(str::to_string))
+        .next_back()
+}
+
+fn type_identifier_children_before_body(node: Node<'_>) -> Vec<Node<'_>> {
+    let mut type_identifiers = Vec::new();
+    for child in direct_named_children(node) {
+        if child.kind() == DECLARATION_LIST_NODE {
+            break;
         }
+        type_identifiers.extend(nodes_of_kind(child, TYPE_IDENTIFIER_NODE));
     }
+    type_identifiers.sort_by_key(Node::start_byte);
+    type_identifiers
+}
 
-    nodes.sort_by_key(Node::start_byte);
-    nodes
+fn function_has_self_receiver(node: Node<'_>) -> bool {
+    let parameters = node.child_by_field_name(PARAMETERS_NODE).or_else(|| {
+        direct_named_children(node)
+            .into_iter()
+            .find(|child| child.kind() == PARAMETERS_NODE)
+    });
+    parameters
+        .and_then(|parameters| direct_named_children(parameters).into_iter().next())
+        .is_some_and(|first_parameter| first_parameter.kind() == SELF_PARAMETER_NODE)
+}
+
+fn direct_named_children(node: Node<'_>) -> Vec<Node<'_>> {
+    let mut cursor = node.walk();
+    node.children(&mut cursor)
+        .filter(|child| child.is_named())
+        .collect()
+}
+
+fn type_identifier_nodes(root: Node<'_>) -> Vec<Node<'_>> {
+    nodes_of_kind(root, TYPE_IDENTIFIER_NODE)
 }
 
 fn struct_item_nodes(root: Node<'_>) -> Vec<Node<'_>> {
+    nodes_of_kind(root, STRUCT_ITEM_NODE)
+}
+
+fn nodes_of_kind<'tree>(root: Node<'tree>, kind: &str) -> Vec<Node<'tree>> {
     let mut cursor = root.walk();
     let mut stack = vec![root];
     let mut nodes = Vec::new();
 
     while let Some(node) = stack.pop() {
-        if node.kind() == "struct_item" {
+        if node.kind() == kind {
             nodes.push(node);
             continue;
         }

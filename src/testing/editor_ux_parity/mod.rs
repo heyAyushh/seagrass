@@ -10,7 +10,9 @@ use {
     tower_lsp::lsp_types::{Diagnostic, NumberOrString, Position, Url},
 };
 
+mod account_member_wakeup;
 mod account_usage;
+mod constraint_expressions;
 mod handler_constructor_wrappers;
 mod handler_macro_expressions;
 mod handler_match_outputs;
@@ -20,6 +22,7 @@ mod handler_struct_literals;
 mod handler_tuple_patterns;
 mod handler_value_completions;
 mod handler_wrapper_outputs;
+mod pinocchio_native;
 mod proactive_assists;
 
 struct EditorCase<'a> {

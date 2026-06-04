@@ -122,14 +122,23 @@ describe("release readiness checker", () => {
     expect(result.stderr).toContain("workflow shard count");
   });
 
-  test("rejects short fuzz elapsed windows", () => {
+  test("accepts parallel fuzz evidence with enough aggregate hours", () => {
     const readiness = completeReadiness();
     readiness.fuzzCleanRun.startedAt = "2026-05-26T11:00:00.000Z";
-    const readinessPath = writeReadiness("short-fuzz-window", readiness);
+    const readinessPath = writeReadiness("parallel-fuzz-window", readiness);
+    const result = runChecker(readinessPath);
+
+    expect(result.status).toBe(0);
+  });
+
+  test("rejects fuzz evidence with a non-positive workflow window", () => {
+    const readiness = completeReadiness();
+    readiness.fuzzCleanRun.startedAt = readiness.fuzzCleanRun.completedAt;
+    const readinessPath = writeReadiness("zero-fuzz-window", readiness);
     const result = runChecker(readinessPath);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("elapsed hours");
+    expect(result.stderr).toContain("completedAt must be after startedAt");
   });
 
   test("rejects fuzz evidence with a stale corpus hash", () => {
@@ -264,14 +273,28 @@ function completeReadiness(): ReleaseReadiness {
       commit: gitHead(),
       startedAt: "2026-05-25T12:00:00.000Z",
       completedAt,
-      aggregateFuzzHours: 24,
+      aggregateFuzzHours: 40,
       corpusSha256: corpusTreeSha256(),
-      targets: ["fuzz_anchor_attr", "fuzz_document_parse", "fuzz_manifest_parse"],
-      workflowMatrixTargets: ["fuzz_anchor_attr", "fuzz_document_parse", "fuzz_manifest_parse"],
+      targets: [
+        "fuzz_anchor_attr",
+        "fuzz_anchor_preflight",
+        "fuzz_document_parse",
+        "fuzz_manifest_parse",
+        "fuzz_semantic_diagnostics",
+      ],
+      workflowMatrixTargets: [
+        "fuzz_anchor_attr",
+        "fuzz_anchor_preflight",
+        "fuzz_document_parse",
+        "fuzz_manifest_parse",
+        "fuzz_semantic_diagnostics",
+      ],
       targetRuns: [
         targetRun("fuzz_anchor_attr"),
+        targetRun("fuzz_anchor_preflight"),
         targetRun("fuzz_document_parse"),
         targetRun("fuzz_manifest_parse"),
+        targetRun("fuzz_semantic_diagnostics"),
       ],
     },
     externalReview: {

@@ -1,0 +1,56 @@
+name: Seagrass diagnostics
+description: Run Seagrass JSON or SARIF diagnostics on a Rust path
+inputs:
+  path:
+    description: Rust file or directory to analyze
+    required: true
+  sarif:
+    description: Emit SARIF 2.1.0 instead of JSON
+    required: false
+    default: "false"
+  seagrass-version:
+    description: Optional cargo install version (e.g. 1.0.2). Leave empty to build from repository checkout.
+    required: false
+    default: ""
+outputs:
+  findings:
+    description: "true when ERROR severity diagnostics were emitted"
+    value: ${{ steps.run.outputs.findings }}
+runs:
+  using: composite
+  steps:
+    - name: Install or build seagrass
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ -n "${{ inputs.seagrass-version }}" ]]; then
+          cargo install seagrass-cli --locked --version "${{ inputs.seagrass-version }}"
+        elif [[ -f crates/seagrass/Cargo.toml ]]; then
+          cargo build -p seagrass-cli --release
+          echo "${GITHUB_WORKSPACE}/target/release" >> "$GITHUB_PATH"
+        else
+          echo "error: set seagrass-version or run from a seagrass repository checkout" >&2
+          exit 2
+        fi
+    - name: Run diagnostics
+      id: run
+      shell: bash
+      run: |
+        set -euo pipefail
+        ARGS=("${{ inputs.path }}")
+        if [[ "${{ inputs.sarif }}" == "true" ]]; then
+          ARGS+=(--sarif)
+        else
+          ARGS+=(--json)
+        fi
+        set +e
+        seagrass diagnostics "${ARGS[@]}" | tee seagrass-diagnostics.out
+        STATUS=$?
+        set -e
+        if [[ $STATUS -eq 1 ]]; then
+          echo "findings=true" >> "$GITHUB_OUTPUT"
+        elif [[ $STATUS -eq 0 ]]; then
+          echo "findings=false" >> "$GITHUB_OUTPUT"
+        else
+          exit "$STATUS"
+        fi

@@ -33,21 +33,38 @@ pub(super) fn expression_member_items_with_type(
     let Some(access_prefix) = member_access_prefix(value_prefix) else {
         return Vec::new();
     };
-    let Some(field) = accounts
+    let resolved_members = if let Some(field) = accounts
         .fields
         .iter()
         .find(|field| field.name == access_prefix.receiver)
-    else {
-        return Vec::new();
+    {
+        account_members::resolved_field_chain_members(
+            document,
+            workspace_index,
+            accounts,
+            field,
+            access_prefix.access,
+            &access_prefix.member_chain,
+        )
+    } else if access_prefix.access == AccountMemberAccess::Direct {
+        account_members::instruction_argument_type_name(
+            document,
+            workspace_index,
+            accounts,
+            access_prefix.receiver,
+        )
+        .and_then(|type_name| {
+            account_members::resolved_struct_chain_completion_members(
+                document,
+                workspace_index,
+                &type_name,
+                &access_prefix.member_chain,
+            )
+        })
+    } else {
+        None
     };
-    let Some(resolved_members) = account_members::resolved_field_chain_members(
-        document,
-        workspace_index,
-        accounts,
-        field,
-        access_prefix.access,
-        &access_prefix.member_chain,
-    ) else {
+    let Some(resolved_members) = resolved_members else {
         return Vec::new();
     };
 

@@ -3,8 +3,11 @@
 
 use {
     super::common::{diagnostic_code, edit_distance, snippet_text_edit},
-    crate::diagnostics::{check_cfg, project_identity},
-    std::{collections::HashMap, fs},
+    crate::{
+        diagnostics::{check_cfg, project_identity},
+        file_text,
+    },
+    std::collections::HashMap,
     tower_lsp::lsp_types::{CodeAction, CodeActionKind, Diagnostic, Url, WorkspaceEdit},
 };
 
@@ -90,8 +93,7 @@ fn add_anchor_debug_feature_actions(diagnostics: &[Diagnostic]) -> Vec<CodeActio
                 .and_then(|data| data.get("manifest"))
                 .and_then(|value| value.as_str())
                 .and_then(|value| Url::parse(value).ok())?;
-            let manifest_path = manifest_uri.to_file_path().ok()?;
-            let manifest_text = fs::read_to_string(manifest_path).ok()?;
+            let manifest_text = manifest_text_from_uri(&manifest_uri)?;
             let edit = check_cfg::anchor_debug_feature_edit(&manifest_text)?;
             let mut changes = HashMap::new();
             changes.insert(manifest_uri.clone(), vec![edit]);
@@ -141,8 +143,7 @@ fn add_init_if_needed_feature_actions(diagnostics: &[Diagnostic]) -> Vec<CodeAct
                 .and_then(|data| data.get("feature"))
                 .and_then(|value| value.as_str())
                 .unwrap_or("init-if-needed");
-            let manifest_path = manifest_uri.to_file_path().ok()?;
-            let manifest_text = fs::read_to_string(manifest_path).ok()?;
+            let manifest_text = manifest_text_from_uri(&manifest_uri)?;
             let edit = check_cfg::anchor_lang_feature_edit(&manifest_text, feature)?;
             let mut changes = HashMap::new();
             changes.insert(manifest_uri.clone(), vec![edit]);
@@ -187,8 +188,7 @@ fn add_solana_target_os_check_cfg_actions(diagnostics: &[Diagnostic]) -> Vec<Cod
                 .and_then(|data| data.get("manifest"))
                 .and_then(|value| value.as_str())
                 .and_then(|value| Url::parse(value).ok())?;
-            let manifest_path = manifest_uri.to_file_path().ok()?;
-            let manifest_text = fs::read_to_string(manifest_path).ok()?;
+            let manifest_text = manifest_text_from_uri(&manifest_uri)?;
             let edit = check_cfg::solana_target_os_check_cfg_edit(&manifest_text)?;
             let mut changes = HashMap::new();
             changes.insert(manifest_uri.clone(), vec![edit]);
@@ -211,6 +211,11 @@ fn add_solana_target_os_check_cfg_actions(diagnostics: &[Diagnostic]) -> Vec<Cod
             })
         })
         .collect()
+}
+
+fn manifest_text_from_uri(manifest_uri: &Url) -> Option<String> {
+    let manifest_path = manifest_uri.to_file_path().ok()?;
+    file_text::read_limited_text(&manifest_path).ok().flatten()
 }
 
 fn sync_declare_id_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<CodeAction> {

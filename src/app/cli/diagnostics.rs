@@ -1,6 +1,7 @@
 use {
     crate::{
-        diagnostics as diagnostic_engine, document::ParsedDocument, workspace::WorkspaceIndex,
+        diagnostics as diagnostic_engine, document::ParsedDocument, file_text,
+        workspace::WorkspaceIndex,
     },
     clap::Args,
     serde::Serialize,
@@ -15,10 +16,44 @@ use {
 
 const RUST_EXTENSION: &str = "rs";
 const STDIN_DISPLAY_PATH: &str = "<stdin>";
+const MAX_STDIN_SOURCE_BYTES: u64 = file_text::MAX_PROJECT_FILE_BYTES;
 const DIAGNOSTICS_FILE_EXAMPLE: &str = "seagrass diagnostics programs/demo/src/lib.rs --json";
 const DIAGNOSTICS_DIRECTORY_EXAMPLE: &str = "seagrass diagnostics programs/demo/src --json";
 const DIAGNOSTICS_STDIN_EXAMPLE: &str =
     "cat programs/demo/src/lib.rs | seagrass diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json";
+
+#[derive(Debug)]
+struct OversizedSourceFile {
+    path: PathBuf,
+}
+
+impl fmt::Display for OversizedSourceFile {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "source file exceeds {} bytes: {}",
+            file_text::MAX_PROJECT_FILE_BYTES,
+            self.path.display()
+        )
+    }
+}
+
+impl Error for OversizedSourceFile {}
+
+#[derive(Debug)]
+struct OversizedStdinSource;
+
+impl fmt::Display for OversizedStdinSource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            formatter,
+            "stdin source exceeds {} bytes",
+            MAX_STDIN_SOURCE_BYTES
+        )
+    }
+}
+
+impl Error for OversizedStdinSource {}
 
 pub(super) const DIAGNOSTICS_HELP: &str = "\
 Examples:
@@ -27,7 +62,8 @@ Examples:
   cat programs/demo/src/lib.rs | seagrass diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
 
 Output:
-  Prints a JSON array with file, range, code, severity, topic, confidence, and message.
+  Prints a JSON array with file, range, code, severity, topic, confidence, applicability,
+  docsUrl, and message. Use --sarif for GitHub code scanning compatible SARIF 2.1.0 output.
   Exits 1 when any diagnostic has ERROR severity; exits 2 for usage or input errors.";
 
 #[derive(Debug, Args)]
@@ -37,8 +73,12 @@ pub(super) struct DiagnosticsCommand {
     path: Option<PathBuf>,
 
     /// Print structured JSON. This is the default output format.
-    #[arg(long = "json")]
-    _json: bool,
+    #[arg(long = "json", conflicts_with = "sarif")]
+    json: bool,
+
+    /// Print SARIF 2.1.0 for GitHub code scanning and review tools.
+    #[arg(long = "sarif", conflicts_with = "json")]
+    sarif: bool,
 
     /// Read one Rust source file from stdin instead of PATH.
     #[arg(long = "stdin")]
@@ -51,14 +91,19 @@ pub(super) struct DiagnosticsCommand {
 
 impl DiagnosticsCommand {
     pub(super) fn run(self) -> Result<bool, Box<dyn Error>> {
+        let emit_sarif = self.sarif;
         let diagnostics = match self.input()? {
             DiagnosticsInput::Path(path) => diagnostics_for_path(&path)?,
             DiagnosticsInput::Stdin { source_path } => {
                 diagnostics_for_stdin(source_path.as_deref())?
             }
         };
-        serde_json::to_writer_pretty(io::stdout(), &diagnostics)?;
-        println!();
+        if emit_sarif {
+            super::sarif::write_sarif(&diagnostics)?;
+        } else {
+            serde_json::to_writer_pretty(io::stdout(), &diagnostics)?;
+            println!();
+        }
         Ok(diagnostics
             .iter()
             .any(|diagnostic| diagnostic.severity == SeverityLabel::Error))
@@ -110,19 +155,22 @@ impl fmt::Display for CliUsageError {
 impl Error for CliUsageError {}
 
 #[derive(Debug, Serialize)]
-struct CliDiagnostic {
-    file: String,
-    range: Range,
-    code: Option<String>,
-    severity: SeverityLabel,
-    topic: Option<String>,
-    confidence: Option<String>,
-    message: String,
+pub(super) struct CliDiagnostic {
+    pub(super) file: String,
+    pub(super) range: Range,
+    pub(super) code: Option<String>,
+    pub(super) severity: SeverityLabel,
+    pub(super) topic: Option<String>,
+    pub(super) confidence: Option<String>,
+    pub(super) applicability: Option<String>,
+    #[serde(rename = "docsUrl")]
+    pub(super) docs_url: Option<String>,
+    pub(super) message: String,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "SCREAMING_SNAKE_CASE")]
-enum SeverityLabel {
+pub(super) enum SeverityLabel {
     Error,
     Warning,
     Information,
@@ -143,13 +191,20 @@ fn diagnostics_for_file(
     path: &Path,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
-    let source = fs::read_to_string(path)?;
+    let source = file_text::read_limited_text(path)?.ok_or_else(|| OversizedSourceFile {
+        path: path.to_path_buf(),
+    })?;
     diagnostics_for_source(display_path(path), source, workspace_index)
 }
 
 fn diagnostics_for_stdin(source_path: Option<&Path>) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
     let mut source = String::new();
-    io::stdin().read_to_string(&mut source)?;
+    io::stdin()
+        .take(MAX_STDIN_SOURCE_BYTES.saturating_add(1))
+        .read_to_string(&mut source)?;
+    if source.len() as u64 > MAX_STDIN_SOURCE_BYTES {
+        return Err(Box::new(OversizedStdinSource));
+    }
     diagnostics_for_stdin_source(source_path, source)
 }
 
@@ -316,14 +371,22 @@ fn display_path(path: &Path) -> String {
 }
 
 impl CliDiagnostic {
-    fn from_lsp(file: String, diagnostic: Diagnostic) -> Self {
+    pub(super) fn from_lsp(file: String, diagnostic: Diagnostic) -> Self {
+        let topic = diagnostic_data_string(&diagnostic, "topic");
+        let docs_url = diagnostic
+            .code_description
+            .as_ref()
+            .map(|description| description.href.to_string())
+            .or_else(|| topic.as_deref().and_then(topic_lint_doc_href));
         Self {
             file,
             range: diagnostic.range,
             code: diagnostic_code(&diagnostic),
             severity: severity_label(diagnostic.severity),
-            topic: diagnostic_data_string(&diagnostic, "topic"),
+            topic,
             confidence: diagnostic_data_string(&diagnostic, "confidence"),
+            applicability: diagnostic_data_string(&diagnostic, "applicability"),
+            docs_url,
             message: diagnostic.message,
         }
     }
@@ -344,6 +407,14 @@ fn severity_label(severity: Option<DiagnosticSeverity>) -> SeverityLabel {
         Some(DiagnosticSeverity::HINT) => SeverityLabel::Hint,
         _ => SeverityLabel::Unknown,
     }
+}
+
+fn topic_lint_doc_href(topic: &str) -> Option<String> {
+    let rest = topic.strip_prefix("seagrass/")?;
+    let slug = format!("seagrass-{}", rest.replace(['.', '/'], "-"));
+    Some(format!(
+        "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/{slug}.md"
+    ))
 }
 
 fn diagnostic_data_string(diagnostic: &Diagnostic, key: &str) -> Option<String> {

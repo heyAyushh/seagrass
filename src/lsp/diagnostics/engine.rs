@@ -70,6 +70,7 @@ fn collect_through_phase(
         diagnostics,
     );
     super::enrich_current_document_related_information(input.document, &mut diagnostics);
+    super::enrich_confidence_related_information(&mut diagnostics);
     if let Some(uri) = input.uri {
         super::bind_current_document_related_uri(&mut diagnostics, uri);
     }

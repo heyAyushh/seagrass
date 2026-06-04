@@ -21,12 +21,13 @@ jobs:
     timeout-minutes: 75
     strategy:
       fail-fast: false
-      max-parallel: 1
       matrix:
         target:
           - fuzz_document_parse
           - fuzz_anchor_attr
+          - fuzz_anchor_preflight
           - fuzz_manifest_parse
+          - fuzz_semantic_diagnostics
         shard:
           - 0
           - 1
@@ -40,15 +41,16 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
+          toolchain: 1.89.0
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
           toolchain: nightly
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
       - name: Install cargo-fuzz
-        run: cargo install cargo-fuzz --locked
+        run: cargo +1.89.0 install cargo-fuzz --locked
       - name: Build fuzz targets
-        working-directory: lsp
         run: cargo fuzz build
       - name: Fuzz target shard
-        working-directory: lsp
         run: |
           mkdir -p "fuzz/artifacts/${{ matrix.target }}"
           cargo fuzz run "${{ matrix.target }}" -- -max_total_time="${FUZZ_SECONDS_PER_SHARD}" -artifact_prefix="fuzz/artifacts/${{ matrix.target }}/shard-${{ matrix.shard }}-"
@@ -56,7 +58,7 @@ jobs:
         if: always()
         run: |
           tar -czf "fuzz-corpus-${GITHUB_SHA}-${{ matrix.target }}-${{ matrix.shard }}.tar.gz" \
-            -C lsp \
+            -C . \
             fuzz/corpus \
             fuzz/artifacts
       - name: Upload fuzz artifacts
@@ -81,15 +83,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          toolchain: stable
+          toolchain: 1.89.0
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: ""
       - name: Install Bun
-        run: |
-          npm install --global "bun@${BUN_VERSION}"
-          bun --version
+        run: node scripts/install-bun-ci.mjs
       - name: Write fuzz readiness evidence
         env:
           GH_TOKEN: ${{ github.token }}

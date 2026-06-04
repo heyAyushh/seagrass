@@ -229,6 +229,9 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
 
     fn visit_block(&mut self, node: &'ast syn::Block) {
         self.scopes.push();
+        for value in local_types::block_item_typed_values(node) {
+            self.scopes.declare_typed_name(&value.name, value.type_name);
+        }
         visit::visit_block(self, node);
         self.scopes.pop();
     }
@@ -760,6 +763,10 @@ mod combinator_tests;
 #[cfg(test)]
 #[path = "handler_members/macro_tests.rs"]
 mod macro_tests;
+
+#[cfg(test)]
+#[path = "handler_members/block_item_tests.rs"]
+mod block_item_tests;
 
 #[cfg(test)]
 mod tests;

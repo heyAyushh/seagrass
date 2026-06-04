@@ -1,0 +1,9 @@
+{
+  "seagrass.serverCommand": "seagrass",
+  "seagrass.serverArgs": [],
+  "seagrass.dev.useCargoFromCheckout": true,
+  "seagrass.serverCwd": "${workspaceFolder}",
+  "seagrass.diagnostics.transport": "push",
+  "seagrass.diagnostics.security.enabled": true,
+  "seagrass.workspaceIndex.enabled": true
+}

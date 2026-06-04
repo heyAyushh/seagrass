@@ -1,6 +1,6 @@
 use {
     super::{paths, push_unique_symbol, BridgeSymbol},
-    crate::range::range_from_span,
+    crate::{file_text, range::range_from_span},
     quote::ToTokens,
     std::{
         collections::HashSet,
@@ -13,8 +13,6 @@ use {
 
 const MAX_DEPENDENCY_CRATES: usize = 24;
 const MAX_SOURCE_FILES_PER_CRATE: usize = 96;
-const MAX_FILE_BYTES: u64 = 512 * 1024;
-
 pub(super) fn collect_dependency_source_symbols(
     source_roots: &[PathBuf],
     symbols: &mut Vec<BridgeSymbol>,
@@ -34,13 +32,7 @@ pub(super) fn collect_dependency_source_symbols(
             .into_iter()
             .take(MAX_SOURCE_FILES_PER_CRATE)
         {
-            let Ok(metadata) = fs::metadata(&path) else {
-                continue;
-            };
-            if metadata.len() > MAX_FILE_BYTES {
-                continue;
-            }
-            let Ok(text) = fs::read_to_string(&path) else {
+            let Ok(Some(text)) = file_text::read_limited_text(&path) else {
                 continue;
             };
             let Ok(file) = syn::parse_file(&text) else {
@@ -67,7 +59,7 @@ pub(super) fn dependency_manifests(roots: &[Url]) -> Vec<(PathBuf, String)> {
             if !seen.insert(manifest.clone()) {
                 continue;
             }
-            let Ok(text) = fs::read_to_string(&manifest) else {
+            let Ok(Some(text)) = file_text::read_limited_text(&manifest) else {
                 continue;
             };
             manifests.push((manifest, text));

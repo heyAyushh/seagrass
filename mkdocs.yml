@@ -1,0 +1,16 @@
+site_name: Seagrass
+site_description: Solana codebase intelligence for account flows, CPIs, artifacts, and production evidence
+repo_url: https://github.com/heyAyushh/seagrass
+theme:
+  name: readthedocs
+plugins:
+  - search
+nav:
+  - Home: index.md
+  - Product Framing: product-framing.md
+  - Agent And Automation Commands: agents.md
+  - Lint Catalog: lints/README.md
+  - Diagnostic Architecture: diagnostic-architecture.md
+  - Diagnostic Audit: diagnostic-audit.md
+  - Quality Kit: quality-kit.md
+  - Release Readiness: release-readiness.md

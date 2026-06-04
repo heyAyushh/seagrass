@@ -1,4 +1,5 @@
 pub(crate) mod debounce;
+pub(crate) mod file_text;
 pub(crate) mod hotpath;
 pub(crate) mod query_cache;
 pub mod range;

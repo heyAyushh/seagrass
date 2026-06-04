@@ -1,5 +1,8 @@
 use {
-    super::{associated_values, expression_scope, members, slots::ConstraintValueSlot},
+    super::{
+        associated_values, expression_scope, members, module_paths, program_ids, seeds,
+        slots::ConstraintValueSlot, space_values,
+    },
     crate::{
         account_semantics::{self, ResolvedAccountType},
         constraint_catalog::ConstraintValueKind,
@@ -25,7 +28,11 @@ pub(super) fn value_items_for_slot(
 ) -> Vec<CompletionItem> {
     match slot.value_kind {
         ConstraintValueKind::ProgramReference => {
-            program_reference_items(accounts, current_field, slot.key)
+            let mut items = program_reference_items(accounts, current_field, slot.key);
+            if slot.key == "seeds::program" {
+                items.extend(program_ids::well_known_address_items());
+            }
+            items
         }
         ConstraintValueKind::SignerReference => {
             signer_value_items(accounts, current_field, slot.key)
@@ -51,35 +58,53 @@ pub(super) fn value_items_for_slot(
         ConstraintValueKind::Space => {
             if associated_values::associated_value_prefix(value_prefix).is_some() {
                 associated_values::associated_value_items(document, workspace_index, value_prefix)
+            } else if module_paths::module_path_prefix(document, value_prefix).is_some() {
+                module_paths::module_path_value_items(document, value_prefix)
             } else {
-                space_items(accounts, current_field)
+                space_values::space_items(accounts, current_field)
             }
         }
-        ConstraintValueKind::Seeds => seed_items(document, accounts, current_field),
+        ConstraintValueKind::Seeds => seeds::seed_items(document, accounts, current_field),
         ConstraintValueKind::AnyExpression => {
             if associated_values::associated_value_prefix(value_prefix).is_some() {
                 associated_values::associated_value_items(document, workspace_index, value_prefix)
+            } else if module_paths::module_path_prefix(document, value_prefix).is_some() {
+                module_paths::module_path_value_items(document, value_prefix)
             } else if members::member_access_prefix(value_prefix).is_some() {
                 members::expression_member_items(document, workspace_index, accounts, value_prefix)
             } else {
-                expression_scope::expression_scope_items(document, workspace_index, accounts)
+                let mut items =
+                    expression_scope::expression_scope_items(document, workspace_index, accounts);
+                if matches!(slot.key, "address" | "owner") {
+                    items.extend(program_ids::well_known_address_items());
+                }
+                items
             }
         }
         ConstraintValueKind::None => Vec::new(),
     }
 }
 
-pub(super) fn filter_prefix_for_slot(slot: ConstraintValueSlot, value_prefix: &str) -> &str {
+pub(super) fn filter_prefix_for_slot<'a>(
+    document: &ParsedDocument,
+    slot: ConstraintValueSlot,
+    value_prefix: &'a str,
+) -> &'a str {
     if slot.value_kind == ConstraintValueKind::AnyExpression || slot.key == PDA_BUMP_CONSTRAINT_KEY
     {
         if let Some(prefix) = associated_values::filter_prefix(value_prefix) {
+            return prefix;
+        }
+        if let Some(prefix) = module_paths::filter_prefix(document, value_prefix) {
             return prefix;
         }
         members::member_access_prefix(value_prefix)
             .map(|access_prefix| access_prefix.member_prefix)
             .unwrap_or(value_prefix)
     } else if slot.value_kind == ConstraintValueKind::Space {
-        associated_values::filter_prefix(value_prefix).unwrap_or(value_prefix)
+        associated_values::filter_prefix(value_prefix)
+            .or_else(|| module_paths::filter_prefix(document, value_prefix))
+            .unwrap_or(value_prefix)
     } else {
         value_prefix
     }
@@ -380,139 +405,6 @@ fn account_data_pubkey_field_names(
                 .collect()
         })
         .unwrap_or_default()
-}
-
-fn space_items(accounts: &SymbolRange, current_field: Option<&SymbolRange>) -> Vec<CompletionItem> {
-    let Some(field) = current_field else {
-        return Vec::new();
-    };
-    if is_spl_account_space_managed_by_anchor(accounts, field) {
-        return Vec::new();
-    }
-    let Some(account_type) = field.generic_type_names.last() else {
-        return Vec::new();
-    };
-
-    vec![CompletionItem {
-        label: format!("8 + {account_type}::INIT_SPACE"),
-        kind: Some(CompletionItemKind::VALUE),
-        detail: Some(format!(
-            "Anchor discriminator plus `{account_type}` init space"
-        )),
-        sort_text: Some("000_anchor_value_space".to_string()),
-        preselect: Some(true),
-        ..CompletionItem::default()
-    }]
-}
-
-fn seed_items(
-    document: &ParsedDocument,
-    accounts: &SymbolRange,
-    current_field: Option<&SymbolRange>,
-) -> Vec<CompletionItem> {
-    let current_field_name = current_field.map(|field| field.name.as_str());
-    let mut items = Vec::new();
-
-    if let Some(field) = current_field {
-        items.push(CompletionItem {
-            label: format!("b\"{}\"", field.name),
-            kind: Some(CompletionItemKind::VALUE),
-            detail: Some("Static PDA seed from the current account field name".to_string()),
-            sort_text: Some(format!("020_anchor_seed_static_{}", field.name)),
-            ..CompletionItem::default()
-        });
-    }
-
-    items.extend(
-        accounts
-            .fields
-            .iter()
-            .filter(|field| current_field_name != Some(field.name.as_str()))
-            .filter(|field| is_account_seed_candidate(field))
-            .map(|field| CompletionItem {
-                label: format!("{}.key().as_ref()", field.name),
-                kind: Some(CompletionItemKind::VARIABLE),
-                detail: Some(format!("PDA seed from `{}` account key", field.name)),
-                sort_text: Some(format!("000_anchor_seed_account_{}", field.name)),
-                ..CompletionItem::default()
-            }),
-    );
-
-    items.extend(instruction_seed_items(document, accounts));
-    items.sort_by(|left, right| left.sort_text.cmp(&right.sort_text));
-    items.dedup_by(|left, right| left.label == right.label);
-    items
-}
-
-fn instruction_seed_items(
-    document: &ParsedDocument,
-    accounts: &SymbolRange,
-) -> Vec<CompletionItem> {
-    let mut items = document
-        .symbols()
-        .instructions
-        .iter()
-        .filter(|instruction| {
-            instruction
-                .context
-                .as_ref()
-                .is_some_and(|context| context.name == accounts.name)
-        })
-        .flat_map(|instruction| instruction.arguments.iter())
-        .filter_map(|argument| {
-            let (suffix, detail) =
-                seed_expression_for_argument_type(argument.type_name.as_deref())?;
-            Some(CompletionItem {
-                label: format!("{}{}", argument.name, suffix),
-                kind: Some(CompletionItemKind::VARIABLE),
-                detail: Some(format!(
-                    "{detail} from `{}` instruction argument",
-                    argument.name
-                )),
-                sort_text: Some(format!(
-                    "010_anchor_seed_argument_{:04}_{:04}_{}",
-                    argument.range.start.line, argument.range.start.character, argument.name
-                )),
-                ..CompletionItem::default()
-            })
-        })
-        .collect::<Vec<_>>();
-    items.sort_by(|left, right| left.label.cmp(&right.label));
-    items.dedup_by(|left, right| left.label == right.label);
-    items
-}
-
-fn seed_expression_for_argument_type(
-    type_name: Option<&str>,
-) -> Option<(&'static str, &'static str)> {
-    match type_name? {
-        "Pubkey" => Some((".as_ref()", "PDA seed bytes")),
-        "String" => Some((".as_bytes()", "UTF-8 PDA seed bytes")),
-        "u8" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "u16" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "u32" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "u64" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "u128" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "i8" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "i16" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "i32" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "i64" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        "i128" => Some((".to_le_bytes().as_ref()", "little-endian PDA seed bytes")),
-        _ => None,
-    }
-}
-
-fn is_account_seed_candidate(field: &SymbolRange) -> bool {
-    !field.is_optional
-}
-
-fn is_spl_account_space_managed_by_anchor(accounts: &SymbolRange, field: &SymbolRange) -> bool {
-    account_semantics::field_has_declared_or_expected_account_inner_type(accounts, field, "Mint")
-        || account_semantics::field_has_declared_or_expected_account_inner_type(
-            accounts,
-            field,
-            "TokenAccount",
-        )
 }
 
 fn is_signer_account(field: &SymbolRange) -> bool {

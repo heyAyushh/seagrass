@@ -160,7 +160,11 @@ fn collect_implied_mut_hint(
     field: &crate::evidence::FieldEvidence<'_>,
     range: Range,
 ) -> Vec<InlayHint> {
-    if !(field.has_init_constraint() || field.has_any_constraint(&["realloc", "close", "zero"])) {
+    if !field
+        .constraints()
+        .iter()
+        .any(|constraint| constraint.implies_mutability())
+    {
         return Vec::new();
     }
 

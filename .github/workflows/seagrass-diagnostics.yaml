@@ -1,0 +1,48 @@
+name: Seagrass diagnostics
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "**/*.rs"
+      - "Anchor.toml"
+      - "Cargo.toml"
+      - "Seagrass.toml"
+      - "src/**"
+      - "programs/**"
+      - "fixtures/**"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.89.0
+      - name: Install smoke dependencies
+        run: cargo build -p seagrass-cli
+      - name: Golden-path smoke
+        run: bash scripts/smoke-install.sh
+
+  sarif:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.89.0
+      - name: Build seagrass
+        run: cargo build -p seagrass-cli --release
+      - name: Run SARIF diagnostics on smoke fixture
+        run: |
+          ./target/release/seagrass diagnostics fixtures/smoke-broken.rs --sarif > seagrass.sarif
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@b22c66273205240d86582638b860f9b25772b4d3 # v3
+        with:
+          sarif_file: seagrass.sarif
+          category: seagrass

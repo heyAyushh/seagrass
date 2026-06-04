@@ -55,7 +55,9 @@ pub fn handler(ctx: Context<Run>) -> Result<()> {
             .code_description
             .as_ref()
             .map(|description| description.href.as_str()),
-        Some("https://doc.rust-lang.org/reference/expressions/struct-expr.html")
+        Some(
+            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-account-usage.md"
+        )
     );
 }
 
@@ -133,7 +135,9 @@ pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
             .code_description
             .as_ref()
             .map(|description| description.href.as_str()),
-        Some("https://doc.rust-lang.org/reference/patterns.html#struct-patterns")
+        Some(
+            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-account-usage.md"
+        )
     );
 }
 
@@ -212,5 +216,65 @@ pub fn handler(ctx: Context<Run>, bundle: ExternalBundle) -> Result<()> {
     assert!(
         diagnostics.is_empty(),
         "unknown external struct pattern types stay outside shallow resolver: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn ignores_qualified_struct_literal_even_when_last_segment_matches_local_type() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let _bundle = external::PositionBundle {
+        position_bundel_mint: Pubkey::default(),
+    };
+    Ok(())
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("position_bundel_mint")),
+        "qualified struct literals should stay outside local shallow diagnostics: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn ignores_qualified_struct_pattern_even_when_last_segment_matches_local_type() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_lang::prelude::*;
+
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+
+pub fn handler(ctx: Context<Run>, bundle: external::PositionBundle) -> Result<()> {
+    let external::PositionBundle {
+        position_bundel_mint,
+    } = bundle;
+    Ok(())
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect_with_workspace(&document, None);
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("position_bundel_mint")),
+        "qualified struct patterns should stay outside local shallow diagnostics: {diagnostics:#?}"
     );
 }

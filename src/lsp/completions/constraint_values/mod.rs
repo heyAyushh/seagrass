@@ -5,10 +5,16 @@ use {
 
 mod associated_values;
 mod candidates;
+mod error_annotations;
 mod expression_scope;
 mod members;
+mod module_paths;
+mod program_ids;
 mod recovery;
+mod seed_expressions;
+mod seeds;
 mod slots;
+mod space_values;
 
 use {
     candidates::{filter_prefix_for_slot, value_items_for_slot},
@@ -30,6 +36,16 @@ pub fn completions_with_workspace(
     position: Position,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Option<Vec<CompletionItem>> {
+    if let Some(error_prefix) =
+        error_annotations::error_annotation_prefix(document.source(), position)
+    {
+        let items = error_annotations::error_variant_items(document)
+            .into_iter()
+            .filter(|item| completion_matches_value_prefix(item, &error_prefix))
+            .collect::<Vec<_>>();
+        return (!items.is_empty()).then_some(items);
+    }
+
     let context = constraint_value_context_for_cursor(
         document.source(),
         position,
@@ -56,7 +72,10 @@ pub fn completions_with_workspace(
     .into_iter()
     .map(|item| attach_slot_data(item, context.slot))
     .filter(|item| {
-        completion_matches_value_prefix(item, filter_prefix_for_slot(context.slot, &context.prefix))
+        completion_matches_value_prefix(
+            item,
+            filter_prefix_for_slot(document, context.slot, &context.prefix),
+        )
     })
     .collect::<Vec<_>>();
 

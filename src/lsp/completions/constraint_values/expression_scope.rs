@@ -1,6 +1,7 @@
 use {
     crate::{
         document::{ParsedDocument, SymbolRange},
+        lsp::scope::is_const_like_identifier,
         workspace::WorkspaceIndex,
     },
     tower_lsp::lsp_types::{CompletionItem, CompletionItemKind},
@@ -33,6 +34,7 @@ pub(super) fn expression_scope_items(
         workspace_index,
         accounts,
     ));
+    items.extend(document_value_items(document));
     items.extend(
         document
             .symbols()
@@ -54,6 +56,43 @@ pub(super) fn expression_scope_items(
     items.sort_by(|left, right| left.sort_text.cmp(&right.sort_text));
     items.dedup_by(|left, right| left.label == right.label);
     items
+}
+
+fn document_value_items(document: &ParsedDocument) -> Vec<CompletionItem> {
+    document
+        .symbols()
+        .value_items
+        .iter()
+        .map(|value| CompletionItem {
+            label: value.name.clone(),
+            kind: Some(CompletionItemKind::VALUE),
+            detail: Some("Rust value in scope".to_string()),
+            sort_text: Some(format!("020_anchor_expr_value_{}", value.name)),
+            data: Some(serde_json::json!({
+                "anchorCompletion": "constraint-expression-value",
+                "constraintExpressionValueKind": "value",
+            })),
+            ..CompletionItem::default()
+        })
+        .chain(
+            document
+                .symbols()
+                .imported_names
+                .iter()
+                .filter(|import| is_const_like_identifier(&import.name))
+                .map(|import| CompletionItem {
+                    label: import.name.clone(),
+                    kind: Some(CompletionItemKind::CONSTANT),
+                    detail: Some("Imported const-like value in scope".to_string()),
+                    sort_text: Some(format!("021_anchor_expr_import_{}", import.name)),
+                    data: Some(serde_json::json!({
+                        "anchorCompletion": "constraint-expression-value",
+                        "constraintExpressionValueKind": "imported-value",
+                    })),
+                    ..CompletionItem::default()
+                }),
+        )
+        .collect()
 }
 
 fn instruction_argument_items(

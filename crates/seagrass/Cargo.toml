@@ -3,15 +3,20 @@ name = "seagrass-cli"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-publish = false
-description = "Installable Seagrass language-server entrypoint"
+publish = true
+description = "Installable Seagrass CLI package with the seagrass binary"
 
 [[bin]]
 name = "seagrass"
 path = "src/main.rs"
 
+[features]
+default = []
+hotpath = ["seagrass-core/hotpath"]
+
 [dependencies]
-seagrass-core = { package = "seagrass", path = "../..", version = "1.0.2" }
+seagrass-core = { package = "seagrass", path = "../..", version = "0.1.2" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

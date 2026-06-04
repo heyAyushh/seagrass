@@ -3,6 +3,9 @@ use {
     std::collections::BTreeMap,
 };
 
+const DEGRADED_PARSE_MESSAGE: &str =
+    " Semantic diagnostics are paused until this Rust file parses again.";
+
 const SECURITY_LEVEL_SETTINGS: &[(&str, &str)] = &[
     ("diagnostics.security.ownerChecks", "security.ownerChecks"),
     ("diagnostics.security.typeCosplay", "security.typeCosplay"),
@@ -21,6 +24,10 @@ const SECURITY_LEVEL_SETTINGS: &[(&str, &str)] = &[
     (
         "diagnostics.security.signerAuthorization",
         "security.signerAuthorization",
+    ),
+    (
+        "diagnostics.security.writableAccounts",
+        "security.writableAccounts",
     ),
     ("diagnostics.security.arbitraryCpi", "security.arbitraryCpi"),
     (
@@ -75,7 +82,9 @@ impl ParsedOpenDocument {
                 parsed,
             },
             Err(err) => {
-                let diagnostic = diagnostics::diagnostic_from_parse_error_with_source(err, &text);
+                let mut diagnostic =
+                    diagnostics::diagnostic_from_parse_error_with_source(err, &text);
+                diagnostic.message.push_str(DEGRADED_PARSE_MESSAGE);
                 Self {
                     parsed: ParsedDocument::parse_or_empty(text.clone()),
                     open: OpenDocument::with_syntax_diagnostic(text, version, diagnostic),
@@ -106,6 +115,9 @@ mod tests {
 
         assert_eq!(diagnostic.range.start.line, 1);
         assert_eq!(diagnostic.range.start.character, 4);
+        assert!(diagnostic
+            .message
+            .contains("Semantic diagnostics are paused"));
     }
 }
 

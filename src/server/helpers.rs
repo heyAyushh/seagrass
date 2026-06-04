@@ -1,5 +1,80 @@
 use super::*;
 
+const CHANGE_RANGE_OUTSIDE_DOCUMENT: &str = "rangeOutsideDocument";
+const CHANGE_RANGE_START_AFTER_END: &str = "rangeStartAfterEnd";
+const CHANGE_RANGE_NON_BOUNDARY: &str = "rangeNonBoundary";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct ContentChangeError {
+    range: tower_lsp::lsp_types::Range,
+    reason: &'static str,
+}
+
+impl ContentChangeError {
+    fn new(range: tower_lsp::lsp_types::Range, reason: &'static str) -> Self {
+        Self { range, reason }
+    }
+
+    pub(super) fn range(&self) -> tower_lsp::lsp_types::Range {
+        self.range
+    }
+
+    pub(super) fn reason(&self) -> &'static str {
+        self.reason
+    }
+}
+
+pub(super) fn text_after_content_changes(
+    previous_text: Option<&str>,
+    changes: Vec<tower_lsp::lsp_types::TextDocumentContentChangeEvent>,
+) -> std::result::Result<(String, Option<tower_lsp::lsp_types::Range>), ContentChangeError> {
+    let mut text = previous_text.unwrap_or_default().to_string();
+    let mut latest_range = None;
+
+    for change in changes {
+        latest_range = change.range;
+        apply_content_change(&mut text, change)?;
+    }
+
+    Ok((text, latest_range))
+}
+
+fn apply_content_change(
+    text: &mut String,
+    change: tower_lsp::lsp_types::TextDocumentContentChangeEvent,
+) -> std::result::Result<(), ContentChangeError> {
+    let Some(range) = change.range else {
+        *text = change.text;
+        return Ok(());
+    };
+    let start = crate::range::byte_offset_at(text, range.start)
+        .ok_or_else(|| ContentChangeError::new(range, CHANGE_RANGE_OUTSIDE_DOCUMENT))?;
+    let end = crate::range::byte_offset_at(text, range.end)
+        .ok_or_else(|| ContentChangeError::new(range, CHANGE_RANGE_OUTSIDE_DOCUMENT))?;
+    if start > end {
+        return Err(ContentChangeError::new(range, CHANGE_RANGE_START_AFTER_END));
+    }
+    if !text.is_char_boundary(start) || !text.is_char_boundary(end) {
+        return Err(ContentChangeError::new(range, CHANGE_RANGE_NON_BOUNDARY));
+    }
+    text.replace_range(start..end, &change.text);
+    Ok(())
+}
+
+pub(super) fn invalid_content_change_log_data(
+    uri: &tower_lsp::lsp_types::Url,
+    version: i32,
+    error: &ContentChangeError,
+) -> serde_json::Value {
+    serde_json::json!({
+        "uri": uri,
+        "version": version,
+        "range": error.range(),
+        "reason": error.reason(),
+        "documentCache": "cleared",
+    })
+}
+
 pub(super) fn workspace_roots_changed_log_data(
     workspace_roots: &str,
     added_count: usize,
@@ -22,6 +97,15 @@ pub(super) fn watched_files_changed_log_data(
         "changedFiles": changed_file_count,
         "republishedOpenDocuments": republished_open_documents,
     })
+}
+
+pub(super) fn requires_full_workspace_refresh(change: &tower_lsp::lsp_types::FileEvent) -> bool {
+    change
+        .uri
+        .to_file_path()
+        .ok()
+        .and_then(|path| path.extension().map(|extension| extension == "rs"))
+        != Some(true)
 }
 
 pub(super) fn changed_range_between_texts(
@@ -241,6 +325,7 @@ pub(super) fn hot_diagnostics_for_document(
     open_document: &OpenDocument,
     settings: &ServerSettings,
     workspace_index: &workspace::WorkspaceIndex,
+    workspace_roots: &[Url],
     typing_suppression: Option<diagnostics::TypingSuppressionRegion>,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
     let mut diagnostics = open_document
@@ -248,7 +333,7 @@ pub(super) fn hot_diagnostics_for_document(
         .clone()
         .into_iter()
         .collect::<Vec<_>>();
-    let seagrass_toml = project::nearest_seagrass_toml(uri);
+    let seagrass_toml = project::nearest_seagrass_toml_with_roots(uri, workspace_roots);
     diagnostics.extend(diagnostics::collect_hot_with_input(
         diagnostics::DiagnosticInput {
             document,
@@ -276,7 +361,7 @@ pub(super) fn server_capabilities(
         text_document_sync: Some(TextDocumentSyncCapability::Options(
             TextDocumentSyncOptions {
                 open_close: Some(true),
-                change: Some(TextDocumentSyncKind::FULL),
+                change: Some(TextDocumentSyncKind::INCREMENTAL),
                 will_save: Some(false),
                 will_save_wait_until: Some(false),
                 save: Some(TextDocumentSyncSaveOptions::SaveOptions(SaveOptions {
@@ -306,6 +391,7 @@ pub(super) fn server_capabilities(
         type_definition_provider: Some(TypeDefinitionProviderCapability::Simple(true)),
         selection_range_provider: Some(SelectionRangeProviderCapability::Simple(true)),
         folding_range_provider: Some(FoldingRangeProviderCapability::Simple(true)),
+        document_formatting_provider: Some(OneOf::Left(true)),
         hover_provider: Some(HoverProviderCapability::Simple(true)),
         signature_help_provider: Some(SignatureHelpOptions {
             trigger_characters: Some(vec!["(".to_string(), ",".to_string(), "=".to_string()]),

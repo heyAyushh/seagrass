@@ -5,6 +5,148 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-05
+
+- client: expose Seagrass analysis, program report, error coverage, support
+  matrix, generator profile, and logs as Zed slash commands, and advertise
+  refactor code actions in the Zed manifest with concise report summaries before
+  raw JSON detail.
+- lsp: complete account-data methods on `ctx.accounts` paths and local account
+  aliases while Rust syntax is temporarily incomplete.
+- lsp: recognize Pinocchio split-crate projects and native
+  `next_account_info`/`accounts.get(..)` account aliases in Solana security
+  diagnostics.
+- cli: extend `seagrass analyze` compute analysis with SBF `.text`
+  instruction-count floors when local deploy artifacts are available, while
+  keeping runtime CU measurements evidence-gated.
+- cli: add `seagrass skills list/get/path` so installed binaries can expose
+  version-matched agent workflow instructions with JSON output and `--full`
+  progressive disclosure.
+- lsp: mark statically emitted Anchor account error metadata as
+  `static-covered` and guard it in protocol smoke.
+- lsp: split Anchor error coverage into `static-covered`,
+  `preflight-covered`, and `runtime-only` tiers with a no-build invocation
+  evidence model for instruction/account input failures.
+- cli: add `seagrass preflight` with a checked-in Anchor evidence fixture that
+  exercises every `preflight-covered` error while leaving runtime evidence
+  unconfigured.
+- ci: add Linux and Windows server portability tests to PR guardrails, ship a
+  static `x86_64-unknown-linux-musl` server release artifact, and package
+  Windows server releases as `.zip`.
+- docs: add the installed skill-help maintenance process so checked-in
+  `SKILL.md` files, `seagrass skills` output, and fallback docs do not drift.
+- lsp: mark native Solana and Pinocchio framework crates as stable applicable
+  parity and keep owner/type/signer/writable/CPI validations scoped to the
+  specific account or program expression being checked.
+- docs: frame Seagrass as Solana codebase intelligence while separating shipped
+  static analysis from runtime compute/traffic evidence requirements.
+- cli: add `seagrass analyze` for headless codebase-intelligence reports with
+  static account/CPI/PDA evidence and explicit runtime evidence boundaries.
+- build: pin Seagrass Rust MSRV and CI stable toolchains to Rust 1.89.0 while
+  preserving nightly-only fuzz target execution.
+- lsp: add document formatting support backed by `rustfmt` for open editor
+  buffers.
+- lsp: bound definition-bridge Rust source discovery with explicit depth and
+  file-count budgets.
+- test: extend the LSP protocol smoke path to verify document formatting over
+  JSON-RPC.
+- test: add a black-box JSON-RPC integration test for root LSP formatting plus
+  native Solana and Pinocchio diagnostic and quick-fix parity.
+- lsp: return framework-correct code-action edits for native discriminator
+  guards plus Pinocchio owner, signer, and CPI guards.
+- lsp: avoid reusing cached code actions across diagnostic-scoped requests.
+- lsp: diagnose writable CPI account metadata without visible writable checks
+  for native Solana and Pinocchio, with editor quick fixes.
+- docs: document applicable native Solana and Pinocchio parity boundaries so
+  Anchor-only surfaces are marked non-applicable instead of overclaimed.
+- fuzz: add semantic diagnostic collection coverage beyond parse-only targets.
+- ci: verify pinned Bun npm package integrity before workflow installs and align
+  PR property-test depth with release/property workflows.
+- lsp: route native Solana and Pinocchio security diagnostics through their
+  framework crates while keeping shared lint/range/diagnostic helpers in
+  `seagrass-framework`.
+- lsp: detect Pinocchio `borrow_data_unchecked()` raw account reads, accept
+  `is_owned_by(...)` owner checks, and flag dynamic `InstructionView` CPI
+  program ids in native/Pinocchio security diagnostics.
+- lsp: run native/Pinocchio code-quality checks over impl methods, track
+  destructured account collections, and detect Pinocchio
+  `InstructionAccount::*_signer(...)` signer usage.
+- client: align editor startup/status docs with incremental sync and
+  native/Pinocchio security coverage.
+- docs: make contributor guardrails repository-relative, fix dead editor setup
+  references, document Cursor/OpenCode templates, and clarify current
+  Anchor-first framework coverage.
+- ci: add Rust formatting and Clippy checks to PR guardrails.
+- ci: run the LSP protocol smoke test in PR guardrails.
+- build: pin the Anchor dependency with its full git revision.
+- security: replace the unreachable noreply security fallback with a safe
+  no-details escalation path.
+- security: bound project-file reads used by diagnostics, workspace indexing,
+  and definition bridge collection.
+- lsp: advertise incremental document sync and apply ranged text changes before
+  live diagnostics.
+- lsp: make syntax-error diagnostics state that semantic diagnostics are paused
+  until the Rust file parses again.
+- lsp: classify real `anchor-lang` / `anchor-spl` 2.x dependencies as Anchor v2
+  preview instead of relying only on experimental alias names.
+- perf: remove an unused Salsa diagnostics query that was executed and discarded
+  during analysis reports.
+- perf: update workspace indexes incrementally for watched Rust file changes
+  instead of rebuilding every root on each file event.
+- client: add VS Code lint-doc, suppression-copy, and false-positive reporting
+  commands backed by Seagrass diagnostic metadata and the server feedback
+  manifest.
+- client: summarize Trident coverage gaps with lint-promotion hints in VS Code.
+- lsp: include diagnostic applicability and quickfix preview metadata in editor
+  related information for richer Problems hovers.
+- docs: add a MkDocs entrypoint, consumer SARIF workflow example, and refreshed
+  agent skill guidance for confidence, Trident coverage, and SARIF output.
+- docs: add OpenCode and Cursor editor templates under `editors/` plus
+  activation guidance for assistant and automation workflows.
+- docs: remove stale agent-skill paths, hardcoded topic counts, and old install
+  references from onboarding docs.
+- build: make `seagrass-cli` the package-level CLI identity while keeping the
+  installed binary named `seagrass`.
+- product: add golden-path `scripts/smoke-install.sh`, `fixtures/smoke-broken.rs`,
+  README choose-your-path table, and `docs/lints/index.html` generator.
+- cli: add `--sarif` output plus `docsUrl` and `applicability` fields in JSON
+  diagnostics for CI and GitHub code scanning.
+- ci: add `seagrass-diagnostics` workflow, composite GitHub Action, and SARIF
+  upload for the smoke fixture.
+- client: VS Code defaults to the installed `seagrass` binary, adds explain /
+  suppress / scan-workspace commands, and `seagrass.dev.useCargoFromCheckout`.
+- lsp: prefer Seagrass lint catalog URLs in `codeDescription` for `seagrass/...`
+  topics.
+- lsp: attach `confidence` and `topic` as related information so editors can show
+  trust tiers in Problems peek and hovers.
+- client: VS Code Trident llvm-cov JSON bridge with gutter coverage and derived /
+  heuristic diagnostic underlines.
+- ci: wire golden-path smoke and lint index freshness into `verify-production.ts`.
+- lint: ignore non-catalog pages such as `docs/lints/README.md` in the lint catalog
+  checker.
+- docs: document rust-analyzer coexistence, SARIF/agents CLI paths, and VS Code
+  recommended settings for checkout development.
+- build: add a strict `verify-production --release` mode for today-of-release
+  preflight checks that reject pending fuzz and review evidence.
+- ci: count release fuzz proof as 40 aggregate fuzz-hours across sharded
+  targets so the fuzz workflow can run in parallel for release-day evidence.
+- ci: run fuzz, property, and release workflows from the standalone repository
+  root and fetch the pinned Anchor source in fresh CI clones.
+- lsp: keep imported helpers, file constants/statics, and program handlers
+  resolved during broken-buffer handler-scope diagnostic recovery.
+- lsp: reduce false positives for trait-style handler method calls, qualified
+  struct literals and patterns, and bogus module-qualified associated values in
+  Anchor constraint expressions.
+- lsp: wake account constraint value completions after `seeds = [` and include
+  same-file Rust values plus const-like imports in constraint expression
+  completions.
+- lsp: ignore `seagrass-ignore` and `seagrass-allow` text inside Rust string
+  literals when filtering diagnostics.
+- lsp: resolve typed instruction-argument member access in account constraint
+  expressions and completions.
+- lsp: infer typed members from handler-local `const` and `static` block items,
+  including mid-edit member completions before the item declaration.
+- lsp: resolve and complete Rust block item values inside Anchor handlers.
 - lsp: complete handler expression values declared inside Anchor
   `#[program]` modules.
 - lsp: flag unresolved const-like handler identifiers such as
@@ -186,11 +328,16 @@ keep future entries aligned with release-plz output.
   measurement.
 - lsp: check in generated Anchor support catalogs and remove build-time parent
   source scraping.
-- lsp: add agent-friendly JSON diagnostics CLI mode.
+- lsp: add automation-ready JSON diagnostics CLI mode.
 - ci: add hotpath, property-test, and fuzz workflow gates for the LSP overlay.
 - docs: add bundled agent skills (`skills/seagrass-*`) for Claude Code, Cursor,
   and compatible agents. Covers install, lint, explain, suppress, debug-fp, and
   full audit workflows. Includes fixes to skill docs for accurate CLI JSON shapes.
+
+- build: establish the standalone Seagrass workspace version used by `VERSION`,
+  Cargo package metadata, and local editor manifests.
+- release: switch release evidence and package workflow tags to the standalone
+  `v*` version line.
 
 ## [0.1.0] - 2026-05-26
 

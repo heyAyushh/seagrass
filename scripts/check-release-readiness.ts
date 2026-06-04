@@ -7,7 +7,6 @@ import {
   compareStrings,
   corpusTreeSha256,
   elapsedDays,
-  elapsedHours,
   expectedFuzzTargets,
   expectedGithubRepoSlug,
   fuzzHours,
@@ -256,18 +255,13 @@ function validateFuzzCleanRun(cleanRun: FuzzCleanRun, options: ReleaseCheckOptio
   }
   if (cleanRun.aggregateFuzzHours < REQUIRED_FUZZ_HOURS) {
     failures.push(
-      `pending:fuzzCleanRun.aggregateFuzzHours must be at least ${REQUIRED_FUZZ_HOURS}`,
+      pendingFailure(
+        `fuzzCleanRun.aggregateFuzzHours must be at least ${REQUIRED_FUZZ_HOURS}`,
+        pending,
+      ),
     );
   }
-  const elapsedFuzzHours = elapsedHours(cleanRun.startedAt, cleanRun.completedAt);
-  if (elapsedFuzzHours < REQUIRED_FUZZ_HOURS) {
-    failures.push(
-      `pending:fuzzCleanRun startedAt/completedAt must cover at least ${REQUIRED_FUZZ_HOURS} elapsed hours`,
-    );
-  }
-  if (elapsedFuzzHours + FUZZ_HOURS_TOLERANCE < cleanRun.aggregateFuzzHours) {
-    failures.push("fuzzCleanRun elapsed hours must cover aggregateFuzzHours");
-  }
+  failures.push(...validateFuzzWorkflowTimestamps(cleanRun, pending));
   if (cleanRun.targets.length === 0) {
     failures.push("fuzzCleanRun.targets must list fuzzed targets");
   }
@@ -290,6 +284,18 @@ function validateFuzzCleanRun(cleanRun: FuzzCleanRun, options: ReleaseCheckOptio
   failures.push(...validateFuzzTargetRuns(cleanRun, expectedTargets, pending));
   failures.push(...validateFuzzCorpusHash(cleanRun));
   return failures;
+}
+
+function validateFuzzWorkflowTimestamps(cleanRun: FuzzCleanRun, pending: boolean): string[] {
+  if (!isFiniteDate(cleanRun.startedAt) || !isFiniteDate(cleanRun.completedAt)) {
+    return [
+      pendingFailure("fuzzCleanRun.startedAt/completedAt must be ISO timestamps", pending),
+    ];
+  }
+  if (Date.parse(cleanRun.completedAt) <= Date.parse(cleanRun.startedAt)) {
+    return ["fuzzCleanRun.completedAt must be after startedAt"];
+  }
+  return [];
 }
 
 function validateFuzzCorpusHash(cleanRun: FuzzCleanRun): string[] {
@@ -326,7 +332,12 @@ function validateFuzzTargetRuns(
   }
   for (const run of cleanRun.targetRuns) {
     if (run.status !== "passed") {
-      failures.push(`pending:fuzz target ${run.target} status must be passed, got ${run.status}`);
+      failures.push(
+        pendingFailure(
+          `fuzz target ${run.target} status must be passed, got ${run.status}`,
+          pending,
+        ),
+      );
     }
     if (run.shards <= 0) {
       failures.push(`fuzz target ${run.target} shards must be positive`);

@@ -7,14 +7,17 @@ Source: `seagrass`
 ## What It Catches
 
 Native Solana or Pinocchio handlers that mark an account as a signer in
-`AccountMeta::new(..., true)` without visible signer authorization in the same
-function.
+`AccountMeta::new(..., true)` or Pinocchio
+`InstructionAccount::*_signer(...)` without visible signer authorization in the
+same function or impl method.
 
 ## What It Does Not Catch
 
 - comments, docs, strings, attributes, or macro bodies containing signer text
 - signer metadata followed by `invoke_signed`
 - `AccountMeta::new(..., false)` account metadata
+- Pinocchio `InstructionAccount::readonly(...)` or `writable(...)` accounts that
+  are not signer constructors
 - validation that lives in a different function and is not visible at the callsite
 - Anchor programs using typed account validation
 
@@ -24,6 +27,7 @@ function.
 | --- | --- |
 | comments and strings containing `AccountMeta::new` | no diagnostic |
 | helper function validates signer, handler does not | diagnostic |
+| Pinocchio `InstructionAccount::writable_signer(...)` in an impl method | diagnostic |
 | same function calls signer validator before CPI | no diagnostic |
 | `AccountMeta::new(..., false)` with unrelated `true` variable | no diagnostic |
 | signer PDA metadata used with `invoke_signed` | no diagnostic |

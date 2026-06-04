@@ -2,7 +2,7 @@ use {
     crate::{
         diagnostics::lint::{
             run_lint_visitor, run_lint_visitor_on_functions, Applicability, Confidence,
-            LintVisitor, Region,
+            FunctionBody, LintVisitor, Region,
         },
         diagnostics::{
             diagnostic_from_range, diagnostic_from_span, registry::AnchorDiagnosticKind,
@@ -11,6 +11,7 @@ use {
         solana::frameworks::{FrameworkContext, FrameworkId},
     },
     quote::ToTokens,
+    seagrass_framework::diagnostics::FrameworkDocument,
     syn::{
         spanned::Spanned,
         visit::{self, Visit},
@@ -19,8 +20,6 @@ use {
 };
 
 mod manual_close;
-mod native_raw;
-mod native_validation;
 mod stale_cpi;
 
 const BALANCE_TERMS: &[&str] = &[
@@ -49,13 +48,24 @@ pub fn collect_with_framework(
         program_kind,
     ));
     diagnostics.extend(non_canonical_pda_bump_diagnostics(document, program_kind));
-    diagnostics.extend(native_raw::diagnostics(document, program_kind));
+    diagnostics.extend(framework_crate_diagnostics(document, framework));
     diagnostics.extend(manual_close::diagnostics(document));
     diagnostics.extend(stale_cpi::diagnostics(document));
-    diagnostics.extend(native_validation::diagnostics(document, program_kind));
     diagnostics.extend(instruction_data_bounds_diagnostics(document, program_kind));
     diagnostics.extend(pda_seed_collision_diagnostics(document));
     diagnostics
+}
+
+fn framework_crate_diagnostics(
+    document: &ParsedDocument,
+    framework: FrameworkContext,
+) -> Vec<Diagnostic> {
+    let framework_document = FrameworkDocument::new(document.source(), document.syntax());
+    match framework.id() {
+        FrameworkId::Pinocchio => seagrass_pinocchio::diagnostics(framework_document),
+        FrameworkId::NativeSolana => seagrass_native::diagnostics(framework_document),
+        FrameworkId::AnchorV1 | FrameworkId::AnchorV2Preview | FrameworkId::Unknown => Vec::new(),
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -383,8 +393,8 @@ fn instruction_data_bounds_diagnostics(
     document: &ParsedDocument,
     program_kind: ProgramKind,
 ) -> Vec<Diagnostic> {
-    run_lint_visitor_on_functions(document, |item_fn| {
-        InstructionDataBoundsVisitor::new(program_kind, item_fn)
+    run_lint_visitor_on_functions(document, |function| {
+        InstructionDataBoundsVisitor::new(program_kind, function)
     })
 }
 
@@ -402,10 +412,10 @@ struct DataAccessEvidence {
 }
 
 impl InstructionDataBoundsVisitor {
-    fn new(program_kind: ProgramKind, item_fn: &syn::ItemFn) -> Self {
+    fn new(program_kind: ProgramKind, function: FunctionBody<'_>) -> Self {
         Self {
             program_kind,
-            data_names: instruction_data_parameter_names(item_fn),
+            data_names: instruction_data_parameter_names(function.inputs),
             first_unchecked_access: None,
             has_bounds_validation: false,
         }
@@ -507,10 +517,10 @@ fn instruction_data_bounds_diagnostic(
     )
 }
 
-fn instruction_data_parameter_names(item_fn: &syn::ItemFn) -> Vec<String> {
-    item_fn
-        .sig
-        .inputs
+fn instruction_data_parameter_names(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+) -> Vec<String> {
+    inputs
         .iter()
         .filter_map(|arg| match arg {
             syn::FnArg::Typed(pat_type) => pat_ident(&pat_type.pat),

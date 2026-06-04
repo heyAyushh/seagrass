@@ -29,6 +29,8 @@ const ACCOUNT_OWNER_DEREF_ACCESS: &str = ".to_account_info().owner";
 mod assignments;
 #[path = "constraint_expressions/bump.rs"]
 mod bump;
+#[path = "constraint_expressions/instruction_args.rs"]
+mod instruction_args;
 #[path = "constraint_expressions/resolution.rs"]
 mod resolution;
 
@@ -394,57 +396,81 @@ impl ConstraintExpressionVisitor<'_, '_> {
     }
 
     fn validate_member(&mut self, access: &MemberAccess) {
-        let Some(field) = self
+        if let Some(field) = self
             .accounts
             .accounts
             .fields
             .iter()
             .find(|field| field.name == access.receiver)
-        else {
+        {
+            let Some(missing) = account_members::missing_member_in_chain(
+                self.document,
+                self.workspace_index,
+                self.accounts.accounts,
+                field,
+                access.access,
+                &access.receiver,
+                &access.member_chain,
+            ) else {
+                return;
+            };
+            self.push_unknown_member_issue(missing);
             return;
-        };
-        let Some(missing) = account_members::missing_member_in_chain(
-            self.document,
-            self.workspace_index,
-            self.accounts.accounts,
-            field,
-            access.access,
-            &access.receiver,
-            &access.member_chain,
-        ) else {
-            return;
-        };
-        if !self.has_issue_for_member(&missing.receiver_path, &missing.member) {
-            self.issues.push(ConstraintExpressionIssue::UnknownMember {
-                constraint_key: self.constraint_key.clone(),
-                receiver: missing.receiver_path,
-                member: missing.member,
-                owner_type: missing.owner_type,
-                candidates: missing.candidates,
-            });
+        }
+
+        if access.access == AccountMemberAccess::Direct {
+            if let Some(missing) = instruction_args::missing_member_in_chain(
+                self.document,
+                self.workspace_index,
+                self.accounts,
+                &access.receiver,
+                &access.member_chain,
+            ) {
+                self.push_unknown_member_issue(missing);
+            }
         }
     }
 
     fn validate_method(&mut self, access: &MethodAccess) {
-        let Some(field) = self
+        if let Some(field) = self
             .accounts
             .accounts
             .fields
             .iter()
             .find(|field| field.name == access.receiver)
-        else {
+        {
+            let Some(members) = account_members::resolved_field_chain_members(
+                self.document,
+                self.workspace_index,
+                self.accounts.accounts,
+                field,
+                access.access,
+                &access.member_chain,
+            ) else {
+                return;
+            };
+            self.validate_method_against_members(access, members);
             return;
-        };
-        let Some(members) = account_members::resolved_field_chain_members(
-            self.document,
-            self.workspace_index,
-            self.accounts.accounts,
-            field,
-            access.access,
-            &access.member_chain,
-        ) else {
-            return;
-        };
+        }
+
+        if access.access == AccountMemberAccess::Direct {
+            if let Some(members) = instruction_args::resolved_members(
+                self.document,
+                self.workspace_index,
+                self.accounts,
+                &access.receiver,
+                &access.member_chain,
+            ) {
+                self.validate_method_against_members(access, members);
+            }
+        }
+    }
+
+    fn validate_method_against_members(
+        &mut self,
+        access: &MethodAccess,
+        members: account_members::ResolvedAccountMembers,
+    ) {
         let method_candidates = method_candidates(&members);
         if method_candidates
             .iter()
@@ -473,6 +499,18 @@ impl ConstraintExpressionVisitor<'_, '_> {
                 method: access.method.clone(),
                 owner_type: members.owner_type,
                 candidates: method_candidates,
+            });
+        }
+    }
+
+    fn push_unknown_member_issue(&mut self, missing: account_members::MissingAccountMember) {
+        if !self.has_issue_for_member(&missing.receiver_path, &missing.member) {
+            self.issues.push(ConstraintExpressionIssue::UnknownMember {
+                constraint_key: self.constraint_key.clone(),
+                receiver: missing.receiver_path,
+                member: missing.member,
+                owner_type: missing.owner_type,
+                candidates: missing.candidates,
             });
         }
     }
@@ -745,6 +783,10 @@ mod expression_value_tests;
 #[cfg(test)]
 #[path = "constraint_expressions/expression_value_generated_tests.rs"]
 mod expression_value_generated_tests;
+
+#[cfg(test)]
+#[path = "constraint_expressions/associated_path_tests.rs"]
+mod associated_path_tests;
 
 #[cfg(test)]
 #[path = "constraint_expressions/method_tests.rs"]

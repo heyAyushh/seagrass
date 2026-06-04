@@ -1,3 +1,8 @@
+pub mod diagnostics;
+pub mod lint;
+pub mod native_rules;
+pub mod range;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameworkKind {
     AnchorV1,
@@ -43,4 +48,14 @@ pub trait Framework {
 
 pub trait Source {
     fn descriptor(&self) -> SourceDescriptor;
+}
+
+impl FrameworkKind {
+    pub const fn program_kind_label(self) -> &'static str {
+        match self {
+            Self::AnchorV1 | Self::AnchorV2Preview => "anchor",
+            Self::Pinocchio => "pinocchio",
+            Self::Native => "native-solana",
+        }
+    }
 }

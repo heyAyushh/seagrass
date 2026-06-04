@@ -3,6 +3,36 @@ use {
     zed_extension_api as zed,
 };
 
+pub(crate) fn initialization_options(
+    agent_mode_enabled: bool,
+    diagnostics_transport: &str,
+) -> zed::serde_json::Value {
+    zed::serde_json::json!({
+        "seagrass": {
+            "agent": {
+                "mode": agent_mode_enabled
+            },
+            "diagnostics": {
+                "transport": diagnostics_transport
+            },
+            "editor": {
+                "client": "zed",
+                "inlineValues": {
+                    "enabled": true
+                }
+            },
+            "telemetry": {
+                "completion": {
+                    "enabled": true
+                },
+                "diagnostics": {
+                    "enabled": true
+                }
+            }
+        }
+    })
+}
+
 pub(crate) fn workspace_configuration(
     settings: Option<zed::serde_json::Value>,
 ) -> zed::serde_json::Value {
@@ -54,6 +84,13 @@ pub(crate) fn diagnostics_transport(settings: Option<&zed::serde_json::Value>) -
         .unwrap_or_else(|| DEFAULT_DIAGNOSTICS_TRANSPORT.to_string())
 }
 
+pub(crate) fn agent_mode(settings: Option<&zed::serde_json::Value>) -> bool {
+    let Some(settings) = settings else {
+        return false;
+    };
+    bool_setting(settings, "agent.mode").unwrap_or(false)
+}
+
 fn bool_setting(settings: &zed::serde_json::Value, key: &str) -> Option<bool> {
     setting_value(settings, key).and_then(|value| value.as_bool())
 }
@@ -91,6 +128,27 @@ mod tests {
     use super::*;
 
     #[test]
+    fn initialization_options_enable_zed_completion_contract() {
+        let options = initialization_options(true, "push");
+
+        assert_eq!(options["seagrass"]["agent"]["mode"], true);
+        assert_eq!(options["seagrass"]["diagnostics"]["transport"], "push");
+        assert_eq!(options["seagrass"]["editor"]["client"], "zed");
+        assert_eq!(
+            options["seagrass"]["editor"]["inlineValues"]["enabled"],
+            true
+        );
+        assert_eq!(
+            options["seagrass"]["telemetry"]["completion"]["enabled"],
+            true
+        );
+        assert_eq!(
+            options["seagrass"]["telemetry"]["diagnostics"]["enabled"],
+            true
+        );
+    }
+
+    #[test]
     fn defaults_to_push_diagnostics_to_avoid_transport_duplicates() {
         assert_eq!(diagnostics_transport(None), "push");
 
@@ -104,6 +162,7 @@ mod tests {
             "agent.mode": true
         })));
 
+        assert!(agent_mode(Some(&config)));
         assert_eq!(config["diagnostics.security.enabled"], true);
         assert_eq!(config["diagnostics.experimental.enabled"], true);
         assert_eq!(config["security.strictNative.enabled"], true);
@@ -137,6 +196,19 @@ mod tests {
         assert_eq!(config["diagnostics.security.ownerChecks"], "error");
         assert_eq!(config["diagnostics.security.typeCosplay"], "off");
         assert_eq!(config["diagnostics.security.arbitraryCpi"], "warn");
+    }
+
+    #[test]
+    fn initialization_agent_mode_reads_flat_and_nested_settings() {
+        assert!(!agent_mode(None));
+        assert!(agent_mode(Some(&zed::serde_json::json!({
+            "agent.mode": true
+        }))));
+        assert!(agent_mode(Some(&zed::serde_json::json!({
+            "agent": {
+                "mode": true
+            }
+        }))));
     }
 
     #[test]

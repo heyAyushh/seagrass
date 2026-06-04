@@ -103,6 +103,33 @@ pub struct Close<'info> {
 }
 
 #[test]
+fn completes_block_item_values_declared_after_cursor() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+    pub receiver: AccountInfo<'info>,
+}
+
+pub fn handler(ctx: Context<Close>, bundle_index: u16) -> Result<()> {
+    let selected = LOCAL_
+
+    const LOCAL_LIMIT: u16 = 64;
+    fn local_helper() {}
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let items = completions(&document, position_after(source, "let selected = LOCAL_"))
+        .expect("expected block item value completions");
+
+    assert!(
+        items.iter().any(|item| item.label == "LOCAL_LIMIT"),
+        "block item const should complete before declaration: {items:#?}"
+    );
+}
+
+#[test]
 fn completes_empty_handler_values_after_assignment_rhs() {
     let source = r#"
 use anchor_lang::prelude::*;
@@ -595,6 +622,37 @@ pub struct Close<'info> {{
         prop_assert!(
             items.iter().any(|item| item.label == value),
             "generated program module value should complete; items: {items:#?}"
+        );
+    }
+
+    #[test]
+    fn completes_generated_block_item_values_without_hardcoded_names(
+        value_tail in "[A-Z][A-Z0-9_]{1,8}",
+    ) {
+        let value = format!("LOCAL_VALUE_{value_tail}");
+        let source = format!(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Close<'info> {{
+    pub receiver: AccountInfo<'info>,
+}}
+
+pub fn handler(ctx: Context<Close>, bundle_index: u16) -> Result<()> {{
+    let selected = LOCAL_VALUE_
+
+    const {value}: u16 = 64;
+}}
+"#
+        );
+        let document = ParsedDocument::parse_or_empty(&source);
+        let items = completions(&document, position_after(&source, "let selected = LOCAL_VALUE_"))
+            .expect("expected generated block item value completions");
+
+        prop_assert!(
+            items.iter().any(|item| item.label == value),
+            "generated block item value should complete before declaration; items: {items:#?}"
         );
     }
 }

@@ -2,6 +2,7 @@ use {
     super::*,
     clap::CommandFactory,
     std::time::{SystemTime, UNIX_EPOCH},
+    tower_lsp::lsp_types::Diagnostic,
 };
 
 #[test]
@@ -114,7 +115,8 @@ fn diagnostics_help_includes_agent_examples() {
 fn diagnostics_command_requires_path_or_stdin() {
     let error = DiagnosticsCommand {
         path: None,
-        _json: false,
+        json: false,
+        sarif: false,
         stdin: false,
         stdin_path: None,
     }
@@ -132,7 +134,8 @@ fn diagnostics_command_requires_path_or_stdin() {
 fn diagnostics_command_rejects_path_with_stdin() {
     let error = DiagnosticsCommand {
         path: Some(PathBuf::from("programs/demo/src/lib.rs")),
-        _json: false,
+        json: false,
+        sarif: false,
         stdin: true,
         stdin_path: None,
     }
@@ -149,7 +152,8 @@ fn diagnostics_command_rejects_path_with_stdin() {
 fn diagnostics_command_rejects_stdin_path_without_stdin() {
     let error = DiagnosticsCommand {
         path: None,
-        _json: false,
+        json: false,
+        sarif: false,
         stdin: false,
         stdin_path: Some(PathBuf::from("programs/demo/src/lib.rs")),
     }
@@ -214,6 +218,94 @@ fn diagnostics_cli_rejects_directory_without_rust_files() {
     assert!(error.contains(DIAGNOSTICS_DIRECTORY_EXAMPLE));
 
     let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
+fn cli_diagnostic_includes_docs_url_for_seagrass_topic() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init)]
+    pub state: Account<'info, State>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostic = diagnostic_engine::collect_with_workspace(&document, None)
+        .into_iter()
+        .find(|diagnostic| {
+            diagnostic_data_string(diagnostic, "topic")
+                .is_some_and(|topic| topic.contains("anchor.init"))
+        })
+        .expect("init companion diagnostic");
+    let serialized = CliDiagnostic::from_lsp("smoke.rs".to_string(), diagnostic);
+    assert!(
+        serialized
+            .docs_url
+            .as_deref()
+            .is_some_and(|url| url.contains("docs/lints/seagrass-anchor-init")),
+        "expected lint catalog docsUrl, got {:?}",
+        serialized.docs_url
+    );
+}
+
+#[test]
+fn diagnostics_command_emits_sarif_log() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init)]
+    pub state: Account<'info, State>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let file = std::env::temp_dir().join("seagrass-sarif-smoke.rs");
+    let diagnostics = diagnostic_engine::collect_with_workspace(&document, None)
+        .into_iter()
+        .map(|diagnostic| CliDiagnostic::from_lsp(file.display().to_string(), diagnostic))
+        .collect::<Vec<_>>();
+    let mut buffer = Vec::new();
+    serde_json::to_writer_pretty(&mut buffer, &sarif_log(&diagnostics)).unwrap();
+    let stdout = String::from_utf8(buffer).unwrap();
+    assert!(stdout.contains("\"version\": \"2.1.0\""));
+    assert!(stdout.contains("\"name\": \"seagrass\""));
+
+    let sarif = serde_json::from_str::<serde_json::Value>(&stdout).unwrap();
+    let driver = &sarif["runs"][0]["tool"]["driver"];
+    assert!(driver.get("informationUri").is_some());
+    assert!(driver.get("information_uri").is_none());
+    assert!(driver["rules"][0].get("shortDescription").is_some());
+    assert!(driver["rules"][0].get("short_description").is_none());
+
+    let result = &sarif["runs"][0]["results"][0];
+    assert!(result.get("ruleId").is_some());
+    assert!(result.get("rule_id").is_none());
+    let physical_location = &result["locations"][0]["physicalLocation"];
+    assert!(physical_location.get("artifactLocation").is_some());
+    assert!(physical_location.get("physical_location").is_none());
+    assert!(
+        physical_location["artifactLocation"]["uri"]
+            .as_str()
+            .is_some_and(|uri| uri.starts_with("file://")),
+        "expected SARIF artifactLocation.uri to be a file URI, got {:?}",
+        physical_location["artifactLocation"]["uri"]
+    );
+    assert!(physical_location["region"].get("startLine").is_some());
+    assert!(physical_location["region"].get("start_line").is_none());
+}
+
+fn sarif_log(diagnostics: &[CliDiagnostic]) -> serde_json::Value {
+    let mut sink = Vec::new();
+    super::super::sarif::write_sarif_to_writer(diagnostics, &mut sink).unwrap();
+    serde_json::from_slice(&sink).unwrap()
+}
+
+fn diagnostic_data_string(diagnostic: &Diagnostic, key: &str) -> Option<String> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get(key))
+        .and_then(|value| value.as_str())
+        .map(ToString::to_string)
 }
 
 fn unique_temp_dir(prefix: &str) -> PathBuf {

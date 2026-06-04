@@ -1,13 +1,14 @@
 #!/usr/bin/env bun
 
 import { spawn } from "node:child_process";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 type JsonObject = Record<string, unknown>;
 
 const SERVER_EXIT_TIMEOUT_MILLIS = 5_000;
+const LSP_REQUEST_TIMEOUT_MILLIS = 45_000;
 const MIN_ANCHOR_TUTORIAL_SMOKE_FIXTURES = 3;
 
 type LspMessage = {
@@ -192,6 +193,7 @@ type InitializeResult = {
     documentHighlightProvider?: unknown;
     selectionRangeProvider?: unknown;
     foldingRangeProvider?: unknown;
+    documentFormattingProvider?: unknown;
     signatureHelpProvider?: unknown;
     semanticTokensProvider?: unknown;
     inlayHintProvider?: unknown;
@@ -241,6 +243,13 @@ const nativeSmokeUri = pathToFileURL(nativeSmokeLibPath).href;
 const ecosystemSmokeRoot = resolve(repoRoot, "target/seagrass-ecosystem-smoke");
 const ecosystemSmokeLibPath = resolve(ecosystemSmokeRoot, "programs/ecosystem-demo/src/lib.rs");
 const ecosystemSmokeUri = pathToFileURL(ecosystemSmokeLibPath).href;
+const anchorErrorCoverageWorkspaceRoot = resolve(repoRoot, "fixtures/anchor-error-coverage-workspace");
+const anchorErrorCoverageLibPath = resolve(
+  anchorErrorCoverageWorkspaceRoot,
+  "programs/error-coverage-fixture/src/lib.rs",
+);
+const anchorErrorCoverageUri = pathToFileURL(anchorErrorCoverageLibPath).href;
+const anchorErrorCoverageWorkspaceUri = pathToFileURL(anchorErrorCoverageWorkspaceRoot).href;
 
 const mainUri = pathToFileURL(resolve(repoRoot, "target/seagrass-smoke.rs")).href;
 const splitLibUri = pathToFileURL(resolve(repoRoot, "fixtures/seagrass-split-lib.rs")).href;
@@ -263,6 +272,7 @@ const missingAccountsUri = pathToFileURL(resolve(repoRoot, "target/seagrass-miss
 const emptyContextUri = pathToFileURL(resolve(repoRoot, "target/seagrass-empty-context.rs")).href;
 const accountsAliasUri = pathToFileURL(resolve(repoRoot, "target/seagrass-accounts-alias.rs")).href;
 const foldingUri = pathToFileURL(resolve(repoRoot, "target/seagrass-folding.rs")).href;
+const formattingUri = pathToFileURL(resolve(repoRoot, "target/seagrass-formatting.rs")).href;
 const multilineCompletionUri = pathToFileURL(resolve(repoRoot, "target/seagrass-multiline-completion.rs")).href;
 const completionGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-completion-guardrails.rs")).href;
 const hoverGuardrailUri = pathToFileURL(resolve(repoRoot, "target/seagrass-hover-guardrails.rs")).href;
@@ -378,6 +388,8 @@ pub struct Create<'info> {
     pub authority: Signer<'info>,
 }
 `;
+
+const formattingSmokeSource = "pub fn formatting_smoke(){let value=1;}\n";
 
 const basicEmptyTutorialSource = `
 use anchor_lang::prelude::*;
@@ -1064,7 +1076,7 @@ function request<T>(method: string, params?: unknown): Promise<T> {
     const timeout = setTimeout(() => {
       pending.delete(id);
       reject(new Error(`timed out waiting for ${method}`));
-    }, 15_000);
+    }, LSP_REQUEST_TIMEOUT_MILLIS);
     pending.set(id, { resolveResponse, reject, timeout });
   });
 }
@@ -1099,10 +1111,10 @@ function seagrassServerCommand(): [string, string[]] {
   if (process.env.SEAGRASS_HOTPATH === "1") {
     return [
       "cargo",
-      ["run", "-p", "seagrass", "--features", "hotpath", "--release", "--quiet"],
+      ["run", "-p", "seagrass-cli", "--features", "hotpath", "--release", "--quiet"],
     ];
   }
-  return ["cargo", ["run", "-p", "seagrass", "--quiet"]];
+  return ["cargo", ["run", "-p", "seagrass-cli", "--quiet"]];
 }
 
 async function waitForServerExit(): Promise<void> {
@@ -1215,6 +1227,39 @@ function completionItems(response: CompletionResponse | null | undefined): Compl
     return [];
   }
   return Array.isArray(response) ? response : (response.items ?? []);
+}
+
+function anchorErrorsByName(diagnostics: DiagnosticReport): Map<string, JsonObject> {
+  const errors = new Map<string, JsonObject>();
+  for (const diagnostic of diagnostics.items ?? []) {
+    const anchorErrors = diagnostic.data?.anchorErrors;
+    if (!Array.isArray(anchorErrors)) {
+      continue;
+    }
+    for (const anchorError of anchorErrors) {
+      if (typeof anchorError !== "object" || anchorError === null) {
+        continue;
+      }
+      const error = anchorError as JsonObject;
+      if (typeof error.name === "string") {
+        errors.set(error.name, error);
+      }
+    }
+  }
+  return errors;
+}
+
+function assertStaticAnchorErrors(diagnostics: DiagnosticReport, names: string[]): void {
+  const errors = anchorErrorsByName(diagnostics);
+  for (const name of names) {
+    const error = errors.get(name);
+    if (!error) {
+      throw new Error(`missing Anchor error metadata for ${name}: ${JSON.stringify(diagnostics)}`);
+    }
+    if (error.coverage !== "static-covered") {
+      throw new Error(`Anchor error ${name} was not static-covered: ${JSON.stringify(error)}`);
+    }
+  }
 }
 
 function documentSymbolsInclude(symbols: DocumentSymbol[] | null | undefined, path: string[]): boolean {
@@ -1446,6 +1491,7 @@ try {
       { uri: smokeFixtureWorkspaceUri, name: "smoke-fixtures" },
       { uri: checkCfgSmokeWorkspaceUri, name: "check-cfg-smoke" },
       { uri: pathToFileURL(cargoArtifactSmokeRoot).href, name: "cargo-artifact-smoke" },
+      { uri: anchorErrorCoverageWorkspaceUri, name: "anchor-error-coverage-fixture" },
     ],
     initializationOptions: {
       seagrass: {
@@ -1472,12 +1518,12 @@ try {
     throw new Error("completion provider was not advertised");
   }
   const completionTriggers = initializeResult.capabilities.completionProvider.triggerCharacters ?? [];
-  for (const character of ["s", "S", "_", " ", ".", "<", ",", "="]) {
+  for (const character of ["s", "S", "_", " ", ".", "<", ",", "=", "["]) {
     if (!completionTriggers.includes(character)) {
       throw new Error(`fast Anchor completion trigger ${JSON.stringify(character)} was not advertised`);
     }
   }
-  for (const punctuation of ["#", "[", "(", ":"]) {
+  for (const punctuation of ["#", "(", ":"]) {
     if (completionTriggers.includes(punctuation)) {
       throw new Error(`noisy completion trigger ${JSON.stringify(punctuation)} was advertised`);
     }
@@ -1499,6 +1545,7 @@ try {
     ["documentHighlightProvider", "document highlight provider"],
     ["selectionRangeProvider", "selection range provider"],
     ["foldingRangeProvider", "folding range provider"],
+    ["documentFormattingProvider", "document formatting provider"],
     ["signatureHelpProvider", "signature help provider"],
     ["semanticTokensProvider", "semantic tokens provider"],
     ["inlayHintProvider", "inlay hint provider"],
@@ -1533,6 +1580,22 @@ try {
   }
 
   notify("initialized", {});
+
+  openDocument(formattingUri, formattingSmokeSource);
+  const formattingEdits = await request<TextEdit[] | null>("textDocument/formatting", {
+    textDocument: { uri: formattingUri },
+    options: {
+      tabSize: 4,
+      insertSpaces: true,
+    },
+  });
+  const formattedText = formattingEdits?.[0]?.newText;
+  if (
+    !formattedText?.includes("pub fn formatting_smoke()") ||
+    !formattedText.includes("let value = 1;")
+  ) {
+    throw new Error(`document formatting did not return a rustfmt edit: ${JSON.stringify(formattingEdits)}`);
+  }
 
   openDocument(anchorDebugSmokeUri, checkCfgSmokeSource);
   const anchorDebugDiagnostics = await pullDiagnostics(anchorDebugSmokeUri);
@@ -1592,6 +1655,15 @@ try {
     assertNoDuplicateDiagnostics(corpusFile.uri, diagnostics);
     assertNoCoreSemanticFalsePositive(corpusFile.uri, diagnostics);
   }
+  openDocument(anchorErrorCoverageUri, readFileSync(anchorErrorCoverageLibPath, "utf8"));
+  const anchorErrorCoverageDiagnostics = await pullDiagnostics(anchorErrorCoverageUri);
+  assertNoDuplicateDiagnostics(anchorErrorCoverageUri, anchorErrorCoverageDiagnostics);
+  assertStaticAnchorErrors(anchorErrorCoverageDiagnostics, [
+    "ConstraintSpace",
+    "ConstraintMut",
+    "AccountNotMutable",
+    "AccountNotSigner",
+  ]);
 
   openDocument(basicMutationFixture.uri, basicMutationFixture.source);
   const basicMutationDiagnostics = await pullDiagnostics(basicMutationFixture.uri);
@@ -3014,6 +3086,13 @@ try {
   });
   if (!Array.isArray(errorCoverage?.errors) || errorCoverage.errors.length === 0) {
     throw new Error(`error coverage command did not return generated Anchor errors: ${JSON.stringify(errorCoverage)}`);
+  }
+  if (
+    errorCoverage?.summary?.staticCovered !== 58 ||
+    errorCoverage?.summary?.preflightCovered !== 12 ||
+    errorCoverage?.summary?.runtimeOnly !== 9
+  ) {
+    throw new Error(`error coverage command returned stale Anchor coverage tiers: ${JSON.stringify(errorCoverage)}`);
   }
   const supportMatrix = await request<JsonObject>("workspace/executeCommand", {
     command: "seagrass/supportMatrix",

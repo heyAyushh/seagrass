@@ -65,7 +65,9 @@ pub fn handler(ctx: Context<Run>) -> Result<()> {
             .code_description
             .as_ref()
             .map(|description| description.href.as_str()),
-        Some("https://doc.rust-lang.org/reference/expressions/struct-expr.html")
+        Some(
+            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-account-usage.md"
+        )
     );
 
     let uri = Url::parse("file:///editor-struct-literal.rs").unwrap();

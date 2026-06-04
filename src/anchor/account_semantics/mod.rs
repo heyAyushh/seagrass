@@ -285,7 +285,6 @@ pub fn field_has_declared_or_expected_account_inner_type(
     declared_or_expected_account_inner_type(accounts, field) == Some(generic)
 }
 
-#[allow(dead_code)]
 pub fn expected_account_inner_type_for_document_field(
     field: &SymbolRange,
 ) -> Option<ExpectedAccountInnerType> {

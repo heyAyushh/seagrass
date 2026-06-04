@@ -6,7 +6,9 @@ import { expectedReleaseAssets } from "./package-release.ts";
 import { repoRoot } from "./release-evidence.ts";
 
 const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/release.yaml");
+const releasePlzWorkflowPath = resolve(repoRoot, ".github/workflows/release-plz.yaml");
 const prWorkflowPath = resolve(repoRoot, ".github/workflows/pr.yaml");
+const rustToolchainPath = resolve(repoRoot, "rust-toolchain.toml");
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
 const packageReleasePath = resolve(repoRoot, "scripts/package-release.ts");
 const releaseReadinessDocPath = resolve(repoRoot, "docs/release-readiness.md");
@@ -17,8 +19,9 @@ const seagrassWorkflowPaths = [
   ".github/workflows/property-tests.yaml",
   ".github/workflows/release-plz.yaml",
   ".github/workflows/release.yaml",
+  ".github/workflows/seagrass-diagnostics.yaml",
 ];
-const pinnedActionReferencePattern = /^[a-z0-9._-]+\/[a-z0-9._-]+@[a-f0-9]{40}$/i;
+const pinnedActionReferencePattern = /^[a-z0-9._-]+\/[a-z0-9._/-]+@[a-f0-9]{40}$/i;
 
 describe("release workflow packaging", () => {
   test("publishes release readiness evidence with the fuzz corpus package", () => {
@@ -60,7 +63,7 @@ describe("release workflow packaging", () => {
     expect(script).not.toContain("raw/main/editors/vscode");
   });
 
-  test("uses the root package command for release artifacts", () => {
+  test("uses the CLI package command for release artifacts", () => {
     const workflow = readFileSync(releaseWorkflowPath, "utf8");
     const buildServer = workflowSection(
       workflow,
@@ -80,8 +83,14 @@ describe("release workflow packaging", () => {
     const packageFuzzCorpus = workflowSection(workflow, "package-fuzz-corpus:", "release:");
 
     expect(buildServer).toContain("bun scripts/package-release.ts");
+    expect(buildServer).toContain("cargo build --package seagrass-cli");
+    expect(buildServer).not.toContain("cargo build --package seagrass --release");
     expect(buildServer).toContain("--server");
     expect(buildServer).toContain("--skip-build");
+    expect(readFileSync(packageReleasePath, "utf8")).toContain('"seagrass-cli"');
+    expect(readFileSync(packageReleasePath, "utf8")).toContain(
+      '"x86_64-unknown-linux-musl"',
+    );
     expect(buildZed).toContain("bun scripts/package-release.ts");
     expect(buildZed).toContain("--zed");
     expect(buildZed).toContain("--zed-wasm");
@@ -90,6 +99,23 @@ describe("release workflow packaging", () => {
     expect(buildVsCode).toContain("--vscode");
     expect(packageFuzzCorpus).toContain("bun scripts/package-release.ts");
     expect(packageFuzzCorpus).toContain("--fuzz-corpus");
+  });
+
+  test("publishes GNU Linux, static Linux, and Windows server builds", () => {
+    const workflow = readFileSync(releaseWorkflowPath, "utf8");
+    const buildServer = workflowSection(
+      workflow,
+      "  build-server:\n    name: Build server",
+      "  build-zed:",
+    );
+
+    expect(buildServer).toContain("x86_64-unknown-linux-gnu");
+    expect(buildServer).toContain("x86_64-unknown-linux-musl");
+    expect(buildServer).toContain("x86_64-pc-windows-msvc");
+    expect(buildServer).toContain("musl-tools");
+    expect(buildServer).toContain("CC_x86_64_unknown_linux_musl: musl-gcc");
+    expect(buildServer).toContain('archive_ext: ".zip"');
+    expect(workflow).toContain("x86_64-pc-windows-msvc.zip");
   });
 
   test("keeps release evidence regressions in PR guardrails", () => {
@@ -114,6 +140,20 @@ describe("release workflow packaging", () => {
     );
   });
 
+  test("keeps server portability covered on Linux and Windows", () => {
+    const workflow = readFileSync(prWorkflowPath, "utf8");
+    const portability = workflowSection(
+      workflow,
+      "  server-portability:\n    name: Server portability",
+      "      - name: Run seagrass library tests",
+    );
+
+    expect(portability).toContain("ubuntu-latest");
+    expect(portability).toContain("windows-latest");
+    expect(portability).toContain("cargo build -p seagrass-cli --locked");
+    expect(workflow).toContain("cargo test -p seagrass --locked");
+  });
+
   test("runs PR guardrails when release evidence workflows change", () => {
     const workflow = readFileSync(prWorkflowPath, "utf8");
 
@@ -122,6 +162,8 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain('".github/workflows/property-tests.yaml"');
     expect(workflow).toContain('".github/workflows/release-plz.yaml"');
     expect(workflow).toContain('".github/workflows/release.yaml"');
+    expect(workflow).toContain('".github/workflows/seagrass-diagnostics.yaml"');
+    expect(workflow).toContain('"rust-toolchain.toml"');
     expect(workflow).toContain('"release-plz.toml"');
     expect(workflow).toContain('"VERSION"');
     expect(workflow).toContain('"bump-version.sh"');
@@ -131,8 +173,13 @@ describe("release workflow packaging", () => {
   test("keeps the local production gate aligned with release evidence gates", () => {
     const script = readFileSync(verifyProductionPath, "utf8");
 
+    expect(script).toContain('"--release"');
+    expect(script).toContain("Strict release readiness evidence");
+    expect(script).toContain('"--allow-pending"');
     expect(script).toContain('"--version"');
     expect(script).toContain("rootVersion");
+    expect(script).toContain('"--commit"');
+    expect(script).toContain("git rev-parse");
     expect(script).toContain('"scripts/check-rule-hygiene.test.ts"');
     expect(script).toContain('"scripts/check-diagnostic-topics.test.ts"');
     expect(script).toContain('"scripts/check-diagnostic-audit.ts"');
@@ -147,6 +194,7 @@ describe("release workflow packaging", () => {
   test("documents the same concrete proof constraints as the validator", () => {
     const releaseReadiness = readFileSync(releaseReadinessDocPath, "utf8");
 
+    expect(releaseReadiness).toContain("bun scripts/verify-production.ts --release");
     expect(releaseReadiness).toContain("concrete GitHub Actions run URL");
     expect(releaseReadiness).toContain("positive run id");
     expect(releaseReadiness).toContain("concrete pull, issue, or discussion URL");
@@ -168,6 +216,46 @@ describe("release workflow packaging", () => {
 
     expect(failures).toEqual([]);
   });
+
+  test("pins stable Rust workflow jobs to the repository toolchain", () => {
+    const supportedToolchain = rustToolchainChannel();
+    const failures = seagrassWorkflowPaths.flatMap((path) =>
+      floatingRustToolchainReferences(path, readFileSync(resolve(repoRoot, path), "utf8")),
+    );
+
+    expect(failures).toEqual([]);
+    for (const path of seagrassWorkflowPaths) {
+      expect(readFileSync(resolve(repoRoot, path), "utf8")).toContain(
+        `toolchain: ${supportedToolchain}`,
+      );
+    }
+  });
+
+  test("runs workflow commands from the standalone repository root", () => {
+    const failures = seagrassWorkflowPaths.flatMap((path) =>
+      staleOverlayPathReferences(path, readFileSync(resolve(repoRoot, path), "utf8")),
+    );
+
+    expect(failures).toEqual([]);
+  });
+
+  test("installs cargo-fuzz with pinned stable cargo before nightly fuzzing", () => {
+    const fuzzWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/fuzz.yaml"), "utf8");
+    const releaseWorkflow = readFileSync(releaseWorkflowPath, "utf8");
+    const installCommand = `cargo +${rustToolchainChannel()} install cargo-fuzz --locked`;
+
+    expect(fuzzWorkflow).toContain(installCommand);
+    expect(releaseWorkflow).toContain(installCommand);
+    expect(fuzzWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
+    expect(releaseWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
+  });
+
+  test("keeps release-plz on the repository default branch", () => {
+    const workflow = readFileSync(releasePlzWorkflowPath, "utf8");
+
+    expect(workflow).toContain("branches: [master]");
+    expect(workflow).not.toContain("branches: [main]");
+  });
 });
 
 function workflowSection(contents: string, start: string, end: string): string {
@@ -183,6 +271,25 @@ function occurrences(haystack: string, needle: string): number {
   return haystack.split(needle).length - 1;
 }
 
+function rustToolchainChannel(): string {
+  const toolchain = readFileSync(rustToolchainPath, "utf8");
+  const match = /^channel = "([^"]+)"$/m.exec(toolchain);
+  if (!match) {
+    throw new Error("rust-toolchain.toml is missing a channel");
+  }
+  return match[1];
+}
+
+function floatingRustToolchainReferences(path: string, contents: string): string[] {
+  const failures: string[] = [];
+  for (const needle of ["toolchain: stable", "cargo +stable"]) {
+    if (contents.includes(needle)) {
+      failures.push(`${path}: ${needle}`);
+    }
+  }
+  return failures;
+}
+
 function unpinnedActionReferences(path: string, contents: string): string[] {
   return contents
     .split(/\r?\n/)
@@ -192,5 +299,16 @@ function unpinnedActionReferences(path: string, contents: string): string[] {
         return [];
       }
       return [`${path}:${index + 1} uses ${match[1]}`];
+    });
+}
+
+function staleOverlayPathReferences(path: string, contents: string): string[] {
+  return contents
+    .split(/\r?\n/)
+    .flatMap((line, index) => {
+      if (line.includes("working-directory: lsp") || /\s-C\s+lsp\b/.test(line)) {
+        return [`${path}:${index + 1} uses stale lsp/ overlay path`];
+      }
+      return [];
     });
 }

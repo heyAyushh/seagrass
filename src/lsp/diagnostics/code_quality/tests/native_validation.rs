@@ -57,6 +57,131 @@ pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
 }
 
 #[test]
+fn reports_native_signer_from_next_account_info_aliases() {
+    let source = r#"
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    instruction::AccountMeta,
+};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let authority = next_account_info(accounts_iter)?;
+    let _metas = vec![AccountMeta::new(*authority.key, true)];
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.data.as_ref().and_then(|data| data.get("attack"))
+                == Some(&serde_json::json!("signer-authorization"))
+        })
+        .unwrap_or_else(|| panic!("missing signer-authorization: {diagnostics:#?}"));
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("accountIndex")),
+        Some(&serde_json::json!(0))
+    );
+}
+
+#[test]
+fn accepts_native_signer_check_on_next_account_info_alias() {
+    let source = r#"
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    instruction::AccountMeta,
+    program_error::ProgramError,
+};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let authority = next_account_info(accounts_iter)?;
+    if !authority.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let _metas = vec![AccountMeta::new(*authority.key, true)];
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_no_attack(&diagnostics, "signer-authorization");
+}
+
+#[test]
+fn reports_native_writable_account_meta_without_writable_check() {
+    let source = r#"
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    instruction::AccountMeta,
+};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let _metas = vec![AccountMeta::new(*accounts[0].key, false)];
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.data.as_ref().and_then(|data| data.get("attack"))
+                == Some(&serde_json::json!("writable-account"))
+        })
+        .unwrap_or_else(|| panic!("missing writable-account: {diagnostics:#?}"));
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("programKind")),
+        Some(&serde_json::json!("native-solana"))
+    );
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("accountExpression")),
+        Some(&serde_json::json!("accounts[0]"))
+    );
+}
+
+#[test]
+fn accepts_native_writable_account_meta_with_writable_check() {
+    let source = r#"
+use solana_program::{
+    account_info::AccountInfo,
+    entrypoint::ProgramResult,
+    instruction::AccountMeta,
+    program_error::ProgramError,
+};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    if !accounts[0].is_writable {
+        return Err(ProgramError::InvalidAccountData);
+    }
+    let _metas = vec![AccountMeta::new(*accounts[0].key, false)];
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_no_attack(&diagnostics, "writable-account");
+}
+
+#[test]
 fn reports_native_arbitrary_cpi_even_with_unrelated_program_id_helper() {
     let source = r#"
 use solana_program::{
@@ -119,6 +244,74 @@ pub fn process_instruction(
 }
 
 #[test]
+fn reports_pinocchio_instruction_view_dynamic_program_id() {
+    let source = r#"
+use {
+    core::slice::from_raw_parts,
+    pinocchio::{
+        account_info::AccountInfo,
+        cpi::invoke,
+        instruction::{InstructionAccount, InstructionView},
+        pubkey::Pubkey,
+        ProgramResult,
+    },
+};
+
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let instruction_accounts = [InstructionAccount::readonly(accounts[0].key())];
+    let instruction = InstructionView {
+        program_id,
+        accounts: &instruction_accounts,
+        data: unsafe { from_raw_parts([0].as_ptr(), 1) },
+    };
+    invoke(&instruction, &[&accounts[0]])?;
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_has_attack(&diagnostics, "arbitrary-cpi");
+}
+
+#[test]
+fn reports_pinocchio_instruction_account_signer_in_impl_method() {
+    let source = r#"
+use pinocchio::{
+    cpi::invoke,
+    instruction::{InstructionAccount, InstructionView},
+    AccountView,
+    Address,
+    ProgramResult,
+};
+
+pub struct Transfer<'a> {
+    pub source: &'a AccountView,
+    pub token_program: &'a Address,
+}
+
+impl<'a> Transfer<'a> {
+    pub fn invoke(&self) -> ProgramResult {
+        let instruction_accounts = [InstructionAccount::writable_signer(self.source.address())];
+        let instruction = InstructionView {
+            program_id: self.token_program,
+            accounts: &instruction_accounts,
+            data: &[],
+        };
+        invoke(&instruction, &[self.source])?;
+        Ok(())
+    }
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_has_attack(&diagnostics, "signer-authorization");
+    assert_has_attack(&diagnostics, "writable-account");
+    assert_has_attack(&diagnostics, "arbitrary-cpi");
+}
+
+#[test]
 fn reports_modular_native_cpi_validation_gaps() {
     let source = r#"
 use {
@@ -146,6 +339,7 @@ pub fn process_instruction(
     let diagnostics = collect(&document);
 
     assert_has_attack(&diagnostics, "signer-authorization");
+    assert_has_attack(&diagnostics, "writable-account");
     assert_has_attack(&diagnostics, "arbitrary-cpi");
 }
 

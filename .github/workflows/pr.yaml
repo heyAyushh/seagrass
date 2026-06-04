@@ -10,6 +10,7 @@ on:
       - "VERSION"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "bump-version.sh"
       - ".github/workflows/fuzz.yaml"
       - ".github/workflows/perf.yaml"
@@ -17,6 +18,7 @@ on:
       - ".github/workflows/property-tests.yaml"
       - ".github/workflows/release-plz.yaml"
       - ".github/workflows/release.yaml"
+      - ".github/workflows/seagrass-diagnostics.yaml"
       - "release-plz.toml"
       - "docs/topics.json"
       - "docs/topics.schema.json"
@@ -33,6 +35,7 @@ on:
       - "VERSION"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "rust-toolchain.toml"
       - "bump-version.sh"
       - ".github/workflows/fuzz.yaml"
       - ".github/workflows/perf.yaml"
@@ -40,6 +43,7 @@ on:
       - ".github/workflows/property-tests.yaml"
       - ".github/workflows/release-plz.yaml"
       - ".github/workflows/release.yaml"
+      - ".github/workflows/seagrass-diagnostics.yaml"
       - "release-plz.toml"
       - "docs/topics.json"
       - "docs/topics.schema.json"
@@ -53,6 +57,7 @@ on:
 env:
   BUN_VERSION: "1.3.8"
   NODE_VERSION: "24"
+  PROPTEST_CASES: "10000"
 
 jobs:
   source-guardrails:
@@ -63,18 +68,20 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
-          toolchain: stable
+          toolchain: 1.89.0
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
       - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: ""
       - name: Install Bun
-        run: |
-          npm install --global "bun@${BUN_VERSION}"
-          bun --version
+        run: node scripts/install-bun-ci.mjs
       - name: Check source size
         run: bun scripts/check-source-size.ts
+      - name: Check Rust formatting
+        run: cargo fmt --all --check
+      - name: Run Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Check diagnostic rule hygiene
         run: bun scripts/check-rule-hygiene.ts
       - name: Test diagnostic rule hygiene checker
@@ -117,3 +124,35 @@ jobs:
         run: cargo test -p seagrass editor_ux_parity -- --nocapture
       - name: Run seagrass unit tests
         run: cargo test -p seagrass
+      - name: Run protocol smoke
+        run: bun scripts/protocol-smoke.ts
+
+  server-portability:
+    name: Server portability (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.89.0
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
+      - name: Build language server binary
+        run: cargo build -p seagrass-cli --locked
+      - name: Run framework crate tests
+        run: >
+          cargo test --locked
+          -p seagrass-framework
+          -p seagrass-anchor-v1
+          -p seagrass-anchor-v2-preview
+          -p seagrass-pinocchio
+          -p seagrass-native
+          -p seagrass-sources
+      - name: Run seagrass library tests
+        run: cargo test -p seagrass --locked

@@ -3,6 +3,7 @@ name = "seagrass-anchor-v1"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish = true
@@ -12,5 +13,5 @@ keywords = ["solana", "anchor", "lsp"]
 categories = ["development-tools"]
 
 [dependencies]
-seagrass-core = { package = "seagrass", path = "../..", version = "1.0.2" }
-seagrass-framework = { path = "../seagrass-framework", version = "1.0.2" }
+seagrass-core = { package = "seagrass", path = "../..", version = "0.1.2" }
+seagrass-framework = { path = "../seagrass-framework", version = "0.1.2" }

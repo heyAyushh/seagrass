@@ -1,6 +1,6 @@
 use {
-    crate::project,
-    std::{collections::HashSet, fs, path::Path},
+    crate::{file_text, project},
+    std::{collections::HashSet, path::Path},
     tower_lsp::lsp_types::{Location, SymbolKind, Url},
 };
 
@@ -57,7 +57,7 @@ fn collect_project_metadata_symbols(
     seen: &mut HashSet<String>,
 ) {
     for anchor_toml_path in paths::anchor_toml_paths(root) {
-        let Ok(text) = fs::read_to_string(&anchor_toml_path) else {
+        let Ok(Some(text)) = file_text::read_limited_text(&anchor_toml_path) else {
             continue;
         };
         let Ok(uri) = Url::from_file_path(&anchor_toml_path) else {

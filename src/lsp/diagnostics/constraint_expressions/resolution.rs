@@ -10,6 +10,7 @@ use {
 
 const PATH_SEPARATOR: &str = "::";
 const DECLARED_PROGRAM_ID_VALUE: &str = "ID";
+const ASSOCIATED_VALUE_PATH_SEGMENTS: usize = 2;
 const LOCAL_PATH_ROOTS: &[&str] = &["crate", "self", "super"];
 const BUILTIN_ASSOCIATED_PATH_ROOTS: &[&str] = &[
     "Clock", "None", "Option", "Pubkey", "Rent", "Some", "System", "Sysvar", "Vec", "bool", "core",
@@ -130,7 +131,8 @@ fn path_resolves(
     {
         return true;
     }
-    associated_path_value_resolves(document, workspace_index, segments)
+    segments.len() == ASSOCIATED_VALUE_PATH_SEGMENTS
+        && associated_path_value_resolves(document, workspace_index, segments)
 }
 
 fn local_path_value_resolves(document: &ParsedDocument, segments: &[String]) -> bool {

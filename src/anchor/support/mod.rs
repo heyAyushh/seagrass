@@ -1,7 +1,6 @@
 use crate::{anchor_errors, constraint_catalog};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[allow(dead_code)]
 pub enum AnchorSupportLevel {
     AnchorV1,
     AnchorV2Preview,

@@ -86,6 +86,35 @@ impl Backend {
         })
     }
 
+    pub(super) async fn handle_invalid_incremental_change(
+        &self,
+        uri: Url,
+        version: i32,
+        error: ContentChangeError,
+    ) {
+        if let Some((_, debouncer)) = self.document_debouncers.remove(&uri) {
+            let _ = debouncer.cancel().await;
+        }
+        self.documents.remove(&uri);
+        self.recent_typing_changes.remove(&uri);
+        self.completion_memo.remove(&uri);
+        self.forget_code_action_epoch(&uri);
+        self.query_cache.invalidate_for_uri(&uri);
+        if self.diagnostics_transport().publishes() {
+            self.client
+                .publish_diagnostics(uri.clone(), Vec::new(), Some(version))
+                .await;
+        }
+        self.emit_log(
+            MessageType::WARNING,
+            "warn",
+            "invalidIncrementalTextChange",
+            format!("invalid incremental text change for {uri}; cleared cached document state"),
+            invalid_content_change_log_data(&uri, version, &error),
+        )
+        .await;
+    }
+
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub(super) async fn schedule_full_analysis_and_publish(
         &self,
@@ -162,6 +191,11 @@ impl Backend {
             .read()
             .unwrap_or_else(|err| err.into_inner())
             .clone();
+        let workspace_roots = self
+            .workspace_roots
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone();
         let typing_suppression = self.active_typing_suppression(&uri);
         let result = tokio::task::spawn_blocking(move || {
             let document = crate::measure_hotpath_block!("lsp.hot.parse_document", {
@@ -186,6 +220,7 @@ impl Backend {
                     &document.open,
                     &settings,
                     &hot_index,
+                    &workspace_roots,
                     typing_suppression,
                 )
             });
@@ -467,9 +502,14 @@ impl Backend {
             .workspace_index
             .read()
             .unwrap_or_else(|err| err.into_inner());
+        let workspace_roots = self
+            .workspace_roots
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone();
         let manifest = solana_project::nearest_manifest(uri);
-        let anchor_toml = project::nearest_anchor_toml(uri);
-        let seagrass_toml = project::nearest_seagrass_toml(uri);
+        let anchor_toml = project::nearest_anchor_toml_with_roots(uri, &workspace_roots);
+        let seagrass_toml = project::nearest_seagrass_toml_with_roots(uri, &workspace_roots);
         let solana_program = solana_project::detect_for_document(uri, document);
         let framework = crate::solana::frameworks::FrameworkContext::from_project_and_document(
             solana_program.as_ref(),

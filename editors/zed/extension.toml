@@ -1,7 +1,7 @@
 id = "seagrass"
 name = "Seagrass"
 description = "Anchor-specific diagnostics, completions, hovers, symbols, and fixes plus local artifact evidence for Anchor, Pinocchio, and native Solana Rust programs."
-version = "1.0.2"
+version = "0.1.2"
 schema_version = 1
 authors = ["Seagrass Maintainers <17379963+heyAyushh@users.noreply.github.com>"]
 repository = "https://github.com/heyAyushh/seagrass"
@@ -10,10 +10,14 @@ repository = "https://github.com/heyAyushh/seagrass"
 name = "Seagrass"
 languages = ["Rust"]
 language_ids = { Rust = "rust" }
-code_action_kinds = ["quickfix", "source"]
+code_action_kinds = ["quickfix", "refactor", "source"]
 
 [slash_commands.seagrass-status]
 description = "Show Seagrass server status"
+requires_argument = false
+
+[slash_commands.seagrass-analyze]
+description = "Show Seagrass analysis report"
 requires_argument = false
 
 [slash_commands.seagrass-coverage]
@@ -22,6 +26,26 @@ requires_argument = false
 
 [slash_commands.seagrass-artifacts]
 description = "Show Seagrass artifact report"
+requires_argument = false
+
+[slash_commands.seagrass-program-report]
+description = "Show Seagrass program report"
+requires_argument = false
+
+[slash_commands.seagrass-error-coverage]
+description = "Show Anchor error coverage"
+requires_argument = false
+
+[slash_commands.seagrass-support-matrix]
+description = "Show Anchor support matrix"
+requires_argument = false
+
+[slash_commands.seagrass-generator-profile]
+description = "Show Anchor generator profile"
+requires_argument = false
+
+[slash_commands.seagrass-logs]
+description = "Show recent Seagrass logs"
 requires_argument = false
 
 [slash_commands.seagrass-feedback]

@@ -117,7 +117,7 @@ function lintPages(): string[] {
     return [];
   }
   return readdirSync(lintsRoot)
-    .filter((name) => name.endsWith(".md"))
+    .filter((name) => name.endsWith(".md") && name.startsWith("seagrass-"))
     .map((name) => resolve(lintsRoot, name))
     .sort(compareStrings);
 }

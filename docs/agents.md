@@ -1,15 +1,17 @@
-# Agent Commands
+# Assistant And Automation Commands
 
-Agents that do not speak LSP can use the CLI diagnostics mode:
+Tools that do not speak LSP can use the CLI diagnostics mode. This is the
+headless path: no editor UI, no prompts, JSON over stdout, and stable exit
+codes.
 
 ```sh
-cargo run -p seagrass -- diagnostics programs/demo/src/lib.rs --json
+cargo run -p seagrass-cli -- diagnostics fixtures/smoke-broken.rs --json
 ```
 
 Agents can also pipe one Rust file through stdin:
 
 ```sh
-cat programs/demo/src/lib.rs | cargo run -p seagrass -- diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
+cat fixtures/smoke-broken.rs | cargo run -p seagrass-cli -- diagnostics --stdin --stdin-path fixtures/smoke-broken.rs --json
 ```
 
 It prints a JSON array:
@@ -17,16 +19,18 @@ It prints a JSON array:
 ```json
 [
   {
-    "file": "/workspace/programs/demo/src/lib.rs",
+    "file": "fixtures/smoke-broken.rs",
     "range": {
-      "start": { "line": 5, "character": 15 },
-      "end": { "line": 5, "character": 26 }
+      "start": { "line": 7, "character": 14 },
+      "end": { "line": 7, "character": 18 }
     },
-    "code": "anchor-security-signer",
-    "severity": "WARNING",
-    "topic": "seagrass/security.signer.authorization",
+    "code": "anchor-init-constraints",
+    "severity": "ERROR",
+    "topic": "seagrass/anchor.init.missing-payer",
     "confidence": "authoritative",
-    "message": "`authority` is used as a signer account without Anchor signer validation; use `Signer<'info>` or add `#[account(signer)]`."
+    "applicability": "Unspecified",
+    "docsUrl": "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-init-missing-payer.md",
+    "message": "Anchor `init` constraint is missing `payer = ...`; add the account that funds initialization."
   }
 ]
 ```
@@ -34,8 +38,90 @@ It prints a JSON array:
 The command accepts a Rust file or directory, recurses over `.rs` files for
 directories, and exits with code `1` when any diagnostic has ERROR severity.
 Usage and input errors exit with code `2` and include a retryable example
-invocation. Run `cargo run -p seagrass -- diagnostics --help` for the layered
+invocation. Run `cargo run -p seagrass-cli -- diagnostics --help` for the layered
 CLI help.
+
+## Preflight Evidence
+
+Use `seagrass preflight` when an agent has explicit invocation/account evidence
+and wants Anchor preflight error coverage without building the program or
+running a validator:
+
+```sh
+seagrass preflight fixtures/preflight/anchor-errors.json --json
+```
+
+The checked-in fixture exercises every `preflight-covered` Anchor error and
+keeps `runtimeEvidence.status` at `notConfigured`. The command exits with code
+`1` when preflight errors are detected and exits with code `2` for malformed
+evidence or usage errors.
+
+## Skill Discovery
+
+The installed `seagrass` binary also serves agent-facing workflow instructions
+from the same version that is on disk:
+
+```sh
+seagrass skills list --json
+seagrass skills get lint
+seagrass skills get audit --full
+seagrass skills path suppress --json
+```
+
+Use `skills get <name>` for compact current instructions and `--full` for the
+bundled `SKILL.md` body. Names accept both short topics such as `lint` and full
+skill names such as `seagrass-lint`. Use raw files in `skills/` only as a
+fallback when the binary is unavailable. JSON output includes `binaryVersion`
+so agents can prove the guidance came from the installed Seagrass build.
+Maintainers should follow [`agent-skill-help.md`](agent-skill-help.md) when
+updating these topics so the installed help, checkout catalog, and raw fallback
+files do not drift.
+
+For GitHub code scanning and review UIs, emit SARIF:
+
+```sh
+seagrass diagnostics fixtures --sarif > seagrass.sarif
+```
+
+Consumer repositories can use the bundled composite action without checking out
+the Seagrass source, as long as they install a published `seagrass-cli` version:
+copy [`docs/templates/seagrass-diagnostics-sarif.yml`](templates/seagrass-diagnostics-sarif.yml)
+into `.github/workflows/seagrass-diagnostics.yml` and replace `<tag-or-sha>`.
+
+```yaml
+name: Seagrass diagnostics
+
+on:
+  pull_request:
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: heyAyushh/seagrass/.github/actions/seagrass-diagnostics@<tag-or-sha>
+        with:
+          path: programs
+          sarif: "true"
+          seagrass-version: "0.1.2"
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: seagrass-diagnostics.out
+```
+
+Pin `<tag-or-sha>` in real consumers. Leave `seagrass-version` empty only when
+the workflow is running inside the Seagrass repository itself, where the action
+can build the local checkout.
+
+Golden-path verification from the repository root:
+
+```sh
+bash scripts/smoke-install.sh
+```
 
 Use these `workspace/executeCommand` endpoints when an agent needs a compact
 semantic snapshot instead of many granular LSP requests.
@@ -57,7 +143,9 @@ Command:
 ```
 
 The `instruction` key is also accepted for compatibility with
-`seagrass/analyze`.
+`seagrass/analyze`. For headless agent and CI use, run
+`seagrass analyze <path> --json` to emit the same static codebase-intelligence
+boundary without speaking LSP.
 
 Returns:
 
@@ -233,3 +321,54 @@ The smoke test verifies command advertisement, `textDocument/codeAction`
 refactor assists, `seagrass/proposeAssists` payloads, focused cursor behavior,
 and edit refresh. `bun scripts/verify-production.ts` also covers the VS Code and
 Zed adapter checks plus the release wasm freshness check.
+
+## Tool-Specific Setup
+
+### Claude Code
+
+Claude Code should prefer the installed CLI for current workflow text:
+
+```sh
+seagrass skills list --json
+seagrass skills get lint --full
+```
+
+For slash-command style local installs, symlink the Seagrass `SKILL.md` folders:
+
+```sh
+mkdir -p ~/.claude/skills
+for skill in skills/seagrass-*; do
+  ln -sfn "$(pwd)/$skill" "$HOME/.claude/skills/$(basename "$skill")"
+done
+```
+
+Use `seagrass skills list --json` as the current catalog. `skills/README.md` is
+the checkout fallback. The skills route normal requests to the CLI diagnostics
+path above and route false-positive work to minimal repro fixtures.
+
+### OpenCode
+
+OpenCode should be started at the repository root. The tracked template is
+`editors/opencode/opencode.json`; activate it in a checkout with:
+
+```sh
+ln -sfn editors/opencode/opencode.json opencode.json
+```
+
+The activated root file points OpenCode at `AGENTS.md`, this file, and
+`skills/README.md`. That is enough for project rules and Seagrass command
+discovery; do not install a separate OpenCode package unless you are building a
+custom OpenCode plugin.
+
+### Cursor
+
+Cursor should read `.cursor/rules/seagrass.mdc` as a project rule. The tracked
+template is `editors/cursor/rules/seagrass.mdc`; activate it in a checkout with:
+
+```sh
+mkdir -p .cursor/rules
+ln -sfn ../../editors/cursor/rules/seagrass.mdc .cursor/rules/seagrass.mdc
+```
+
+Cursor also supports root `AGENTS.md`, but the `.mdc` rule gives scoped
+activation for Rust and Solana manifest files.
