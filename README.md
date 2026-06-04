@@ -22,6 +22,7 @@ bash scripts/smoke-install.sh
 seagrass diagnostics <path> --json
 seagrass diagnostics <path> --sarif > out.sarif
 seagrass analyze <path> --json
+seagrass preflight fixtures/preflight/anchor-errors.json --json
 seagrass skills list --json
 seagrass skills get lint --full
 ```
@@ -44,6 +45,7 @@ Use the installed binary first. It serves version-matched workflow guidance:
 Before accounts/constraints/CPIs/security:
 seagrass diagnostics <path> --json
 seagrass analyze <path> --json
+seagrass preflight fixtures/preflight/anchor-errors.json --json
 seagrass skills list --json
 https://raw.githubusercontent.com/heyAyushh/seagrass/main/AGENTS.md
 https://raw.githubusercontent.com/heyAyushh/seagrass/main/docs/agents.md

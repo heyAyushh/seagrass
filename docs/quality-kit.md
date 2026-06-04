@@ -20,6 +20,13 @@ cargo test -p seagrass
 Editor-visible behavior should also touch `editor_ux_parity` when diagnostics,
 completions, hovers, code actions, ranking, or execute commands change.
 
+The Anchor preflight CLI fixture should keep detecting every preflight-covered
+error without claiming runtime telemetry:
+
+```sh
+seagrass preflight fixtures/preflight/anchor-errors.json --json
+```
+
 ## Hotpath Replay
 
 Replay protocol sessions and enforce latency budgets:
@@ -47,6 +54,7 @@ cargo +1.89.0 install cargo-fuzz --locked
 cd fuzz
 cargo +nightly fuzz run fuzz_document_parse
 cargo +nightly fuzz run fuzz_anchor_attr
+cargo +nightly fuzz run fuzz_anchor_preflight
 cargo +nightly fuzz run fuzz_manifest_parse
 cargo +nightly fuzz run fuzz_semantic_diagnostics
 ```

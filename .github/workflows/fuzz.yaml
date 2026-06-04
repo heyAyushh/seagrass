@@ -25,6 +25,7 @@ jobs:
         target:
           - fuzz_document_parse
           - fuzz_anchor_attr
+          - fuzz_anchor_preflight
           - fuzz_manifest_parse
           - fuzz_semantic_diagnostics
         shard:

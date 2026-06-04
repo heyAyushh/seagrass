@@ -19,6 +19,7 @@ export const releaseBinaryTargets = [
   "aarch64-apple-darwin",
   "x86_64-apple-darwin",
   "x86_64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
   "x86_64-pc-windows-msvc",
 ] as const;
 
@@ -57,6 +58,8 @@ const repoRoot = resolve(scriptDir, "..");
 const defaultVsceVersion = "3.9.1";
 const defaultRepository = "heyAyushh/seagrass";
 const serverCargoPackage = "seagrass-cli";
+const linuxMuslTarget = "x86_64-unknown-linux-musl";
+const linuxMuslCompiler = "musl-gcc";
 
 if (import.meta.main) {
   try {
@@ -209,7 +212,9 @@ export function parsePackageReleaseArgs(
 
 export function expectedReleaseAssets(version: string): string[] {
   return [
-    ...releaseBinaryTargets.map((target) => `seagrass-${version}-${target}.tar.gz`),
+    ...releaseBinaryTargets.map(
+      (target) => `seagrass-${version}-${target}${serverArchiveExtension(target)}`,
+    ),
     `seagrass-zed-${version}.tar.gz`,
     `seagrass-vscode-${version}.vsix`,
     `seagrass-${version}-fuzz-corpus.tar.gz`,
@@ -251,10 +256,7 @@ function packageServer(context: PackageContext, stagingDir: string, outDir: stri
   );
 
   if (!context.options.skipBuild) {
-    const env =
-      process.platform === "darwin"
-        ? { CARGO_PROFILE_RELEASE_LTO: "off", RUSTFLAGS: "-C embed-bitcode=no" }
-        : undefined;
+    const env = serverBuildEnv(target);
     runChecked(
       "cargo",
       ["build", "--package", serverCargoPackage, "--release", "--locked", "--target", target],
@@ -272,7 +274,19 @@ function packageServer(context: PackageContext, stagingDir: string, outDir: stri
   copyRequired(resolve(context.repoRoot, "README.md"), resolve(packageDir, "README.md"));
   copyRequired(resolve(context.repoRoot, "LICENSE"), resolve(packageDir, "LICENSE"));
 
-  return archivePackage(context, stagingDir, outDir, packageName);
+  return archiveServerPackage(context, stagingDir, outDir, packageName, target);
+}
+
+function serverBuildEnv(target: string): Record<string, string> | undefined {
+  const env: Record<string, string> = {};
+  if (process.platform === "darwin") {
+    env.CARGO_PROFILE_RELEASE_LTO = "off";
+    env.RUSTFLAGS = "-C embed-bitcode=no";
+  }
+  if (target === linuxMuslTarget) {
+    env.CC_x86_64_unknown_linux_musl = linuxMuslCompiler;
+  }
+  return Object.keys(env).length > 0 ? env : undefined;
 }
 
 function packageZed(context: PackageContext, stagingDir: string, outDir: string): string[] {
@@ -373,6 +387,37 @@ function archivePackage(
   });
   writeChecksum(archivePath);
   return [archivePath, `${archivePath}.sha256`];
+}
+
+function archiveServerPackage(
+  context: PackageContext,
+  stagingDir: string,
+  outDir: string,
+  packageName: string,
+  target: string,
+): string[] {
+  if (!target.includes("windows")) {
+    return archivePackage(context, stagingDir, outDir, packageName);
+  }
+  const archivePath = resolve(outDir, `${packageName}.zip`);
+  prepareOutputFile(archivePath, context.options.force);
+  runChecked(
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      "Compress-Archive -LiteralPath $args[0] -DestinationPath $args[1] -Force",
+      resolve(stagingDir, packageName),
+      archivePath,
+    ],
+    { cwd: context.repoRoot },
+  );
+  writeChecksum(archivePath);
+  return [archivePath, `${archivePath}.sha256`];
+}
+
+function serverArchiveExtension(target: string): ".zip" | ".tar.gz" {
+  return target.includes("windows") ? ".zip" : ".tar.gz";
 }
 
 function zedBuiltWasmCandidates(root: string): string[] {

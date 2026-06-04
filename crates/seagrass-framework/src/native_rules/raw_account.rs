@@ -45,6 +45,16 @@ const TYPE_VALIDATION_HELPERS: &[&str] = &[
     "check_discriminator",
     "validate_discriminator",
 ];
+const ACCOUNT_ITERATOR_METHODS: &[&str] = &["iter", "iter_mut"];
+const TRANSPARENT_ACCOUNT_ACCESS_METHODS: &[&str] = &[
+    "ok_or",
+    "ok_or_else",
+    "unwrap",
+    "expect",
+    "as_ref",
+    "as_mut",
+];
+const INITIAL_ITERATOR_ACCOUNT_INDEX: usize = 0;
 
 pub(super) fn diagnostics(
     document: FrameworkDocument<'_>,
@@ -76,6 +86,7 @@ struct NativeRawAccountInvariantVisitor {
     framework_kind: FrameworkKind,
     account_values: HashSet<String>,
     account_collections: HashSet<String>,
+    account_iterators: HashMap<String, AccountIteratorOrigin>,
     account_origins: HashMap<String, AccountOrigin>,
     data_origins: HashMap<String, NativeRawDataRead>,
     raw_data_reads: Vec<NativeRawDataRead>,
@@ -90,6 +101,7 @@ impl NativeRawAccountInvariantVisitor {
             framework_kind,
             account_values: HashSet::new(),
             account_collections: HashSet::new(),
+            account_iterators: HashMap::new(),
             account_origins: HashMap::new(),
             data_origins: HashMap::new(),
             raw_data_reads: Vec::new(),
@@ -153,10 +165,44 @@ impl NativeRawAccountInvariantVisitor {
         let Some(local_name) = local_ident_name(node) else {
             return;
         };
+        if self.record_account_iterator_origin(&local_name, &init.expr) {
+            return;
+        }
+        if let Some(origin) = self.next_account_info_origin(&init.expr) {
+            self.account_values.insert(local_name.clone());
+            self.account_origins.insert(local_name, origin);
+            return;
+        }
         if let Some(origin) = self.account_collection_origin(&init.expr) {
             self.account_values.insert(local_name.clone());
             self.account_origins.insert(local_name, origin);
         }
+    }
+
+    fn record_account_iterator_origin(&mut self, name: &str, expr: &syn::Expr) -> bool {
+        let Some(collection) = account_iterator_collection(expr) else {
+            return false;
+        };
+        if !self.account_collections.contains(&collection) {
+            return false;
+        }
+        self.account_iterators.insert(
+            name.to_string(),
+            AccountIteratorOrigin {
+                next_index: INITIAL_ITERATOR_ACCOUNT_INDEX,
+            },
+        );
+        true
+    }
+
+    fn next_account_info_origin(&mut self, expr: &syn::Expr) -> Option<AccountOrigin> {
+        let iterator = next_account_info_iterator_name(expr)?;
+        let origin = self.account_iterators.get_mut(&iterator)?;
+        let account_index = origin.next_index;
+        origin.next_index += 1;
+        Some(AccountOrigin {
+            account_index: Some(account_index),
+        })
     }
 
     fn record_local_data_origin(&mut self, node: &syn::Local) {
@@ -523,6 +569,11 @@ struct AccountOrigin {
     account_index: Option<usize>,
 }
 
+#[derive(Debug, Clone)]
+struct AccountIteratorOrigin {
+    next_index: usize,
+}
+
 #[derive(Debug)]
 struct AccountCollectionAccess {
     collection: String,
@@ -629,9 +680,53 @@ fn account_collection_access(expr: &syn::Expr) -> Option<AccountCollectionAccess
                 index: method_call.args.first().and_then(unsigned_literal),
             })
         }
+        syn::Expr::MethodCall(method_call)
+            if TRANSPARENT_ACCOUNT_ACCESS_METHODS
+                .contains(&method_call.method.to_string().as_str()) =>
+        {
+            account_collection_access(&method_call.receiver)
+        }
+        syn::Expr::Try(expr_try) => account_collection_access(&expr_try.expr),
         syn::Expr::Group(group) => account_collection_access(&group.expr),
         syn::Expr::Paren(paren) => account_collection_access(&paren.expr),
         syn::Expr::Reference(reference) => account_collection_access(&reference.expr),
+        _ => None,
+    }
+}
+
+fn account_iterator_collection(expr: &syn::Expr) -> Option<String> {
+    match expr {
+        syn::Expr::MethodCall(method_call)
+            if ACCOUNT_ITERATOR_METHODS.contains(&method_call.method.to_string().as_str()) =>
+        {
+            path_ident_name(&method_call.receiver)
+        }
+        syn::Expr::Reference(reference) => account_iterator_collection(&reference.expr),
+        syn::Expr::Paren(paren) => account_iterator_collection(&paren.expr),
+        syn::Expr::Group(group) => account_iterator_collection(&group.expr),
+        _ => None,
+    }
+}
+
+fn next_account_info_iterator_name(expr: &syn::Expr) -> Option<String> {
+    match expr {
+        syn::Expr::Call(call) if called_function_ident(&call.func)? == "next_account_info" => {
+            call.args.first().and_then(account_iterator_name)
+        }
+        syn::Expr::Try(expr_try) => next_account_info_iterator_name(&expr_try.expr),
+        syn::Expr::Reference(reference) => next_account_info_iterator_name(&reference.expr),
+        syn::Expr::Paren(paren) => next_account_info_iterator_name(&paren.expr),
+        syn::Expr::Group(group) => next_account_info_iterator_name(&group.expr),
+        _ => None,
+    }
+}
+
+fn account_iterator_name(expr: &syn::Expr) -> Option<String> {
+    match expr {
+        syn::Expr::Path(_) => path_ident_name(expr),
+        syn::Expr::Reference(reference) => account_iterator_name(&reference.expr),
+        syn::Expr::Paren(paren) => account_iterator_name(&paren.expr),
+        syn::Expr::Group(group) => account_iterator_name(&group.expr),
         _ => None,
     }
 }

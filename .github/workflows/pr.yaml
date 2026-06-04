@@ -126,3 +126,33 @@ jobs:
         run: cargo test -p seagrass
       - name: Run protocol smoke
         run: bun scripts/protocol-smoke.ts
+
+  server-portability:
+    name: Server portability (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.89.0
+      - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
+      - name: Build language server binary
+        run: cargo build -p seagrass-cli --locked
+      - name: Run framework crate tests
+        run: >
+          cargo test --locked
+          -p seagrass-framework
+          -p seagrass-anchor-v1
+          -p seagrass-anchor-v2-preview
+          -p seagrass-pinocchio
+          -p seagrass-native
+          -p seagrass-sources
+      - name: Run seagrass library tests
+        run: cargo test -p seagrass --locked

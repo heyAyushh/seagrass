@@ -1826,6 +1826,7 @@ fn error_category(code: u32) -> AnchorErrorCategory {
 #[derive(Debug)]
 enum AnchorErrorCoverage {
     StaticCovered,
+    PreflightCovered,
     RuntimeOnly,
 }
 
@@ -1867,6 +1868,18 @@ fn error_coverage(name: &str, code: u32) -> AnchorErrorCoverage {
         "DeclaredProgramIdMismatch" | "EventInstructionStub" | "Deprecated" => {
             AnchorErrorCoverage::StaticCovered
         }
+        "InstructionMissing"
+        | "InstructionFallbackNotFound"
+        | "InstructionDidNotDeserialize"
+        | "AccountDiscriminatorAlreadySet"
+        | "AccountDiscriminatorNotFound"
+        | "AccountDiscriminatorMismatch"
+        | "AccountDidNotDeserialize"
+        | "AccountNotEnoughKeys"
+        | "AccountOwnedByWrongProgram"
+        | "InvalidProgramId"
+        | "AccountNotInitialized"
+        | "AccountReallocExceedsLimit" => AnchorErrorCoverage::PreflightCovered,
         _ if (100..=199).contains(&code)
             || (2500..=4099).contains(&code)
             || name.starts_with("Instruction")

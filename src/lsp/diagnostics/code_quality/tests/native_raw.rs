@@ -26,6 +26,74 @@ pub fn process(_accounts: &[AccountInfo]) -> ProgramResult {
 }
 
 #[test]
+fn reports_native_raw_reads_from_next_account_info_aliases() {
+    let source = r#"
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let state_account = next_account_info(accounts_iter)?;
+    let data = state_account.try_borrow_data()?;
+    let _state = State::try_from_slice(&data)?;
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    let owner = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.data.as_ref().and_then(|data| data.get("attack"))
+                == Some(&serde_json::json!("owner-checks"))
+        })
+        .unwrap_or_else(|| panic!("missing owner-checks: {diagnostics:#?}"));
+    assert_eq!(
+        owner
+            .data
+            .as_ref()
+            .and_then(|data| data.get("accountIndex")),
+        Some(&serde_json::json!(0))
+    );
+    assert_has_attack(&diagnostics, "type-cosplay");
+}
+
+#[test]
+fn reports_native_raw_reads_from_get_aliases() {
+    let source = r#"
+use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult, program_error::ProgramError};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let state_account = accounts.get(1).ok_or(ProgramError::NotEnoughAccountKeys)?;
+    let data = state_account.try_borrow_data()?;
+    let _state = State::try_from_slice(&data)?;
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    let owner = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.data.as_ref().and_then(|data| data.get("attack"))
+                == Some(&serde_json::json!("owner-checks"))
+        })
+        .unwrap_or_else(|| panic!("missing owner-checks: {diagnostics:#?}"));
+    assert_eq!(
+        owner
+            .data
+            .as_ref()
+            .and_then(|data| data.get("accountIndex")),
+        Some(&serde_json::json!(1))
+    );
+    assert_has_attack(&diagnostics, "type-cosplay");
+}
+
+#[test]
 fn accepts_native_raw_account_with_owner_and_discriminator_checks() {
     let source = r#"
 use solana_program::{account_info::AccountInfo, entrypoint::ProgramResult};

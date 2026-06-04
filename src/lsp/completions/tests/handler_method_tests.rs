@@ -92,6 +92,50 @@ impl PositionBundle {
     assert!(!labels.contains(&"static_helper()"));
 }
 
+#[test]
+fn completes_boxed_account_data_methods_after_context_alias() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub position_bundle: Box<Account<'info, PositionBundle>>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let position_bundle = &mut ctx.accounts.position_bundle;
+    position_bundle.cl
+}
+
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+    pub position_bitmap: [u8; 32],
+}
+
+impl PositionBundle {
+    pub fn close_bundled_position(&mut self, bundle_index: u16) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn static_helper() -> bool {
+        true
+    }
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let position = position_after(source, "position_bundle.cl");
+
+    let items = completions(&document, position).expect("boxed account-data method completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"close_bundled_position()"));
+    assert!(!labels.contains(&"static_helper()"));
+}
+
 proptest! {
     #[test]
     fn completes_generated_typed_handler_methods(

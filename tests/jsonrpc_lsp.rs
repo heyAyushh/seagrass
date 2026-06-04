@@ -54,6 +54,27 @@ pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
     Ok(())
 }
 "#;
+const NATIVE_CPI_SOURCE: &str = r#"
+use {
+    solana_account_info::AccountInfo,
+    solana_cpi::invoke,
+    solana_instruction::{AccountMeta, Instruction},
+    solana_program_error::ProgramResult,
+    solana_pubkey::Pubkey,
+};
+
+pub fn process(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let account = &accounts[0];
+    let metas = vec![AccountMeta::new(*account.key, true)];
+    let instruction = Instruction {
+        program_id: *program_id,
+        accounts: metas,
+        data: vec![],
+    };
+    invoke(&instruction, accounts)?;
+    Ok(())
+}
+"#;
 
 #[test]
 fn jsonrpc_lsp_formats_and_reports_framework_diagnostics() {
@@ -196,6 +217,58 @@ fn jsonrpc_lsp_formats_and_reports_framework_diagnostics() {
         &native_type_actions,
         "Insert discriminator guard",
         "State::DISCRIMINATOR.as_ref()",
+    );
+
+    let native_cpi_uri = workspace.file_uri("native_cpi.rs");
+    client.open_rust_document(&native_cpi_uri, NATIVE_CPI_SOURCE);
+    let native_cpi_diagnostics = client.pull_diagnostics(&native_cpi_uri);
+    assert_diagnostic_attack(
+        &native_cpi_diagnostics,
+        "signer-authorization",
+        Some("native-solana"),
+    );
+    assert_diagnostic_attack(
+        &native_cpi_diagnostics,
+        "arbitrary-cpi",
+        Some("native-solana"),
+    );
+    assert_diagnostic_attack(
+        &native_cpi_diagnostics,
+        "writable-account",
+        Some("native-solana"),
+    );
+    let native_signer_diagnostic = diagnostic_with_attack(
+        &native_cpi_diagnostics,
+        "signer-authorization",
+        Some("native-solana"),
+    );
+    let native_signer_actions = client.code_actions(&native_cpi_uri, &native_signer_diagnostic);
+    assert_code_action_edit_contains(
+        &native_signer_actions,
+        "Insert signer guard",
+        "!account.is_signer",
+    );
+    let native_writable_diagnostic = diagnostic_with_attack(
+        &native_cpi_diagnostics,
+        "writable-account",
+        Some("native-solana"),
+    );
+    let native_writable_actions = client.code_actions(&native_cpi_uri, &native_writable_diagnostic);
+    assert_code_action_edit_contains(
+        &native_writable_actions,
+        "Insert writable guard",
+        "!account.is_writable",
+    );
+    let native_cpi_diagnostic = diagnostic_with_attack(
+        &native_cpi_diagnostics,
+        "arbitrary-cpi",
+        Some("native-solana"),
+    );
+    let native_cpi_actions = client.code_actions(&native_cpi_uri, &native_cpi_diagnostic);
+    assert_code_action_edit_contains(
+        &native_cpi_actions,
+        "Insert CPI program-id guard",
+        "program_id != &crate::ID",
     );
 
     client.shutdown();

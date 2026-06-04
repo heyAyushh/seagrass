@@ -300,6 +300,35 @@ pub struct State {}
 }
 
 #[test]
+fn extracts_inherent_methods_from_incomplete_rust() {
+    let source = r#"
+#[account]
+pub struct PositionBundle {
+    pub position_bundle_mint: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn close_bundled_position(&mut self, bundle_index: u16) -> Result<()> {
+        Ok(())
+    }
+
+    pub fn static_helper() -> bool {
+        true
+    }
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    position_bundle.cl
+}
+"#;
+    let syntax = RustSyntax::parse(source).unwrap();
+
+    let names = syntax.inherent_method_names(source, "PositionBundle");
+
+    assert_eq!(names, vec!["close_bundled_position"]);
+}
+
+#[test]
 fn supports_incremental_reparsing() {
     let original = "fn hello() { println!(\"old\"); }";
     let edited = "fn hello() { println!(\"new\"); }";

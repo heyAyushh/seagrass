@@ -28,6 +28,7 @@ The extension contributes these commands:
 - `Seagrass: Analyze Document`
 - `Seagrass: Artifacts`
 - `Seagrass: Recent Logs`
+- `Seagrass: Send Feedback`
 - `Seagrass: Error Coverage`
 - `Seagrass: Support Matrix`
 - `Seagrass: Generator Profile`
@@ -39,3 +40,7 @@ Server process settings are under `seagrass.*`. Changing `serverCommand`, `serve
 `seagrass.diagnostics.transport` defaults to `push`. That is intentional for VS Code: enabling both push and pull diagnostics makes VS Code show the same problem twice.
 
 `seagrass.diagnostics.coldPath` defaults to `idle`. Set it to `save` to avoid full cold diagnostics while typing, or `manual` when you only want explicit pull/command-driven full checks.
+
+`Seagrass: Send Feedback` opens the server-owned feedback URL, unless `seagrass.feedback.url` is set to a workspace-specific destination. False-positive reports copy the diagnostic payload to the clipboard before opening the same feedback path.
+
+`Seagrass: Recent Logs` reads the bounded in-memory server log snapshot. These logs are local support evidence only; Seagrass does not upload editor events or logs. Set `seagrass.trace.server` to `true` when a user needs verbose local debugging for a support report, then turn it back off after collecting the report.

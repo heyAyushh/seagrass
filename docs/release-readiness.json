@@ -9,12 +9,14 @@
     "aggregateFuzzHours": 0,
     "targets": [
       "fuzz_anchor_attr",
+      "fuzz_anchor_preflight",
       "fuzz_document_parse",
       "fuzz_manifest_parse",
       "fuzz_semantic_diagnostics"
     ],
     "workflowMatrixTargets": [
       "fuzz_anchor_attr",
+      "fuzz_anchor_preflight",
       "fuzz_document_parse",
       "fuzz_manifest_parse",
       "fuzz_semantic_diagnostics"
@@ -22,6 +24,13 @@
     "targetRuns": [
       {
         "target": "fuzz_anchor_attr",
+        "status": "pending",
+        "shards": 8,
+        "secondsPerShard": 3600,
+        "fuzzHours": 0
+      },
+      {
+        "target": "fuzz_anchor_preflight",
         "status": "pending",
         "shards": 8,
         "secondsPerShard": 3600,

@@ -8,7 +8,9 @@ mod uri;
 use {
     crate::{
         command::server_command_for_worktree,
-        config::{agent_mode, diagnostics_transport, workspace_configuration},
+        config::{
+            agent_mode, diagnostics_transport, initialization_options, workspace_configuration,
+        },
         constants::SERVER_ID,
         slash::{run_seagrass_slash_command, slash_command_spec, unsupported_slash_command},
     },
@@ -49,30 +51,7 @@ impl zed::Extension for SeagrassExtension {
         let agent_mode_enabled = agent_mode(settings.settings.as_ref());
         let transport = diagnostics_transport(settings.settings.as_ref());
 
-        Ok(Some(zed::serde_json::json!({
-            "seagrass": {
-                "agent": {
-                    "mode": agent_mode_enabled
-                },
-                "diagnostics": {
-                    "transport": transport
-                },
-                "editor": {
-                    "client": "zed",
-                    "inlineValues": {
-                        "enabled": true
-                    }
-                },
-                "telemetry": {
-                    "completion": {
-                        "enabled": true
-                    },
-                    "diagnostics": {
-                        "enabled": true
-                    }
-                }
-            }
-        })))
+        Ok(Some(initialization_options(agent_mode_enabled, &transport)))
     }
 
     fn language_server_workspace_configuration(

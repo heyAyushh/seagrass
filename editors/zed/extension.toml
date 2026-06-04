@@ -10,10 +10,14 @@ repository = "https://github.com/heyAyushh/seagrass"
 name = "Seagrass"
 languages = ["Rust"]
 language_ids = { Rust = "rust" }
-code_action_kinds = ["quickfix", "source"]
+code_action_kinds = ["quickfix", "refactor", "source"]
 
 [slash_commands.seagrass-status]
 description = "Show Seagrass server status"
+requires_argument = false
+
+[slash_commands.seagrass-analyze]
+description = "Show Seagrass analysis report"
 requires_argument = false
 
 [slash_commands.seagrass-coverage]
@@ -22,6 +26,26 @@ requires_argument = false
 
 [slash_commands.seagrass-artifacts]
 description = "Show Seagrass artifact report"
+requires_argument = false
+
+[slash_commands.seagrass-program-report]
+description = "Show Seagrass program report"
+requires_argument = false
+
+[slash_commands.seagrass-error-coverage]
+description = "Show Anchor error coverage"
+requires_argument = false
+
+[slash_commands.seagrass-support-matrix]
+description = "Show Anchor support matrix"
+requires_argument = false
+
+[slash_commands.seagrass-generator-profile]
+description = "Show Anchor generator profile"
+requires_argument = false
+
+[slash_commands.seagrass-logs]
+description = "Show recent Seagrass logs"
 requires_argument = false
 
 [slash_commands.seagrass-feedback]

@@ -17,6 +17,8 @@ describe("product gate guardrails", () => {
 
     expect(verifyProduction).toContain("Golden-path install smoke");
     expect(verifyProduction).toContain("scripts/smoke-install.sh");
+    expect(verifyProduction).toContain("Preflight CLI demo");
+    expect(verifyProduction).toContain("scripts/check-preflight-demo.ts");
     expect(verifyProduction).toContain("Lint docs index freshness");
     expect(verifyProduction).toContain("scripts/build-lint-docs-index.ts");
     expect(verifyProduction).toContain('"--check"');
@@ -36,6 +38,8 @@ describe("product gate guardrails", () => {
     expect(readme).toContain("Codebase intelligence for Solana programs");
     expect(readme).toContain("Runtime intelligence is an evidence-ingestion boundary");
     expect(productFraming).toContain("## Static Layer");
+    expect(productFraming).toContain("## Preflight Layer");
+    expect(productFraming).toContain("seagrass preflight fixtures/preflight/anchor-errors.json --json");
     expect(productFraming).toContain("## Runtime Layer");
     expect(productFraming).toContain("Actual compute-unit usage per instruction");
     expect(productFraming).toContain("Required evidence before claim");
@@ -56,6 +60,7 @@ describe("product gate guardrails", () => {
     expect(agentSkillHelp).toContain("src/app/cli/skills.rs");
     expect(agentSkillHelp).toContain("bun scripts/verify-production.ts");
     expect(skillsReadme).toContain("seagrass skills get lint --full");
+    expect(skillsReadme).toContain("seagrass preflight fixtures/preflight/anchor-errors.json --json");
     expect(skillsReadme).toContain("version-matched to the installed");
     expect(skillsReadme).toContain("binaryVersion");
     expect(skillsReadme).toContain("docs/agent-skill-help.md");

@@ -215,6 +215,12 @@ const steps = [
     args: ["build", "-p", "seagrass-cli"],
   },
   {
+    name: "Preflight CLI demo",
+    cwd: repoRoot,
+    command: "bun",
+    args: ["scripts/check-preflight-demo.ts"],
+  },
+  {
     name: "Golden-path install smoke",
     cwd: repoRoot,
     command: "bash",

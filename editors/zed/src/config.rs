@@ -3,6 +3,36 @@ use {
     zed_extension_api as zed,
 };
 
+pub(crate) fn initialization_options(
+    agent_mode_enabled: bool,
+    diagnostics_transport: &str,
+) -> zed::serde_json::Value {
+    zed::serde_json::json!({
+        "seagrass": {
+            "agent": {
+                "mode": agent_mode_enabled
+            },
+            "diagnostics": {
+                "transport": diagnostics_transport
+            },
+            "editor": {
+                "client": "zed",
+                "inlineValues": {
+                    "enabled": true
+                }
+            },
+            "telemetry": {
+                "completion": {
+                    "enabled": true
+                },
+                "diagnostics": {
+                    "enabled": true
+                }
+            }
+        }
+    })
+}
+
 pub(crate) fn workspace_configuration(
     settings: Option<zed::serde_json::Value>,
 ) -> zed::serde_json::Value {
@@ -96,6 +126,27 @@ fn ensure_string_default(settings: &mut zed::serde_json::Value, key: &str, defau
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn initialization_options_enable_zed_completion_contract() {
+        let options = initialization_options(true, "push");
+
+        assert_eq!(options["seagrass"]["agent"]["mode"], true);
+        assert_eq!(options["seagrass"]["diagnostics"]["transport"], "push");
+        assert_eq!(options["seagrass"]["editor"]["client"], "zed");
+        assert_eq!(
+            options["seagrass"]["editor"]["inlineValues"]["enabled"],
+            true
+        );
+        assert_eq!(
+            options["seagrass"]["telemetry"]["completion"]["enabled"],
+            true
+        );
+        assert_eq!(
+            options["seagrass"]["telemetry"]["diagnostics"]["enabled"],
+            true
+        );
+    }
 
     #[test]
     fn defaults_to_push_diagnostics_to_avoid_transport_duplicates() {

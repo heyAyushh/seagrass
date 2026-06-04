@@ -5,6 +5,7 @@ import { buildFuzzEvidence } from "./fuzz-readiness.ts";
 const expectedRepoSlug = "heyAyushh/seagrass";
 const fuzzTargets = [
   "fuzz_anchor_attr",
+  "fuzz_anchor_preflight",
   "fuzz_document_parse",
   "fuzz_manifest_parse",
   "fuzz_semantic_diagnostics",
@@ -23,24 +24,33 @@ describe("fuzz readiness evidence", () => {
         "fuzz_manifest_parse",
         "fuzz_document_parse",
         "fuzz_anchor_attr",
+        "fuzz_anchor_preflight",
         "fuzz_semantic_diagnostics",
       ],
       workflowMatrixTargets: [
         "fuzz_document_parse",
         "fuzz_anchor_attr",
+        "fuzz_anchor_preflight",
         "fuzz_manifest_parse",
         "fuzz_semantic_diagnostics",
       ],
     });
 
     expect(evidence.status).toBe("passed");
-    expect(evidence.aggregateFuzzHours).toBe(32);
-    expect(evidence.startedAt).toBe("2026-05-25T04:00:00.000Z");
+    expect(evidence.aggregateFuzzHours).toBe(40);
+    expect(evidence.startedAt).toBe("2026-05-24T20:00:00.000Z");
     expect(evidence.targets).toEqual(fuzzTargets);
     expect(evidence.workflowMatrixTargets).toEqual(fuzzTargets);
     expect(evidence.targetRuns).toEqual([
       {
         target: "fuzz_anchor_attr",
+        status: "passed",
+        shards: 8,
+        secondsPerShard: 3_600,
+        fuzzHours: 8,
+      },
+      {
+        target: "fuzz_anchor_preflight",
         status: "passed",
         shards: 8,
         secondsPerShard: 3_600,
@@ -83,17 +93,19 @@ describe("fuzz readiness evidence", () => {
         "fuzz_manifest_parse",
         "fuzz_document_parse",
         "fuzz_anchor_attr",
+        "fuzz_anchor_preflight",
         "fuzz_semantic_diagnostics",
       ],
       workflowMatrixTargets: [
         "fuzz_document_parse",
         "fuzz_anchor_attr",
+        "fuzz_anchor_preflight",
         "fuzz_manifest_parse",
         "fuzz_semantic_diagnostics",
       ],
     });
 
-    expect(evidence.aggregateFuzzHours).toBe(32);
+    expect(evidence.aggregateFuzzHours).toBe(40);
     expect(evidence.startedAt).toBe("2026-05-26T11:00:00.000Z");
   });
 
@@ -110,6 +122,7 @@ describe("fuzz readiness evidence", () => {
           "fuzz_manifest_parse",
           "fuzz_document_parse",
           "fuzz_anchor_attr",
+          "fuzz_anchor_preflight",
           "fuzz_semantic_diagnostics",
         ],
         workflowMatrixTargets: ["fuzz_manifest_parse", "fuzz_document_parse"],
@@ -130,12 +143,14 @@ describe("fuzz readiness evidence", () => {
           "fuzz_manifest_parse",
           "fuzz_document_parse",
           "fuzz_anchor_attr",
+          "fuzz_anchor_preflight",
           "fuzz_semantic_diagnostics",
         ],
         workflowMatrixTargets: [
           "fuzz_manifest_parse",
           "fuzz_document_parse",
           "fuzz_anchor_attr",
+          "fuzz_anchor_preflight",
           "fuzz_semantic_diagnostics",
         ],
       }),

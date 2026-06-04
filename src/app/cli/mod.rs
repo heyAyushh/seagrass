@@ -1,5 +1,6 @@
 mod analyze;
 mod diagnostics;
+mod preflight;
 mod sarif;
 mod skills;
 
@@ -31,7 +32,7 @@ pub async fn run_from_env() -> Result<(), Box<dyn Error>> {
     bin_name = "seagrass",
     version = env!("CARGO_PKG_VERSION"),
     about = "Seagrass Anchor language tooling",
-    after_help = "Examples:\n  seagrass\n  seagrass diagnostics programs/demo/src/lib.rs --json\n  seagrass analyze programs/demo/src/lib.rs --json\n  seagrass skills list --json\n  seagrass skills get lint --full"
+    after_help = "Examples:\n  seagrass\n  seagrass diagnostics programs/demo/src/lib.rs --json\n  seagrass analyze programs/demo/src/lib.rs --json\n  seagrass preflight fixtures/preflight/anchor-errors.json --json\n  seagrass skills list --json\n  seagrass skills get lint --full"
 )]
 struct Cli {
     #[command(subcommand)]
@@ -43,6 +44,7 @@ impl Cli {
         match self.command {
             CliCommand::Analyze(command) => command.run(),
             CliCommand::Diagnostics(command) => command.run(),
+            CliCommand::Preflight(command) => command.run(),
             CliCommand::Skills(command) => command.run(),
         }
     }
@@ -57,6 +59,10 @@ enum CliCommand {
     /// Run Seagrass diagnostics on a Rust file or directory and print JSON.
     #[command(after_help = diagnostics::DIAGNOSTICS_HELP)]
     Diagnostics(diagnostics::DiagnosticsCommand),
+
+    /// Evaluate Anchor preflight errors from invocation/account evidence JSON.
+    #[command(after_help = preflight::PREFLIGHT_HELP)]
+    Preflight(preflight::PreflightCommand),
 
     /// Discover bundled agent workflow instructions from this installed version.
     #[command(after_help = skills::SKILLS_HELP)]

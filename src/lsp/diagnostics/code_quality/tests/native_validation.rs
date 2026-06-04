@@ -57,6 +57,67 @@ pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
 }
 
 #[test]
+fn reports_native_signer_from_next_account_info_aliases() {
+    let source = r#"
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    instruction::AccountMeta,
+};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let authority = next_account_info(accounts_iter)?;
+    let _metas = vec![AccountMeta::new(*authority.key, true)];
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| {
+            diagnostic.data.as_ref().and_then(|data| data.get("attack"))
+                == Some(&serde_json::json!("signer-authorization"))
+        })
+        .unwrap_or_else(|| panic!("missing signer-authorization: {diagnostics:#?}"));
+    assert_eq!(
+        diagnostic
+            .data
+            .as_ref()
+            .and_then(|data| data.get("accountIndex")),
+        Some(&serde_json::json!(0))
+    );
+}
+
+#[test]
+fn accepts_native_signer_check_on_next_account_info_alias() {
+    let source = r#"
+use solana_program::{
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    instruction::AccountMeta,
+    program_error::ProgramError,
+};
+
+pub fn process(accounts: &[AccountInfo]) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let authority = next_account_info(accounts_iter)?;
+    if !authority.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let _metas = vec![AccountMeta::new(*authority.key, true)];
+    Ok(())
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+
+    assert_no_attack(&diagnostics, "signer-authorization");
+}
+
+#[test]
 fn reports_native_writable_account_meta_without_writable_check() {
     let source = r#"
 use solana_program::{

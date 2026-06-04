@@ -145,7 +145,7 @@ impl ElfSectionTable {
 }
 
 impl ElfSection {
-    fn bytes<'a>(self, bytes: &'a [u8]) -> Result<&'a [u8], String> {
+    fn bytes(self, bytes: &[u8]) -> Result<&[u8], String> {
         let start = usize::try_from(self.offset)
             .map_err(|_| "ELF section offset overflows usize".to_string())?;
         let len = usize::try_from(self.size)

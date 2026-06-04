@@ -39,6 +39,12 @@ JSON-RPC over stdio, and verifies:
   with `programKind: pinocchio`.
 - Native Solana raw account owner/type diagnostics surface as
   `solana-code-quality` with `programKind: native-solana`.
+- Native Solana signer, writable-account, and CPI program-id diagnostics surface
+  as `solana-code-quality` with `programKind: native-solana`.
+- Pinocchio signer, writable-account, and CPI program-id diagnostics surface as
+  `solana-code-quality` with `programKind: pinocchio`.
+- The same root path returns framework-correct quick fixes for native Solana and
+  Pinocchio owner/type, signer, writable-account, and CPI program-id diagnostics.
 - Framework crate and editor parity tests verify that validating account 0 or
   `program_id` does not mask unvalidated account 1 or another dynamic CPI
   program expression.

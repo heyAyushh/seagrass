@@ -137,10 +137,7 @@ impl SkillCatalog {
             binary_version: BINARY_VERSION,
             catalog_path: SKILLS_CATALOG_PATH,
             catalog_raw_url: raw_url(SKILLS_CATALOG_PATH),
-            topics: SKILL_TOPICS
-                .iter()
-                .map(|topic| SkillSummary::from_topic(topic))
-                .collect(),
+            topics: SKILL_TOPICS.iter().map(SkillSummary::from_topic).collect(),
         }
     }
 

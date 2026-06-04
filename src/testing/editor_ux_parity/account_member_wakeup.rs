@@ -21,11 +21,18 @@ pub struct PositionBundle {
     pub position_bundle_mint: Pubkey,
     pub position_bitmap: [u8; 32],
 }
+
+impl PositionBundle {
+    pub fn close_bundled_position(&mut self, bundle_index: u16) -> Result<()> {
+        Ok(())
+    }
+}
 "#,
     );
 
     assert_member_completion_contains(&document, "position_bundle.", "position_bundle_mint");
     assert_member_completion_contains(&document, "position_bundle.", "position_bitmap");
+    assert_member_completion_contains(&document, "position_bundle.", "close_bundled_position()");
 }
 
 #[test]
@@ -48,6 +55,12 @@ pub struct PositionBundle {
     pub position_bundle_mint: Pubkey,
     pub position_bitmap: [u8; 32],
 }
+
+impl PositionBundle {
+    pub fn close_bundled_position(&mut self, bundle_index: u16) -> Result<()> {
+        Ok(())
+    }
+}
 "#,
     );
 
@@ -60,6 +73,11 @@ pub struct PositionBundle {
         &document,
         "ctx.accounts.position_bundle.",
         "position_bitmap",
+    );
+    assert_member_completion_contains(
+        &document,
+        "ctx.accounts.position_bundle.",
+        "close_bundled_position()",
     );
 }
 

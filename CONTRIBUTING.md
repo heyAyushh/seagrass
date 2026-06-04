@@ -38,19 +38,20 @@ cargo build --target wasm32-wasip2 --release
 
 ## Generated Anchor Support
 
-Generated support lives in `src/generated/`. Normal builds do not scrape
+Generated support lives in `src/anchor/generated/`. Normal builds do not scrape
 Anchor sources.
 
-Regenerate v1 support:
+Regenerate v1 support from a checkout that contains Anchor's `lang/syn` source
+tree:
 
 ```sh
-bun scripts/regen-support.ts --anchor-path . --family v1
+bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1
 ```
 
 Check that generated files are current:
 
 ```sh
-bun scripts/regen-support.ts --anchor-path . --family v1 --check
+bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1 --check
 ```
 
 Standalone Seagrass checkouts can run the production gate with an adjacent
@@ -106,7 +107,8 @@ git push origin v1.0.2
 
 The release workflow builds and attaches:
 
-- `seagrass-<version>-<target>.tar.gz`
+- `seagrass-<version>-<target>.tar.gz` for macOS/Linux server binaries
+- `seagrass-<version>-x86_64-pc-windows-msvc.zip` for the Windows server binary
 - `seagrass-zed-<version>.tar.gz`
 - `seagrass-vscode-<version>.vsix`
 - matching `.sha256` files

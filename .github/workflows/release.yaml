@@ -161,6 +161,7 @@ jobs:
         target:
           - fuzz_document_parse
           - fuzz_anchor_attr
+          - fuzz_anchor_preflight
           - fuzz_manifest_parse
           - fuzz_semantic_diagnostics
     steps:
@@ -230,15 +231,23 @@ jobs:
           - target: aarch64-apple-darwin
             os: macos-latest
             ext: ""
+            archive_ext: ".tar.gz"
           - target: x86_64-apple-darwin
             os: macos-latest
             ext: ""
+            archive_ext: ".tar.gz"
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             ext: ""
+            archive_ext: ".tar.gz"
+          - target: x86_64-unknown-linux-musl
+            os: ubuntu-latest
+            ext: ""
+            archive_ext: ".tar.gz"
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             ext: ".exe"
+            archive_ext: ".zip"
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -257,6 +266,10 @@ jobs:
       - name: Install Bun
         run: node scripts/install-bun-ci.mjs
 
+      - name: Install musl linker
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends musl-tools
+
       - name: Build server binary (macOS)
         if: runner.os == 'macOS'
         env:
@@ -266,6 +279,8 @@ jobs:
 
       - name: Build server binary
         if: runner.os != 'macOS'
+        env:
+          CC_x86_64_unknown_linux_musl: musl-gcc
         run: cargo build --package seagrass-cli --release --locked --target ${{ matrix.target }}
 
       - name: Package server binary
@@ -280,7 +295,7 @@ jobs:
       - name: Attest server package
         uses: actions/attest-build-provenance@96278af6caaf10aea03fd8d33a09a777ca52d62f # v3.2.0
         with:
-          subject-path: artifacts/seagrass-${{ needs.verify-tag.outputs.version }}-${{ matrix.target }}.tar.gz
+          subject-path: artifacts/seagrass-${{ needs.verify-tag.outputs.version }}-${{ matrix.target }}${{ matrix.archive_ext }}
 
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
@@ -438,7 +453,8 @@ jobs:
             "seagrass-${VERSION}-aarch64-apple-darwin.tar.gz"
             "seagrass-${VERSION}-x86_64-apple-darwin.tar.gz"
             "seagrass-${VERSION}-x86_64-unknown-linux-gnu.tar.gz"
-            "seagrass-${VERSION}-x86_64-pc-windows-msvc.tar.gz"
+            "seagrass-${VERSION}-x86_64-unknown-linux-musl.tar.gz"
+            "seagrass-${VERSION}-x86_64-pc-windows-msvc.zip"
             "seagrass-zed-${VERSION}.tar.gz"
             "seagrass-vscode-${VERSION}.vsix"
             "seagrass-${VERSION}-fuzz-corpus.tar.gz"
@@ -479,7 +495,7 @@ jobs:
           Seagrass ${VERSION}
 
           Packages:
-          - seagrass-${VERSION}-<target>.tar.gz: standalone stdio server binary.
+          - seagrass-${VERSION}-<target>.tar.gz / .zip: standalone stdio server binary.
           - seagrass-zed-${VERSION}.tar.gz: Zed dev extension package.
           - seagrass-vscode-${VERSION}.vsix: VS Code extension package.
           - seagrass-${VERSION}-fuzz-corpus.tar.gz: fuzz corpus and release-readiness evidence promoted for release replay.

@@ -1,6 +1,11 @@
 use {
     super::position_after,
-    crate::lsp::completions::{proptest_support::rust_identifier, should_offer_completion},
+    crate::{
+        document::ParsedDocument,
+        lsp::completions::{
+            completions, proptest_support::rust_identifier, should_offer_completion,
+        },
+    },
     proptest::prelude::*,
 };
 
@@ -55,6 +60,38 @@ pub fn run(ctx: Context<Run>) -> Result<()> {
         source,
         position_after(source, "    a.")
     ));
+}
+
+#[test]
+fn completes_short_context_account_alias_member() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    pub b: Box<Account<'info, AA>>,
+}
+
+pub fn handler(ctx: Context<Run>) -> Result<()> {
+    let x = &mut ctx.accounts.b;
+    x.a
+}
+
+#[account]
+pub struct AA {
+    pub a: Pubkey,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(&document, position_after(source, "    x.a"))
+        .expect("short context account alias member completions");
+    let labels = items
+        .iter()
+        .map(|item| item.label.as_str())
+        .collect::<Vec<_>>();
+
+    assert!(labels.contains(&"a"));
 }
 
 #[test]

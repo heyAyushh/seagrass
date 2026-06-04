@@ -5,6 +5,15 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- client: expose Seagrass analysis, program report, error coverage, support
+  matrix, generator profile, and logs as Zed slash commands, and advertise
+  refactor code actions in the Zed manifest with concise report summaries before
+  raw JSON detail.
+- lsp: complete account-data methods on `ctx.accounts` paths and local account
+  aliases while Rust syntax is temporarily incomplete.
+- lsp: recognize Pinocchio split-crate projects and native
+  `next_account_info`/`accounts.get(..)` account aliases in Solana security
+  diagnostics.
 - cli: extend `seagrass analyze` compute analysis with SBF `.text`
   instruction-count floors when local deploy artifacts are available, while
   keeping runtime CU measurements evidence-gated.
@@ -13,6 +22,15 @@ keep future entries aligned with release-plz output.
   progressive disclosure.
 - lsp: mark statically emitted Anchor account error metadata as
   `static-covered` and guard it in protocol smoke.
+- lsp: split Anchor error coverage into `static-covered`,
+  `preflight-covered`, and `runtime-only` tiers with a no-build invocation
+  evidence model for instruction/account input failures.
+- cli: add `seagrass preflight` with a checked-in Anchor evidence fixture that
+  exercises every `preflight-covered` error while leaving runtime evidence
+  unconfigured.
+- ci: add Linux and Windows server portability tests to PR guardrails, ship a
+  static `x86_64-unknown-linux-musl` server release artifact, and package
+  Windows server releases as `.zip`.
 - docs: add the installed skill-help maintenance process so checked-in
   `SKILL.md` files, `seagrass skills` output, and fallback docs do not drift.
 - lsp: mark native Solana and Pinocchio framework crates as stable applicable
@@ -31,7 +49,7 @@ keep future entries aligned with release-plz output.
 - test: extend the LSP protocol smoke path to verify document formatting over
   JSON-RPC.
 - test: add a black-box JSON-RPC integration test for root LSP formatting plus
-  native Solana and Pinocchio diagnostic parity.
+  native Solana and Pinocchio diagnostic and quick-fix parity.
 - lsp: return framework-correct code-action edits for native discriminator
   guards plus Pinocchio owner, signer, and CPI guards.
 - lsp: avoid reusing cached code actions across diagnostic-scoped requests.
@@ -108,7 +126,7 @@ keep future entries aligned with release-plz output.
   recommended settings for checkout development.
 - build: add a strict `verify-production --release` mode for today-of-release
   preflight checks that reject pending fuzz and review evidence.
-- ci: count release fuzz proof as 32 aggregate fuzz-hours across sharded
+- ci: count release fuzz proof as 40 aggregate fuzz-hours across sharded
   targets so the fuzz workflow can run in parallel for release-day evidence.
 - ci: run fuzz, property, and release workflows from the standalone repository
   root and fetch the pinned Anchor source in fresh CI clones.

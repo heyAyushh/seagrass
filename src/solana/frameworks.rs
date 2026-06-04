@@ -21,6 +21,26 @@ const ANCHOR_SOURCE_HINTS: &[&str] = &[
     "#[program]",
 ];
 const PINOCCHIO_DEPENDENCY: &str = "pinocchio";
+const PINOCCHIO_DEPENDENCIES: &[&str] = &[
+    PINOCCHIO_DEPENDENCY,
+    "pinocchio-associated-token-account",
+    "pinocchio-pubkey",
+    "pinocchio-system",
+    "pinocchio-token",
+    "pinocchio-token-interface",
+    "solana-account-view",
+    "solana-instruction-view",
+];
+const PINOCCHIO_SOURCE_CRATES: &[&str] = &[
+    "pinocchio",
+    "pinocchio_associated_token_account",
+    "pinocchio_pubkey",
+    "pinocchio_system",
+    "pinocchio_token",
+    "pinocchio_token_interface",
+    "solana_account_view",
+    "solana_instruction_view",
+];
 const NATIVE_SOLANA_DEPENDENCIES: &[&str] = &[
     "solana-address",
     "solana-account-info",
@@ -236,7 +256,10 @@ fn framework_from_manifest(manifest_text: &str) -> Option<FrameworkId> {
     {
         return Some(FrameworkId::AnchorV1);
     }
-    if dependencies.contains(PINOCCHIO_DEPENDENCY) {
+    if dependencies
+        .iter()
+        .any(|dependency| PINOCCHIO_DEPENDENCIES.contains(&dependency.as_str()))
+    {
         return Some(FrameworkId::Pinocchio);
     }
     if dependencies
@@ -323,7 +346,9 @@ impl FrameworkVisitor {
             "anchor_lang" | "anchor_spl" if !self.id.is_anchor() => {
                 self.id = FrameworkId::AnchorV1;
             }
-            "pinocchio" if !self.id.is_anchor() => self.id = FrameworkId::Pinocchio,
+            ident if PINOCCHIO_SOURCE_CRATES.contains(&ident) && !self.id.is_anchor() => {
+                self.id = FrameworkId::Pinocchio;
+            }
             ident
                 if NATIVE_SOLANA_SOURCE_CRATES.contains(&ident)
                     && self.id == FrameworkId::Unknown =>
@@ -437,6 +462,36 @@ entrypoint!(process_instruction);
     }
 
     #[test]
+    fn detects_pinocchio_from_split_account_view_crates() {
+        let document = ParsedDocument::parse_or_empty(
+            r#"
+use {
+    solana_account_view::AccountView,
+    solana_address::Address,
+    solana_instruction_view::{InstructionAccount, InstructionView},
+    solana_program_error::ProgramResult,
+};
+
+pub fn initialize(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let _ = (program_id, accounts, instruction_data);
+    let _ = InstructionView { program_id, accounts: &[], data: &[] };
+    let _ = InstructionAccount::readonly(program_id);
+    Ok(())
+}
+"#,
+        );
+
+        assert_eq!(
+            FrameworkContext::from_document(&document).id(),
+            FrameworkId::Pinocchio
+        );
+    }
+
+    #[test]
     fn detects_native_solana_from_modular_document_crates() {
         let document = ParsedDocument::parse_or_empty(
             r#"
@@ -481,6 +536,24 @@ solana-program-error = "3"
         assert_eq!(
             framework_from_manifest(manifest),
             Some(FrameworkId::NativeSolana)
+        );
+    }
+
+    #[test]
+    fn detects_pinocchio_from_split_account_view_manifest_crates() {
+        let manifest = r#"
+[package]
+name = "pinocchio-view-demo"
+
+[dependencies]
+solana-account-view = "3"
+solana-instruction-view = "3"
+solana-program-error = "3"
+"#;
+
+        assert_eq!(
+            framework_from_manifest(manifest),
+            Some(FrameworkId::Pinocchio)
         );
     }
 

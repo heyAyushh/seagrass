@@ -88,7 +88,9 @@ The following confirmed findings have been addressed:
     budgets.
 15. Native Solana and Pinocchio applicable parity is documented in
     `docs/framework-parity.md` and enforced through a black-box JSON-RPC LSP
-    integration test.
+    integration test that covers formatting, framework diagnostic metadata, and
+    framework-correct quick fixes for raw-account, signer, writable-account, and
+    CPI program-id findings.
 
 ## Remaining Backlog
 
@@ -99,6 +101,10 @@ These items are still real and should not be described as complete:
    non-applicable rather than parity gaps.
 2. Test infrastructure still needs coverage tooling and broader JSON-RPC
    end-to-end cases beyond the protocol smoke path.
+3. Runtime demos need execution proof before they are described as complete:
+   add a runtime evidence ingestion demo backed by real artifacts such as
+   Trident coverage, LiteSVM/Mollusk traces, or simulation logs. Preflight has a
+   checked-in CLI fixture under `fixtures/preflight/anchor-errors.json`.
 
 ## Partial Or Nuanced Findings
 

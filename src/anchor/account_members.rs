@@ -587,6 +587,10 @@ fn extend_with_inherent_methods(
     members: &mut ResolvedAccountMembers,
 ) {
     let mut method_names = local_inherent_method_names(document, &members.owner_type);
+    method_names.extend(tree_sitter_inherent_method_names(
+        document,
+        &members.owner_type,
+    ));
     method_names.extend(workspace_inherent_method_names(
         workspace_index,
         &members.owner_type,
@@ -622,6 +626,13 @@ fn local_inherent_method_names(document: &ParsedDocument, owner_type: &str) -> V
         .filter(|item| item.kind == AssociatedValueKind::Method)
         .map(|item| item.name.clone())
         .collect()
+}
+
+fn tree_sitter_inherent_method_names(document: &ParsedDocument, owner_type: &str) -> Vec<String> {
+    document
+        .tree_sitter()
+        .map(|syntax| syntax.inherent_method_names(document.source(), owner_type))
+        .unwrap_or_default()
 }
 
 fn workspace_inherent_method_names(

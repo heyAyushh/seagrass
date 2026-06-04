@@ -3087,6 +3087,13 @@ try {
   if (!Array.isArray(errorCoverage?.errors) || errorCoverage.errors.length === 0) {
     throw new Error(`error coverage command did not return generated Anchor errors: ${JSON.stringify(errorCoverage)}`);
   }
+  if (
+    errorCoverage?.summary?.staticCovered !== 58 ||
+    errorCoverage?.summary?.preflightCovered !== 12 ||
+    errorCoverage?.summary?.runtimeOnly !== 9
+  ) {
+    throw new Error(`error coverage command returned stale Anchor coverage tiers: ${JSON.stringify(errorCoverage)}`);
+  }
   const supportMatrix = await request<JsonObject>("workspace/executeCommand", {
     command: "seagrass/supportMatrix",
     arguments: [],

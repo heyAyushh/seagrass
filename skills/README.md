@@ -90,6 +90,7 @@ Use the CLI directly:
 seagrass diagnostics <path> --json
 cat <file>.rs | seagrass diagnostics --stdin --stdin-path <file>.rs --json
 seagrass diagnostics <path> --sarif > seagrass.sarif
+seagrass preflight fixtures/preflight/anchor-errors.json --json
 seagrass skills get lint --full
 ```
 

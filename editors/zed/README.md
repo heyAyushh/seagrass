@@ -101,6 +101,8 @@ Zed currently receives materialized quick-fix edits. `zed_extension_api` 0.7.0 d
 
 `agent.mode` defaults to `false`. When enabled, Seagrass fills unset settings with assistant and automation defaults: security and experimental diagnostics on, strict native security on, all nine security families at `warn`, `diagnostics.coldPath` at `idle`, and `trace.server` on. Set any specific key beside it to override that preset.
 
+`telemetry.completion.enabled` and `telemetry.diagnostics.enabled` control local editor observability only. Seagrass does not upload editor events or recent logs. Use `trace.server: true` when a user needs verbose local debugging for a support report.
+
 During `initialized`, Seagrass dynamically registers `workspace/didChangeWatchedFiles` for `**/Cargo.toml`, `**/Anchor.toml`, and `**/Seagrass.toml`. When Zed's filesystem watcher reports a change to one of those manifests, Seagrass refreshes the workspace index and republishes diagnostics for every open document, so manifest-driven rules like `anchor-check-cfg` clear immediately after you save the manifest — no need to edit the Rust source again. Registration is gated on the client advertising `workspace.didChangeWatchedFiles.dynamicRegistration`; on clients that don't (e.g. Claude Code's built-in LSP tool), Seagrass silently skips the registration and falls back to refreshing on the next text-document edit.
 
 ## Logs And Support
@@ -119,15 +121,15 @@ workspaces: <opened worktree>
 features: diagnostics, completion, hover, symbols, fixes, logs
 ```
 
-The server also exposes a bounded in-memory log snapshot over LSP:
+The server also exposes a bounded in-memory log snapshot over LSP. The snapshot is local to the running language-server process and is intended for support/debugging, not analytics export:
 
 ```json
 { "command": "seagrass/logs", "arguments": [] }
 ```
 
-The same execute-command surface exposes `seagrass/status`, `seagrass/artifacts`, `seagrass/feedback`, `seagrass/errorCoverage`, `seagrass/supportMatrix`, `seagrass/generatorProfile`, and `seagrass/analyze`. Zed's adapter stays thin, so these commands are implemented once in the server and remain available to other LSP clients and agent harnesses.
+The same execute-command surface exposes `seagrass/status`, `seagrass/artifacts`, `seagrass/logs`, `seagrass/feedback`, `seagrass/errorCoverage`, `seagrass/supportMatrix`, `seagrass/generatorProfile`, and `seagrass/analyze`. Zed's adapter stays thin, so these commands are implemented once in the server and remain available to other LSP clients and agent harnesses.
 
-Assistant slash commands are registered as `/seagrass-status`, `/seagrass-coverage`, `/seagrass-artifacts`, and `/seagrass-feedback`. Zed 0.7.0 does not expose a direct Assistant-to-running-LSP execute-command bridge, so the adapter sends a one-shot `workspace/executeCommand` request to the resolved Seagrass binary and returns the server JSON. If the binary or cargo fallback is unavailable, the slash command returns a "Start the Seagrass server first" message instead of failing silently.
+Assistant slash commands are registered as `/seagrass-status`, `/seagrass-analyze`, `/seagrass-coverage`, `/seagrass-artifacts`, `/seagrass-program-report`, `/seagrass-error-coverage`, `/seagrass-support-matrix`, `/seagrass-generator-profile`, `/seagrass-logs`, and `/seagrass-feedback`. Zed 0.7.0 does not expose a direct Assistant-to-running-LSP execute-command bridge, so the adapter sends a one-shot `workspace/executeCommand` request to the resolved Seagrass binary and returns the server JSON. If the binary or cargo fallback is unavailable, the slash command returns a "Start the Seagrass server first" message instead of failing silently.
 
 `seagrass/feedback` returns the bundled feedback URL from the server. The Zed extension does not expose a native command for it because `zed_extension_api` 0.7.0 cannot open external URLs from the wasm extension; use `/seagrass-feedback` to print the URL in Assistant.
 

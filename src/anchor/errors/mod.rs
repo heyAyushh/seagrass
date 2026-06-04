@@ -12,6 +12,7 @@ pub enum AnchorErrorCategory {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnchorErrorCoverage {
     StaticCovered,
+    PreflightCovered,
     RuntimeOnly,
 }
 
@@ -32,11 +33,13 @@ pub fn by_name(name: &str) -> Option<&'static AnchorErrorSpec> {
 
 pub fn coverage_summary() -> serde_json::Value {
     let mut static_covered = 0usize;
+    let mut preflight_covered = 0usize;
     let mut runtime_only = 0usize;
 
     for spec in ERRORS {
         match spec.coverage {
             AnchorErrorCoverage::StaticCovered => static_covered += 1,
+            AnchorErrorCoverage::PreflightCovered => preflight_covered += 1,
             AnchorErrorCoverage::RuntimeOnly => runtime_only += 1,
         }
     }
@@ -45,6 +48,7 @@ pub fn coverage_summary() -> serde_json::Value {
         "total": ERRORS.len(),
         "summary": {
             "staticCovered": static_covered,
+            "preflightCovered": preflight_covered,
             "runtimeOnly": runtime_only,
         },
         "errors": ERRORS.iter().map(error_json).collect::<Vec<_>>(),
@@ -84,6 +88,7 @@ fn coverage_name(category: AnchorErrorCategory) -> &'static str {
 fn coverage_status(coverage: AnchorErrorCoverage) -> &'static str {
     match coverage {
         AnchorErrorCoverage::StaticCovered => "static-covered",
+        AnchorErrorCoverage::PreflightCovered => "preflight-covered",
         AnchorErrorCoverage::RuntimeOnly => "runtime-only",
     }
 }
@@ -117,14 +122,17 @@ mod tests {
     fn generated_catalog_has_no_missing_static_coverage() {
         let summary = coverage_summary();
         assert_eq!(summary["summary"]["staticCovered"].as_u64(), Some(58));
-        assert_eq!(summary["summary"]["runtimeOnly"].as_u64(), Some(21));
+        assert_eq!(summary["summary"]["preflightCovered"].as_u64(), Some(12));
+        assert_eq!(summary["summary"]["runtimeOnly"].as_u64(), Some(9));
 
         let non_static = ERRORS
             .iter()
             .filter(|error| {
                 !matches!(
                     error.coverage,
-                    AnchorErrorCoverage::StaticCovered | AnchorErrorCoverage::RuntimeOnly
+                    AnchorErrorCoverage::StaticCovered
+                        | AnchorErrorCoverage::PreflightCovered
+                        | AnchorErrorCoverage::RuntimeOnly
                 )
             })
             .map(|error| error.name)

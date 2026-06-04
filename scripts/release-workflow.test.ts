@@ -88,6 +88,9 @@ describe("release workflow packaging", () => {
     expect(buildServer).toContain("--server");
     expect(buildServer).toContain("--skip-build");
     expect(readFileSync(packageReleasePath, "utf8")).toContain('"seagrass-cli"');
+    expect(readFileSync(packageReleasePath, "utf8")).toContain(
+      '"x86_64-unknown-linux-musl"',
+    );
     expect(buildZed).toContain("bun scripts/package-release.ts");
     expect(buildZed).toContain("--zed");
     expect(buildZed).toContain("--zed-wasm");
@@ -96,6 +99,23 @@ describe("release workflow packaging", () => {
     expect(buildVsCode).toContain("--vscode");
     expect(packageFuzzCorpus).toContain("bun scripts/package-release.ts");
     expect(packageFuzzCorpus).toContain("--fuzz-corpus");
+  });
+
+  test("publishes GNU Linux, static Linux, and Windows server builds", () => {
+    const workflow = readFileSync(releaseWorkflowPath, "utf8");
+    const buildServer = workflowSection(
+      workflow,
+      "  build-server:\n    name: Build server",
+      "  build-zed:",
+    );
+
+    expect(buildServer).toContain("x86_64-unknown-linux-gnu");
+    expect(buildServer).toContain("x86_64-unknown-linux-musl");
+    expect(buildServer).toContain("x86_64-pc-windows-msvc");
+    expect(buildServer).toContain("musl-tools");
+    expect(buildServer).toContain("CC_x86_64_unknown_linux_musl: musl-gcc");
+    expect(buildServer).toContain('archive_ext: ".zip"');
+    expect(workflow).toContain("x86_64-pc-windows-msvc.zip");
   });
 
   test("keeps release evidence regressions in PR guardrails", () => {
@@ -118,6 +138,20 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain(
       'bun scripts/check-release-readiness.ts --allow-pending --version "$(tr -d',
     );
+  });
+
+  test("keeps server portability covered on Linux and Windows", () => {
+    const workflow = readFileSync(prWorkflowPath, "utf8");
+    const portability = workflowSection(
+      workflow,
+      "  server-portability:\n    name: Server portability",
+      "      - name: Run seagrass library tests",
+    );
+
+    expect(portability).toContain("ubuntu-latest");
+    expect(portability).toContain("windows-latest");
+    expect(portability).toContain("cargo build -p seagrass-cli --locked");
+    expect(workflow).toContain("cargo test -p seagrass --locked");
   });
 
   test("runs PR guardrails when release evidence workflows change", () => {

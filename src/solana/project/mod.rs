@@ -10,6 +10,22 @@ use {
 };
 
 const MAX_MANIFEST_DEPTH: usize = 5;
+const PINOCCHIO_DEPENDENCIES: &[&str] = &[
+    "pinocchio",
+    "pinocchio-associated-token-account",
+    "pinocchio-pubkey",
+    "pinocchio-system",
+    "pinocchio-token",
+    "pinocchio-token-interface",
+    "solana-account-view",
+    "solana-instruction-view",
+];
+const PINOCCHIO_SOURCE_HINTS: &[&str] = &[
+    "pinocchio::",
+    "pinocchio_",
+    "solana_account_view::",
+    "solana_instruction_view::",
+];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SolanaProjectKind {
@@ -216,7 +232,14 @@ fn classify_program(manifest: &CargoManifest, source_text: &str) -> Option<Solan
         return None;
     }
 
-    if manifest.dependencies.contains("pinocchio") || source_text.contains("pinocchio::") {
+    if manifest
+        .dependencies
+        .iter()
+        .any(|dependency| PINOCCHIO_DEPENDENCIES.contains(&dependency.as_str()))
+        || PINOCCHIO_SOURCE_HINTS
+            .iter()
+            .any(|hint| source_text.contains(hint))
+    {
         return Some(SolanaProjectKind::Pinocchio);
     }
     let has_native_dependency = manifest.dependencies.iter().any(|dependency| {
@@ -455,6 +478,53 @@ fn process_instruction() -> ProgramResult { Ok(()) }
         assert_eq!(program.kind, SolanaProjectKind::Pinocchio);
         assert_eq!(program.name, "pinocchio_demo");
         assert_eq!(program.root, root);
+    }
+
+    #[test]
+    fn detects_pinocchio_from_split_account_view_manifest_dependency() {
+        let root = unique_temp_dir("seagrass-pinocchio-view-project");
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            r#"
+[package]
+name = "pinocchio-view-demo"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+solana-account-view = "3"
+solana-instruction-view = "3"
+solana-program-error = "3"
+"#,
+        )
+        .unwrap();
+        let source = r#"
+use {
+    solana_account_view::AccountView,
+    solana_address::Address,
+    solana_program_error::ProgramResult,
+};
+
+fn process_instruction(
+    program_id: &Address,
+    accounts: &mut [AccountView],
+    instruction_data: &[u8],
+) -> ProgramResult {
+    let _ = (program_id, accounts, instruction_data);
+    Ok(())
+}
+"#;
+        let lib = root.join("src/lib.rs");
+        fs::write(&lib, source).unwrap();
+        let document = ParsedDocument::parse(source).unwrap();
+        let uri = Url::from_file_path(lib).unwrap();
+
+        let program = detect_for_document(&uri, &document).unwrap();
+
+        assert_eq!(program.kind, SolanaProjectKind::Pinocchio);
+        assert_eq!(program.name, "pinocchio_view_demo");
     }
 
     #[test]

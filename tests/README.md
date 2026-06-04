@@ -6,4 +6,5 @@ test helpers.
 
 `jsonrpc_lsp.rs` launches `cargo run -p seagrass-cli --quiet`, speaks LSP
 JSON-RPC over stdio, and verifies root-server parity for editor-visible
-surfaces: formatting plus native Solana and Pinocchio framework diagnostics.
+surfaces: formatting plus native Solana and Pinocchio framework diagnostics and
+code actions.

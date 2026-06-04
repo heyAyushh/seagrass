@@ -39,6 +39,16 @@ const SIGNER_ACCOUNT_META_CONSTRUCTORS: &[&str] = &["new", "new_readonly"];
 const SIGNER_INSTRUCTION_ACCOUNT_CONSTRUCTORS: &[&str] = &["readonly_signer", "writable_signer"];
 const WRITABLE_ACCOUNT_META_CONSTRUCTORS: &[&str] = &["new"];
 const WRITABLE_INSTRUCTION_ACCOUNT_CONSTRUCTORS: &[&str] = &["writable", "writable_signer"];
+const ACCOUNT_ITERATOR_METHODS: &[&str] = &["iter", "iter_mut"];
+const TRANSPARENT_ACCOUNT_ACCESS_METHODS: &[&str] = &[
+    "ok_or",
+    "ok_or_else",
+    "unwrap",
+    "expect",
+    "as_ref",
+    "as_mut",
+];
+const INITIAL_ITERATOR_ACCOUNT_INDEX: usize = 0;
 
 pub(super) fn diagnostics(
     document: FrameworkDocument<'_>,
@@ -62,6 +72,7 @@ struct NativeAccountValidationVisitor {
     writable_validations: AccountValidationSet,
     program_id_validations: ExpressionValidationSet,
     account_origins: HashMap<String, usize>,
+    account_iterators: HashMap<String, AccountIteratorOrigin>,
     saw_invoke_signed: bool,
 }
 
@@ -76,6 +87,7 @@ impl NativeAccountValidationVisitor {
             writable_validations: AccountValidationSet::default(),
             program_id_validations: ExpressionValidationSet::default(),
             account_origins: HashMap::new(),
+            account_iterators: HashMap::new(),
             saw_invoke_signed: false,
         }
     }
@@ -90,6 +102,7 @@ impl NativeAccountValidationVisitor {
             writable_validations,
             program_id_validations,
             account_origins: _,
+            account_iterators: _,
             saw_invoke_signed,
         } = self;
 
@@ -127,9 +140,35 @@ impl NativeAccountValidationVisitor {
         let Some(name) = local_ident_name(node) else {
             return;
         };
-        if let Some(index) = account_index_from_expr(&init.expr) {
+        if self.record_account_iterator_origin(&name, &init.expr) {
+            return;
+        }
+        if let Some(index) = self.account_index_from_local_init(&init.expr) {
             self.account_origins.insert(name, index);
         }
+    }
+
+    fn record_account_iterator_origin(&mut self, name: &str, expr: &syn::Expr) -> bool {
+        let Some(_collection) = account_iterator_collection(expr) else {
+            return false;
+        };
+        self.account_iterators.insert(
+            name.to_string(),
+            AccountIteratorOrigin {
+                next_index: INITIAL_ITERATOR_ACCOUNT_INDEX,
+            },
+        );
+        true
+    }
+
+    fn account_index_from_local_init(&mut self, expr: &syn::Expr) -> Option<usize> {
+        if let Some(iterator) = next_account_info_iterator_name(expr) {
+            let origin = self.account_iterators.get_mut(&iterator)?;
+            let account_index = origin.next_index;
+            origin.next_index += 1;
+            return Some(account_index);
+        }
+        account_index_from_expr(expr)
     }
 
     fn account_index_for_expr(&self, expr: &syn::Expr) -> Option<usize> {
@@ -190,6 +229,11 @@ struct ProgramIdEvidence {
     span: proc_macro2::Span,
     expression: Option<String>,
     dynamic: bool,
+}
+
+#[derive(Clone, Debug)]
+struct AccountIteratorOrigin {
+    next_index: usize,
 }
 
 #[derive(Default)]
@@ -687,12 +731,22 @@ impl<'ast> Visit<'ast> for IdentSearch<'_> {
 fn account_index_from_expr(expr: &syn::Expr) -> Option<usize> {
     match expr {
         syn::Expr::Index(index) => unsigned_literal(&index.index),
+        syn::Expr::MethodCall(method_call) if method_call.method == "get" => {
+            method_call.args.first().and_then(unsigned_literal)
+        }
+        syn::Expr::MethodCall(method_call)
+            if TRANSPARENT_ACCOUNT_ACCESS_METHODS
+                .contains(&method_call.method.to_string().as_str()) =>
+        {
+            account_index_from_expr(&method_call.receiver)
+        }
         syn::Expr::Field(field) => account_index_from_expr(&field.base),
         syn::Expr::MethodCall(method_call) => account_index_from_expr(&method_call.receiver),
         syn::Expr::Unary(unary) => account_index_from_expr(&unary.expr),
         syn::Expr::Reference(reference) => account_index_from_expr(&reference.expr),
         syn::Expr::Paren(paren) => account_index_from_expr(&paren.expr),
         syn::Expr::Group(group) => account_index_from_expr(&group.expr),
+        syn::Expr::Try(expr_try) => account_index_from_expr(&expr_try.expr),
         _ => None,
     }
 }
@@ -724,6 +778,43 @@ fn account_alias_from_expr(expr: &syn::Expr) -> Option<String> {
         syn::Expr::Reference(reference) => account_alias_from_expr(&reference.expr),
         syn::Expr::Paren(paren) => account_alias_from_expr(&paren.expr),
         syn::Expr::Group(group) => account_alias_from_expr(&group.expr),
+        _ => None,
+    }
+}
+
+fn account_iterator_collection(expr: &syn::Expr) -> Option<String> {
+    match expr {
+        syn::Expr::MethodCall(method_call)
+            if ACCOUNT_ITERATOR_METHODS.contains(&method_call.method.to_string().as_str()) =>
+        {
+            account_alias_from_expr(&method_call.receiver)
+        }
+        syn::Expr::Reference(reference) => account_iterator_collection(&reference.expr),
+        syn::Expr::Paren(paren) => account_iterator_collection(&paren.expr),
+        syn::Expr::Group(group) => account_iterator_collection(&group.expr),
+        _ => None,
+    }
+}
+
+fn next_account_info_iterator_name(expr: &syn::Expr) -> Option<String> {
+    match expr {
+        syn::Expr::Call(call) if called_ident(&call.func)? == "next_account_info" => {
+            call.args.first().and_then(account_iterator_name)
+        }
+        syn::Expr::Try(expr_try) => next_account_info_iterator_name(&expr_try.expr),
+        syn::Expr::Reference(reference) => next_account_info_iterator_name(&reference.expr),
+        syn::Expr::Paren(paren) => next_account_info_iterator_name(&paren.expr),
+        syn::Expr::Group(group) => next_account_info_iterator_name(&group.expr),
+        _ => None,
+    }
+}
+
+fn account_iterator_name(expr: &syn::Expr) -> Option<String> {
+    match expr {
+        syn::Expr::Path(_) => account_alias_from_expr(expr),
+        syn::Expr::Reference(reference) => account_iterator_name(&reference.expr),
+        syn::Expr::Paren(paren) => account_iterator_name(&paren.expr),
+        syn::Expr::Group(group) => account_iterator_name(&group.expr),
         _ => None,
     }
 }

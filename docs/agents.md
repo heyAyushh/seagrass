@@ -41,6 +41,21 @@ Usage and input errors exit with code `2` and include a retryable example
 invocation. Run `cargo run -p seagrass-cli -- diagnostics --help` for the layered
 CLI help.
 
+## Preflight Evidence
+
+Use `seagrass preflight` when an agent has explicit invocation/account evidence
+and wants Anchor preflight error coverage without building the program or
+running a validator:
+
+```sh
+seagrass preflight fixtures/preflight/anchor-errors.json --json
+```
+
+The checked-in fixture exercises every `preflight-covered` Anchor error and
+keeps `runtimeEvidence.status` at `notConfigured`. The command exits with code
+`1` when preflight errors are detected and exits with code `2` for malformed
+evidence or usage errors.
+
 ## Skill Discovery
 
 The installed `seagrass` binary also serves agent-facing workflow instructions
