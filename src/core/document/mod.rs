@@ -7,7 +7,7 @@ use {
     std::collections::{HashMap, HashSet},
     syn::{
         spanned::Spanned, Attribute, FnArg, GenericArgument, Item, ItemFn, ItemStruct, PatType,
-        Path, PathArguments, Token, Type, UseTree, Visibility,
+        Path, PathArguments, Token, Type, Visibility,
     },
     tower_lsp::lsp_types::{Position, Range},
 };
@@ -16,13 +16,21 @@ mod account_attribute;
 mod account_field_type;
 mod account_usage;
 mod associated_values;
+mod error_codes;
+mod field_types;
+mod imports;
 mod symbols;
 
-use account_field_type::account_field_type;
+use {
+    account_field_type::account_field_type,
+    field_types::{generic_type_ranges, type_name, type_range},
+    imports::collect_imported_names,
+};
 
 pub use {
     account_attribute::{AccountAttributeCursor, AccountAttributeSlot},
     associated_values::{is_generated_init_space_value, AssociatedValueKind, AssociatedValueRange},
+    error_codes::ErrorCodeEnum,
     symbols::document_symbols,
 };
 
@@ -105,6 +113,9 @@ pub struct AnchorSymbols {
     pub account_data_structs: HashMap<String, SymbolRange>,
     pub constants: Vec<NamedRange>,
     pub imported_names: Vec<NamedRange>,
+    /// Maps a `use Original as Alias` rename to the original terminal ident, so
+    /// `Alias::CONST` resolves against `Original`'s associated values.
+    pub import_aliases: HashMap<String, String>,
     pub value_items: Vec<NamedRange>,
     pub associated_value_items: HashMap<String, Vec<AssociatedValueRange>>,
     pub derived_init_space_types: HashSet<String>,
@@ -112,6 +123,7 @@ pub struct AnchorSymbols {
     pub functions: Vec<InstructionSymbol>,
     pub context_references: Vec<ContextReference>,
     pub declared_program_id: Option<DeclaredProgramId>,
+    pub error_codes: Vec<ErrorCodeEnum>,
 }
 
 impl AnchorSymbols {
@@ -179,7 +191,16 @@ impl AnchorSymbols {
                     });
                 }
                 Item::Use(item_use) => {
-                    collect_imported_names(&item_use.tree, &mut symbols.imported_names);
+                    collect_imported_names(
+                        &item_use.tree,
+                        &mut symbols.imported_names,
+                        &mut symbols.import_aliases,
+                    );
+                }
+                Item::Enum(item_enum) => {
+                    if let Some(error_code) = error_codes::error_code_enum(item_enum) {
+                        symbols.error_codes.push(error_code);
+                    }
                 }
                 Item::Impl(item_impl) => {
                     associated_values::collect_from_impl(
@@ -213,6 +234,15 @@ impl AnchorSymbols {
         self.instructions.iter().chain(self.functions.iter())
     }
 
+    /// Resolves a `use Original as Alias` rename back to `Original`. Returns the
+    /// input unchanged when it is not an alias.
+    pub fn resolve_type_alias<'a>(&'a self, type_name: &'a str) -> &'a str {
+        self.import_aliases
+            .get(type_name)
+            .map(String::as_str)
+            .unwrap_or(type_name)
+    }
+
     pub fn type_has_associated_value(&self, type_name: &str, value_name: &str) -> bool {
         self.associated_value_items
             .get(type_name)
@@ -226,32 +256,6 @@ fn item_fn_range(item_fn: &ItemFn) -> NamedRange {
     NamedRange {
         name: item_fn.sig.ident.to_string(),
         range: range_from_span(item_fn.sig.ident.span()),
-    }
-}
-
-fn collect_imported_names(tree: &UseTree, names: &mut Vec<NamedRange>) {
-    match tree {
-        UseTree::Name(name) => names.push(NamedRange {
-            name: name.ident.to_string(),
-            range: range_from_span(name.ident.span()),
-        }),
-        UseTree::Rename(rename) => names.push(NamedRange {
-            name: rename.rename.to_string(),
-            range: range_from_span(rename.rename.span()),
-        }),
-        UseTree::Path(path) => {
-            names.push(NamedRange {
-                name: path.ident.to_string(),
-                range: range_from_span(path.ident.span()),
-            });
-            collect_imported_names(&path.tree, names);
-        }
-        UseTree::Group(group) => {
-            for tree in &group.items {
-                collect_imported_names(tree, names);
-            }
-        }
-        UseTree::Glob(_) => {}
     }
 }
 
@@ -380,7 +384,12 @@ pub struct ContextReference {
 pub struct InstructionArgument {
     pub name: String,
     pub range: Range,
+    /// Last path segment of the type (e.g. `Pubkey`, `Vec`) — used for the
+    /// common scalar seed cases and member resolution.
     pub type_name: Option<String>,
+    /// Whitespace-normalized full type (e.g. `Vec<u8>`, `[u8;32]`, `&[u8]`).
+    /// Needed to distinguish byte containers that share a head segment.
+    pub type_signature: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -572,53 +581,6 @@ fn pda_seeds_from_expr(seeds: &anchor_syn::SeedsExpr) -> PdaSeeds {
     }
 }
 
-fn type_name(ty: &Type) -> Option<String> {
-    let Type::Path(type_path) = ty else {
-        return None;
-    };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|segment| segment.ident.to_string())
-}
-
-fn type_range(ty: &Type) -> Option<Range> {
-    let Type::Path(type_path) = ty else {
-        return None;
-    };
-    type_path
-        .path
-        .segments
-        .last()
-        .map(|segment| range_from_span(segment.ident.span()))
-}
-
-fn generic_type_ranges(ty: &Type) -> Vec<NamedRange> {
-    let Type::Path(type_path) = ty else {
-        return Vec::new();
-    };
-    let Some(segment) = type_path.path.segments.last() else {
-        return Vec::new();
-    };
-    let PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return Vec::new();
-    };
-
-    args.args
-        .iter()
-        .filter_map(|arg| match arg {
-            GenericArgument::Type(Type::Path(type_path)) => {
-                type_path.path.segments.last().map(|segment| NamedRange {
-                    name: segment.ident.to_string(),
-                    range: range_from_span(segment.ident.span()),
-                })
-            }
-            _ => None,
-        })
-        .collect()
-}
-
 fn account_constraints(attrs: &[Attribute]) -> Vec<AccountConstraint> {
     attrs
         .iter()
@@ -735,6 +697,9 @@ fn instruction_arguments(item_fn: &ItemFn) -> Vec<InstructionArgument> {
                 name: pat_ident.ident.to_string(),
                 range: range_from_span(pat_ident.ident.span()),
                 type_name: type_name(pat_type.ty.as_ref()),
+                type_signature: Some(normalize_token_text(
+                    &pat_type.ty.to_token_stream().to_string(),
+                )),
             })
         })
         .collect()
