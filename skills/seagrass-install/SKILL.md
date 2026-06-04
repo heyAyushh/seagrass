@@ -3,7 +3,7 @@ name: seagrass-install
 description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
 user-invocable: true
 license: MIT
-compatibility: Requires a Rust toolchain, cargo, and one of VS Code, Zed, Helix, or a Neovim LSP client.
+compatibility: Requires Rust 1.89.0, cargo, and one of VS Code, Zed, Helix, or a Neovim LSP client.
 metadata:
   author: Seagrass Maintainers
   version: 1.0.0
@@ -15,20 +15,35 @@ Install Seagrass and verify it actually fires diagnostics on a real Solana progr
 
 ## When to use
 
-The user wants to start using Seagrass in their editor or in CI. They have a Solana program project (Anchor, Pinocchio, or native) and want diagnostics, completions, and hovers.
+The user wants to start using Seagrass in their editor or in CI. They have a
+Solana program project (Anchor, Pinocchio, or native) and want supported
+diagnostics plus the applicable editor surfaces for that framework.
 
 ## What Seagrass is
 
-A language server for Solana framework programs:
+Codebase intelligence for Solana framework programs. The shipped static layer is
+a language server and CLI for:
 
 - **Anchor v1** — stable catalog (constraint shapes, init/payer/space rules, account references)
 - **Anchor v2 preview** — pre-generated `anchor-next` catalog
-- **Pinocchio** — native invariants
-- **Native Solana** — owner checks, type cosplay, signer authorization
+- **Pinocchio** — native-style owner/type, signer, CPI, bounds, PDA, and
+  arithmetic invariants where parsed evidence is available
+- **Native Solana** — owner checks, type cosplay, signer authorization, CPI
+  program validation, instruction bounds, PDA, and arithmetic invariants
+
+Anchor v1/v2-preview get constraint completions, hovers, signatures, IDL/types
+artifact checks, and generated account-rule coverage. Pinocchio and native
+Solana do not use Anchor account constraints, so those Anchor-only surfaces are
+non-applicable. Use `docs/framework-parity.md` for the exact boundary.
 
 Diagnostics carry `(source, code, confidence, topic, applicability)` metadata.
 Read the current topic catalog from `docs/topics.json` instead of hardcoding a
 count.
+
+Runtime compute-unit and traffic claims require explicit imported evidence such
+as Trident, validator logs, indexer output, or application telemetry. Do not
+present production CU usage, CU regressions, or cold-path deletion evidence as
+available unless the user has provided or configured that runtime data source.
 
 ## Steps
 
@@ -37,6 +52,7 @@ count.
 From a Seagrass checkout:
 
 ```bash
+rustup toolchain install 1.89.0 --profile minimal --component clippy rustfmt
 cargo install --path crates/seagrass --locked
 ```
 

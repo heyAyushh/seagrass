@@ -58,7 +58,7 @@ Most FPs are Region or Substring.
 
 ### 4. Identify the rule and region
 
-From the JSON, the `code` field tells you which rule. From the source code, the rule's file is `src/diagnostics/<file>.rs` — typically `code_quality.rs` or `security.rs`. Identify which `Visit` method the rule implements (`visit_expr_binary`, `visit_expr_method_call`, etc.).
+From the JSON, the `code` field tells you which rule. From the source code, the rule lives under `src/lsp/diagnostics/` — typically in the `code_quality/` or `security/` module. Identify which `Visit` method the rule implements (`visit_expr_binary`, `visit_expr_method_call`, etc.).
 
 If the FP is region-based, the rule should be skipping `visit_attribute`, `visit_lit_str`, `doc_comment`, etc. — check whether it is.
 
@@ -78,7 +78,7 @@ fn ignores_<scenario>_<context>() {
 }
 ```
 
-Place it in `src/diagnostics/code_quality_tests.rs` (for code_quality rules) or the equivalent module. The existing fixtures `ignores_deref_in_account_attribute`, `ignores_token_word_inside_unrelated_identifier`, etc. are the model.
+Place it in `src/lsp/diagnostics/code_quality/tests/` (for code_quality rules) or the equivalent module. The existing fixtures `ignores_deref_in_account_attribute`, `ignores_token_word_inside_unrelated_identifier`, etc. are the model.
 
 ### 6. Suppress locally so the user is unblocked
 
@@ -108,7 +108,7 @@ fixture below.
 **Expected:** no diagnostic — false-positive matrix row says <which row>.
 **Actual:** Seagrass emits at <range>: "<message>".
 
-**Suggested fixture** (drop into `src/diagnostics/<rule>_tests.rs`):
+**Suggested fixture** (drop into `src/lsp/diagnostics/code_quality/tests/` or the rule's test module):
 
 ```rust
 <the assert above>

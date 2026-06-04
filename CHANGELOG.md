@@ -5,6 +5,44 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: mark native Solana and Pinocchio framework crates as stable applicable
+  parity and keep owner/type/signer/writable/CPI validations scoped to the
+  specific account or program expression being checked.
+- docs: frame Seagrass as Solana codebase intelligence while separating shipped
+  static analysis from runtime compute/traffic evidence requirements.
+- cli: add `seagrass analyze` for headless codebase-intelligence reports with
+  static account/CPI/PDA evidence and explicit runtime evidence boundaries.
+- build: pin Seagrass Rust MSRV and CI stable toolchains to Rust 1.89.0 while
+  preserving nightly-only fuzz target execution.
+- lsp: add document formatting support backed by `rustfmt` for open editor
+  buffers.
+- lsp: bound definition-bridge Rust source discovery with explicit depth and
+  file-count budgets.
+- test: extend the LSP protocol smoke path to verify document formatting over
+  JSON-RPC.
+- test: add a black-box JSON-RPC integration test for root LSP formatting plus
+  native Solana and Pinocchio diagnostic parity.
+- lsp: return framework-correct code-action edits for native discriminator
+  guards plus Pinocchio owner, signer, and CPI guards.
+- lsp: avoid reusing cached code actions across diagnostic-scoped requests.
+- lsp: diagnose writable CPI account metadata without visible writable checks
+  for native Solana and Pinocchio, with editor quick fixes.
+- docs: document applicable native Solana and Pinocchio parity boundaries so
+  Anchor-only surfaces are marked non-applicable instead of overclaimed.
+- fuzz: add semantic diagnostic collection coverage beyond parse-only targets.
+- ci: verify pinned Bun npm package integrity before workflow installs and align
+  PR property-test depth with release/property workflows.
+- lsp: route native Solana and Pinocchio security diagnostics through their
+  framework crates while keeping shared lint/range/diagnostic helpers in
+  `seagrass-framework`.
+- lsp: detect Pinocchio `borrow_data_unchecked()` raw account reads, accept
+  `is_owned_by(...)` owner checks, and flag dynamic `InstructionView` CPI
+  program ids in native/Pinocchio security diagnostics.
+- lsp: run native/Pinocchio code-quality checks over impl methods, track
+  destructured account collections, and detect Pinocchio
+  `InstructionAccount::*_signer(...)` signer usage.
+- client: align editor startup/status docs with incremental sync and
+  native/Pinocchio security coverage.
 - docs: make contributor guardrails repository-relative, fix dead editor setup
   references, document Cursor/OpenCode templates, and clarify current
   Anchor-first framework coverage.
@@ -13,6 +51,18 @@ keep future entries aligned with release-plz output.
 - build: pin the Anchor dependency with its full git revision.
 - security: replace the unreachable noreply security fallback with a safe
   no-details escalation path.
+- security: bound project-file reads used by diagnostics, workspace indexing,
+  and definition bridge collection.
+- lsp: advertise incremental document sync and apply ranged text changes before
+  live diagnostics.
+- lsp: make syntax-error diagnostics state that semantic diagnostics are paused
+  until the Rust file parses again.
+- lsp: classify real `anchor-lang` / `anchor-spl` 2.x dependencies as Anchor v2
+  preview instead of relying only on experimental alias names.
+- perf: remove an unused Salsa diagnostics query that was executed and discarded
+  during analysis reports.
+- perf: update workspace indexes incrementally for watched Rust file changes
+  instead of rebuilding every root on each file event.
 - client: add VS Code lint-doc, suppression-copy, and false-positive reporting
   commands backed by Seagrass diagnostic metadata and the server feedback
   manifest.
@@ -48,7 +98,7 @@ keep future entries aligned with release-plz output.
   recommended settings for checkout development.
 - build: add a strict `verify-production --release` mode for today-of-release
   preflight checks that reject pending fuzz and review evidence.
-- ci: count release fuzz proof as 24 aggregate fuzz-hours across sharded
+- ci: count release fuzz proof as 32 aggregate fuzz-hours across sharded
   targets so the fuzz workflow can run in parallel for release-day evidence.
 - ci: run fuzz, property, and release workflows from the standalone repository
   root and fetch the pinned Anchor source in fresh CI clones.

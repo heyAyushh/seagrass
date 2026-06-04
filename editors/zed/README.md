@@ -53,6 +53,7 @@ The default dev-extension fallback should work on this machine after installing 
         "diagnostics.security.initialization": "warn",
         "diagnostics.security.staleCpiReload": "warn",
         "diagnostics.security.signerAuthorization": "warn",
+        "diagnostics.security.writableAccounts": "warn",
         "diagnostics.security.arbitraryCpi": "warn",
         "diagnostics.security.instructionDataBounds": "warn",
         "diagnostics.security.pdaSeedCollision": "warn",
@@ -88,7 +89,7 @@ export SEAGRASS_MANIFEST_PATH=<seagrass-checkout>/crates/seagrass/Cargo.toml
 
 ## Capabilities
 
-The extension registers `seagrass` with Rust's `rust` language id and advertises quick-fix/source code-action kinds to Zed. The server still owns the real LSP capability negotiation: diagnostics, completions, hovers, signature help, semantic tokens, code actions, document/workspace symbols, document links to Anchor docs, definition, references, workspace-backed Anchor rename/prepare-rename, highlights, selection ranges, folding ranges, watched files, workspace folders, and execute commands for status/artifacts/recent logs/error coverage/support matrix/generator profile. Artifact reports include Anchor projects plus deployable Pinocchio and native Solana Cargo programs.
+The extension registers `seagrass` with Rust's `rust` language id and advertises quick-fix/source code-action kinds to Zed. The server still owns the real LSP capability negotiation: diagnostics, completions, hovers, signature help, semantic tokens, code actions, document/workspace symbols, document links to Anchor docs, definition, references, workspace-backed Anchor rename/prepare-rename, highlights, selection ranges, folding ranges, watched files, workspace folders, and execute commands for status/artifacts/recent logs/error coverage/support matrix/generator profile. Artifact reports include Anchor projects plus deployable Pinocchio and native Solana Cargo programs, and native/Pinocchio security diagnostics include account-scoped owner/type/signer/writable validation plus expression-scoped CPI program-id checks.
 
 Zed settings under `lsp.seagrass.settings` are passed through to `workspace/didChangeConfiguration`. The extension also sends `diagnostics.transport` during initialization. Zed defaults to `push` so each Seagrass diagnostic has one editor transport. Use `pull` only if your Zed build needs pull-based Problems population. Mixed push-and-pull transport is intentionally rejected because Zed can display duplicate diagnostics for the same range.
 
@@ -112,7 +113,7 @@ When Zed starts the server, the resolved command should match the shared startup
 Seagrass
 server: <command> <args>
 cwd: <worktree or configured command cwd>
-sync: full
+sync: incremental
 diagnostics: push
 workspaces: <opened worktree>
 features: diagnostics, completion, hover, symbols, fixes, logs

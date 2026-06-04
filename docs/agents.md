@@ -5,13 +5,13 @@ headless path: no editor UI, no prompts, JSON over stdout, and stable exit
 codes.
 
 ```sh
-cargo run -p seagrass-cli -- diagnostics programs/demo/src/lib.rs --json
+cargo run -p seagrass-cli -- diagnostics fixtures/smoke-broken.rs --json
 ```
 
 Agents can also pipe one Rust file through stdin:
 
 ```sh
-cat programs/demo/src/lib.rs | cargo run -p seagrass-cli -- diagnostics --stdin --stdin-path programs/demo/src/lib.rs --json
+cat fixtures/smoke-broken.rs | cargo run -p seagrass-cli -- diagnostics --stdin --stdin-path fixtures/smoke-broken.rs --json
 ```
 
 It prints a JSON array:
@@ -19,18 +19,18 @@ It prints a JSON array:
 ```json
 [
   {
-    "file": "/workspace/programs/demo/src/lib.rs",
+    "file": "fixtures/smoke-broken.rs",
     "range": {
-      "start": { "line": 5, "character": 15 },
-      "end": { "line": 5, "character": 26 }
+      "start": { "line": 7, "character": 14 },
+      "end": { "line": 7, "character": 18 }
     },
-    "code": "anchor-security-signer",
-    "severity": "WARNING",
-    "topic": "seagrass/security.signer.authorization",
+    "code": "anchor-init-constraints",
+    "severity": "ERROR",
+    "topic": "seagrass/anchor.init.missing-payer",
     "confidence": "authoritative",
     "applicability": "Unspecified",
-    "docsUrl": "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-security-signer-authorization.md",
-    "message": "`authority` is used as a signer account without Anchor signer validation; use `Signer<'info>` or add `#[account(signer)]`."
+    "docsUrl": "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-init-missing-payer.md",
+    "message": "Anchor `init` constraint is missing `payer = ...`; add the account that funds initialization."
   }
 ]
 ```
@@ -44,7 +44,7 @@ CLI help.
 For GitHub code scanning and review UIs, emit SARIF:
 
 ```sh
-seagrass diagnostics programs/demo/src --sarif > seagrass.sarif
+seagrass diagnostics fixtures --sarif > seagrass.sarif
 ```
 
 Consumer repositories can use the bundled composite action without checking out
@@ -107,7 +107,9 @@ Command:
 ```
 
 The `instruction` key is also accepted for compatibility with
-`seagrass/analyze`.
+`seagrass/analyze`. For headless agent and CI use, run
+`seagrass analyze <path> --json` to emit the same static codebase-intelligence
+boundary without speaking LSP.
 
 Returns:
 

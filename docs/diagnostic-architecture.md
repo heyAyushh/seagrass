@@ -81,6 +81,11 @@ engine skips inapplicable collectors before running rule logic. Anchor-only
 rules stay scoped to Anchor v1/v2-preview contexts; shared Solana program rules
 can run for Anchor, Pinocchio, and native Solana.
 
+`docs/framework-parity.md` is the user-facing boundary for these framework
+claims. Native Solana and Pinocchio use applicable parity: shared Solana
+diagnostics and artifact evidence run through the same LSP path, while Anchor
+constraint, Accounts, IDL, and generated type surfaces are non-applicable.
+
 Hot-path code may derive only cheap parse-level framework facts. Richer project
 or artifact evidence belongs in the cold/project diagnostic lane.
 
