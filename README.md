@@ -2,6 +2,15 @@
 
 # Seagrass
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/heyAyushh/seagrass)
+[![Releases](https://github.com/heyAyushh/seagrass/actions/workflows/release.yaml/badge.svg)](https://github.com/heyAyushh/seagrass/actions/workflows/release.yaml)
+[![Tests](https://github.com/heyAyushh/seagrass/actions/workflows/pr.yaml/badge.svg?branch=main)](https://github.com/heyAyushh/seagrass/actions/workflows/pr.yaml)
+
+[![VS Code VSIX](https://img.shields.io/badge/VS%20Code-VSIX-white?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzAwN0FDQyI%2BPHBhdGggZD0iTTIzLjE1IDIuNTg3TDE4LjIxLjIxYTEuNDk0IDEuNDk0IDAgMCAwLTEuNzA1LjI5bC05LjQ2IDguNjMtNC4xMi0zLjEyOGEuOTk5Ljk5OSAwIDAgMC0xLjI3Ni4wNTdMLjMyNyA3LjI2MUExIDEgMCAwIDAgLjMyNiA4Ljc0TDMuODk5IDEyIC4zMjYgMTUuMjZhMSAxIDAgMCAwIC4wMDEgMS40NzlMMS42NSAxNy45NGEuOTk5Ljk5OSAwIDAgMCAxLjI3Ni4wNTdsNC4xMi0zLjEyOCA5LjQ2IDguNjNhMS40OTIgMS40OTIgMCAwIDAgMS43MDQuMjlsNC45NDItMi4zNzdBMS41IDEuNSAwIDAgMCAyNCAyMC4wNlYzLjkzOWExLjUgMS41IDAgMCAwLS44NS0xLjM1MnptLTUuMTQ2IDE0Ljg2MUwxMC44MjYgMTJsNy4xNzgtNS40NDh2MTAuODk2eiIvPjwvc3ZnPg%3D%3D&labelColor=white&color=white)](editors/vscode/README.md#develop-locally)
+[![Zed dev extension](https://img.shields.io/badge/Zed-dev%20extension-white?logo=zedindustries&logoColor=084CCF&labelColor=white&color=white)](editors/zed/README.md#install-as-a-dev-extension)
+[![Claude Code skills](https://img.shields.io/badge/Claude%20Code-skills-white?logo=claude&logoColor=D97757&labelColor=white&color=white)](skills/README.md#claude-code)
+[![OpenCode template](https://img.shields.io/badge/OpenCode-template-white?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzAwMCIgZmlsbC1ydWxlPSJldmVub2RkIj48cGF0aCBkPSJNMTYgNkg4djEyaDhWNnptNCAxNkg0VjJoMTZ2MjB6Ii8%2BPC9zdmc%2B&labelColor=white&color=white)](skills/README.md#opencode)
+
 Codebase intelligence for Solana programs: Seagrass is rust-analyzer for
 Solana. It reads your program the way the runtime does — accounts,
 constraints, CPIs, PDAs, deploy artifacts — and tells you what's wrong before
@@ -118,7 +127,7 @@ Bundled agent skills (Claude Code, Cursor, OpenCode) live in `skills/` — symli
 
 ## Framework support
 
-Anchor v1/v2 gets the deep treatment: constraints, init safety, completions, IDL checks. Native Solana and Pinocchio get the same security and artifact coverage wherever the semantics line up (owner/type/signer/CPI/PDA), just without Anchor-specific syntax. The exact matrix and its enforcement tests are in [`docs/framework-parity.md`](docs/framework-parity.md).
+Anchor v1 and Anchor v2 preview get the deep treatment: constraints, init safety, completions, IDL checks. Native Solana and Pinocchio get the same security and artifact coverage wherever the semantics line up (owner/type/signer/CPI/PDA), just without Anchor-specific syntax. The exact matrix and its enforcement tests are in [`docs/framework-parity.md`](docs/framework-parity.md).
 
 ## Develop
 

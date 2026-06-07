@@ -6,10 +6,17 @@ import { repoRoot } from "./release-evidence.ts";
 
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
 const smokeScriptPath = resolve(repoRoot, "scripts/smoke-install.sh");
+const anchorV2PreviewCorpusScriptPath = resolve(repoRoot, "scripts/check-anchor-v2-preview-corpus.ts");
 const readmePath = resolve(repoRoot, "README.md");
+const frameworkParityPath = resolve(repoRoot, "docs/framework-parity.md");
 const productFramingPath = resolve(repoRoot, "docs/product-framing.md");
 const agentSkillHelpPath = resolve(repoRoot, "docs/agent-skill-help.md");
 const skillsReadmePath = resolve(repoRoot, "skills/README.md");
+const anchorV2PreviewCratePath = resolve(repoRoot, "crates/seagrass-anchor-v2-preview/src/lib.rs");
+const anchorV2PreviewManifestPath = resolve(
+  repoRoot,
+  "crates/seagrass-anchor-v2-preview/src/generated/anchor_support_generated.rs",
+);
 
 describe("product gate guardrails", () => {
   test("verify-production runs golden-path smoke and lint index freshness", () => {
@@ -29,6 +36,16 @@ describe("product gate guardrails", () => {
 
     expect(smokeScript).toContain("fixtures/smoke-broken.rs");
     expect(smokeScript).toContain("target/debug/seagrass");
+  });
+
+  test("Anchor v2 preview corpus check is source-driven", () => {
+    const corpusScript = readFileSync(anchorV2PreviewCorpusScriptPath, "utf8");
+
+    expect(corpusScript).toContain("scripts/regen-support.ts");
+    expect(corpusScript).toContain('"v2-preview"');
+    expect(corpusScript).toContain("seagrass-anchor-v2-preview/src/generated");
+    expect(corpusScript).toContain("diagnostics");
+    expect(corpusScript).toContain("Anchor v2 preview examples should not produce ERROR diagnostics");
   });
 
   test("product framing separates shipped static signals from runtime evidence claims", () => {
@@ -64,5 +81,23 @@ describe("product gate guardrails", () => {
     expect(skillsReadme).toContain("version-matched to the installed");
     expect(skillsReadme).toContain("binaryVersion");
     expect(skillsReadme).toContain("docs/agent-skill-help.md");
+  });
+
+  test("Anchor v2 preview claim is grounded in framework metadata", () => {
+    const readme = readFileSync(readmePath, "utf8");
+    const frameworkParity = readFileSync(frameworkParityPath, "utf8");
+    const anchorV2PreviewCrate = readFileSync(anchorV2PreviewCratePath, "utf8");
+    const anchorV2PreviewManifest = readFileSync(anchorV2PreviewManifestPath, "utf8");
+
+    expect(readme).toContain("Anchor v1 and Anchor v2 preview get the deep treatment");
+    expect(frameworkParity).toContain("Anchor v1/v2 preview");
+    expect(anchorV2PreviewCrate).toContain('const DISPLAY_NAME: &str = "Anchor v2 preview";');
+    expect(anchorV2PreviewCrate).toContain("FrameworkKind::AnchorV2Preview");
+    expect(anchorV2PreviewCrate).toContain("SupportLevel::Preview");
+    expect(anchorV2PreviewManifest).toContain('anchor_version: "2.0.0"');
+    expect(anchorV2PreviewManifest).toContain("support_level: AnchorSupportLevel::AnchorV2Preview");
+    expect(anchorV2PreviewManifest).toContain('version_family: "anchor-v2-preview"');
+    expect(anchorV2PreviewManifest).toContain("anchor-next parser");
+    expect(anchorV2PreviewManifest).not.toContain("newer Anchor v1 releases");
   });
 });

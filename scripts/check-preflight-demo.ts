@@ -21,7 +21,9 @@ const result = spawnSync(command, args, {
   encoding: "utf8",
 });
 
-if (result.error) {
+const failedToStart = result.status === null;
+
+if (failedToStart && result.error) {
   throw new Error(`preflight demo failed to start: ${result.error.message}`);
 }
 if (result.status !== expectedExitCodeWithFindings) {

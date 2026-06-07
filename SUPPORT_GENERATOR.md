@@ -18,6 +18,13 @@ For a preview Anchor v2 checkout:
 bun scripts/regen-support.ts --anchor-path ../anchor-next --family v2-preview --dry-run
 ```
 
+To validate the checked-in v2 preview catalog against real `anchor-next` example
+programs:
+
+```sh
+bun scripts/check-anchor-v2-preview-corpus.ts --anchor-path ../anchor-next
+```
+
 Before committing generated changes:
 
 ```sh

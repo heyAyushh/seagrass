@@ -50,11 +50,26 @@ mod tests {
     fn exposes_generated_anchor_v2_preview_manifest() {
         let metadata = framework().metadata();
         assert_eq!(metadata.id, "anchor-v2-preview");
+        assert_eq!(metadata.display_name, "Anchor v2 preview");
+        assert_eq!(metadata.kind, FrameworkKind::AnchorV2Preview);
+        assert_eq!(metadata.support_level, SupportLevel::Preview);
+        assert_eq!(MANIFEST.anchor_version, "2.0.0");
+        assert_eq!(MANIFEST.support_level, AnchorSupportLevel::AnchorV2Preview);
+        assert_eq!(MANIFEST.profile.version_major, 2);
+        assert_eq!(MANIFEST.profile.version_family, "anchor-v2-preview");
         assert_eq!(
             metadata.generated.constraints,
             MANIFEST.generated_constraint_count
         );
         assert!(metadata.generated.constraints > 0);
         assert!(metadata.generated.errors > 0);
+        assert!(MANIFEST
+            .notes
+            .iter()
+            .any(|note| note.contains("anchor-next")));
+        assert!(!MANIFEST
+            .notes
+            .iter()
+            .any(|note| note.contains("newer Anchor v1 releases")));
     }
 }

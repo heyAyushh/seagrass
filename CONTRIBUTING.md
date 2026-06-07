@@ -69,6 +69,13 @@ bun scripts/regen-support.ts \
   --check
 ```
 
+Run the real Anchor v2 preview example-corpus check before claiming v2 preview
+coverage:
+
+```sh
+bun scripts/check-anchor-v2-preview-corpus.ts --anchor-path ../anchor-next
+```
+
 When bumping Anchor support:
 
 - update the root `anchor-syn` git revision

@@ -5,6 +5,9 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- test: add a real Anchor v2 preview corpus check that validates generated
+  support freshness and runs diagnostics over `anchor-next` example programs.
+
 ## [0.1.2] - 2026-06-05
 
 - client: expose Seagrass analysis, program report, error coverage, support

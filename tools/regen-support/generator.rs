@@ -195,6 +195,28 @@ impl RequestedFamily {
             Self::V2Preview => "anchor-v2-preview",
         }
     }
+
+    fn support_generation_note(self) -> &'static str {
+        match self {
+            Self::V1 => {
+                "Anchor v1 support is generated from this checkout's parser, framework error enum, examples, and tests."
+            }
+            Self::V2Preview => {
+                "Anchor v2 preview support is generated from the anchor-next parser, framework error enum, examples, and tests."
+            }
+        }
+    }
+
+    fn support_fingerprint_note(self) -> &'static str {
+        match self {
+            Self::V1 => {
+                "The source fingerprint changes when Anchor parser/error/corpus inputs change, forcing the support matrix to be re-evaluated for newer Anchor v1 releases."
+            }
+            Self::V2Preview => {
+                "The source fingerprint changes when anchor-next parser/error/corpus inputs change, forcing the preview support matrix to be re-evaluated before any Anchor v2 stability claim."
+            }
+        }
+    }
 }
 
 fn required_path_env(name: &str) -> PathBuf {
@@ -957,8 +979,14 @@ fn generate_anchor_support(
     );
     out.push_str("    ],\n");
     out.push_str("    notes: &[\n");
-    out.push_str("        \"Anchor v1 support is generated from this checkout's parser, framework error enum, examples, and tests.\",\n");
-    out.push_str("        \"The source fingerprint changes when Anchor parser/error/corpus inputs change, forcing the support matrix to be re-evaluated for newer Anchor v1 releases.\",\n");
+    out.push_str(&format!(
+        "        {:?},\n",
+        requested_family.support_generation_note()
+    ));
+    out.push_str(&format!(
+        "        {:?},\n",
+        requested_family.support_fingerprint_note()
+    ));
     out.push_str("        \"Anchor v2 is treated as preview until the parser and generated support manifest prove stable coverage.\",\n");
     out.push_str("    ],\n");
     out.push_str("}\n");
