@@ -1,7 +1,7 @@
 use {
     crate::{
         document::ParsedDocument, evidence::AccountSetEvidence,
-        lsp::scope::is_const_like_identifier, workspace::WorkspaceIndex,
+        lsp::scope::is_const_like_identifier, solana::runtime_catalog, workspace::WorkspaceIndex,
     },
     std::collections::BTreeSet,
     syn::ExprPath,
@@ -13,8 +13,8 @@ const DECLARED_PROGRAM_ID_VALUE: &str = "ID";
 const ASSOCIATED_VALUE_PATH_SEGMENTS: usize = 2;
 const LOCAL_PATH_ROOTS: &[&str] = &["crate", "self", "super"];
 const BUILTIN_ASSOCIATED_PATH_ROOTS: &[&str] = &[
-    "Clock", "None", "Option", "Pubkey", "Rent", "Some", "System", "Sysvar", "Vec", "bool", "core",
-    "i8", "i16", "i32", "i64", "i128", "isize", "std", "u8", "u16", "u32", "u64", "u128", "usize",
+    "None", "Option", "Pubkey", "Some", "System", "Sysvar", "Vec", "bool", "core", "i8", "i16",
+    "i32", "i64", "i128", "isize", "std", "u8", "u16", "u32", "u64", "u128", "usize",
 ];
 
 pub(super) fn unresolved_path_identifier(
@@ -100,7 +100,7 @@ fn identifier_resolves(
         || accounts.has_instruction_argument(identifier)
         || document_has_value_item(document, identifier)
         || document_has_imported_const_like_name(document, identifier)
-        || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&identifier)
+        || is_builtin_associated_path_root(identifier)
 }
 
 fn call_identifier_resolves(
@@ -127,12 +127,16 @@ fn path_resolves(
     if LOCAL_PATH_ROOTS.contains(&first) {
         return local_path_value_resolves(document, workspace_index, segments);
     }
-    if document_has_imported_name(document, first) || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&first)
-    {
+    if document_has_imported_name(document, first) || is_builtin_associated_path_root(first) {
         return true;
     }
     segments.len() == ASSOCIATED_VALUE_PATH_SEGMENTS
         && associated_path_value_resolves(document, workspace_index, segments)
+}
+
+fn is_builtin_associated_path_root(identifier: &str) -> bool {
+    BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&identifier)
+        || runtime_catalog::by_type_ident(identifier).is_some()
 }
 
 /// Resolve a `crate::…` / `self::…` / `super::…` qualified path.

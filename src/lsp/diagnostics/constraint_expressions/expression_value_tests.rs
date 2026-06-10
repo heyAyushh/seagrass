@@ -223,6 +223,24 @@ pub struct State {
 }
 
 #[test]
+fn accepts_runtime_catalog_sysvar_type_path() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(constraint = EpochRewards::get().is_ok())]
+    pub state: UncheckedAccount<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = collect(&document);
+
+    assert!(
+        diagnostics.is_empty(),
+        "runtime catalog sysvar type paths should stay quiet: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn validates_instruction_argument_struct_members() {
     let source = r#"
 #[program]
