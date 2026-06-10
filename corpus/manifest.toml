@@ -60,3 +60,56 @@ name    = "solana-programs-list"
 repo    = "https://github.com/aarjn/solana-programs-list"
 sha     = "587f5fc3b00c533d024222519f4d58b770d9ecef"
 license = "CC-BY-NC-4.0"
+
+# --- Submodule repos from solana-programs-list (each added as a direct entry) ---
+# None of these declare an explicit license; all are public repos.
+# Fetch-at-test-time only — never committed or redistributed.
+
+# Dual-signing pattern (Anchor)
+[[program]]
+name    = "anchor-dual-signing"
+repo    = "https://github.com/4rjunc/solana-dual-signing"
+sha     = "a16bbb9eab43b223ab4eb6db75a1839a47d3445e"
+license = "unlicensed"
+
+# Pinocchio vault
+[[program]]
+name    = "pinocchio-vault"
+repo    = "https://github.com/4rjunc/pinocchio-vault"
+sha     = "7c1f9a258d930673e2fab637c4aecfe5e0d7e44e"
+license = "unlicensed"
+
+# Pinocchio AMM
+[[program]]
+name    = "pinocchio-amm"
+repo    = "https://github.com/AvhiMaz/pinocchio-amm"
+sha     = "783ba9a2ad1a192d56af88c84e4a92b3aabdb73d"
+license = "unlicensed"
+
+# Anchor lending protocol (Meridian)
+[[program]]
+name    = "anchor-lending-protocol"
+repo    = "https://github.com/AllenGeorge08/Meridian_Protocol"
+sha     = "2f7ba7fe4cf4e668dab4f158a2de00f14f664716"
+license = "unlicensed"
+
+# Anchor AMM sandbox
+[[program]]
+name    = "anchor-amm"
+repo    = "https://github.com/subhdotsol/AMM-Sandbox"
+sha     = "8e8471f10fee280715396cf0f2ab014e034e2dcb"
+license = "unlicensed"
+
+# Quasar vault
+[[program]]
+name    = "quasar-vault"
+repo    = "https://github.com/Vinayapr23/quaser-vault"
+sha     = "b6696c3e6f6db4cbcce1875ce68179c879333531"
+license = "unlicensed"
+
+# Quasar SPL token
+[[program]]
+name    = "quasar-spl-token"
+repo    = "https://github.com/subhdotsol/quasar-spl-token"
+sha     = "2a719ba700f0b38816122a0bb32cc91ea06f6dae"
+license = "unlicensed"
