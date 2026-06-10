@@ -11,9 +11,11 @@
 //! that sysvar address strings have exactly one canonical source.
 
 use {
-    crate::solana::runtime_catalog,
+    crate::{document::ParsedDocument, solana::runtime_catalog},
     tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat},
 };
+
+const PATH_SEPARATOR: &str = "::";
 
 /// A well-known non-sysvar program address offered as a ready completion value.
 struct WellKnownAddress {
@@ -32,31 +34,41 @@ struct WellKnownAddress {
 /// from [`runtime_catalog::SYSVARS`] by [`sysvar_address_items`] to keep them in
 /// sync with the verified catalog.
 const NON_SYSVAR_ADDRESSES: &[WellKnownAddress] = &[
-    // anchor_lang::system_program::ID -> solana_sdk_ids::system_program (declare_id!).
+    // anchor_lang::system_program::ID re-exports solana_program::system_program::ID.
+    // The test module asserts this address against the pinned solana-program dependency.
     WellKnownAddress {
         path: "system_program::ID",
         address: "11111111111111111111111111111111",
         description: "System Program — anchor_lang::system_program::ID",
     },
     // anchor_spl::token::ID re-exports spl_token::ID (spl/src/token.rs).
+    // Source: https://github.com/otter-sec/anchor/blob/4addac5304bf2d2378448e86b5ee374c99037585/spl/src/token.rs
+    // Verified 2026-06-10.
     WellKnownAddress {
         path: "token::ID",
         address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         description: "SPL Token program — anchor_spl::token::ID",
     },
     // anchor_spl::token_2022::ID re-exports spl_token_2022::ID (spl/src/token_2022.rs).
+    // Source: https://github.com/otter-sec/anchor/blob/4addac5304bf2d2378448e86b5ee374c99037585/spl/src/token_2022.rs
+    // Verified 2026-06-10.
     WellKnownAddress {
         path: "token_2022::ID",
         address: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         description: "SPL Token-2022 program — anchor_spl::token_2022::ID",
     },
     // anchor_spl::associated_token::ID re-exports the ATA program ID (spl/src/associated_token.rs).
+    // Source: https://github.com/otter-sec/anchor/blob/4addac5304bf2d2378448e86b5ee374c99037585/spl/src/associated_token.rs
+    // Verified 2026-06-10.
     WellKnownAddress {
         path: "associated_token::ID",
         address: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
         description: "Associated Token program — anchor_spl::associated_token::ID",
     },
-    // metaplex-foundation/mpl-token-metadata declare_id! (programs/token-metadata/program/src/lib.rs).
+    // metaplex-foundation/mpl-token-metadata declare_id!.
+    // Source: corpus/manifest.toml pins
+    // https://github.com/metaplex-foundation/mpl-token-metadata/blob/349e061053c6fc5b6b815e03e896e4db57012893/programs/token-metadata/program/src/lib.rs
+    // Verified against corpus/programs/mpl-token-metadata on 2026-06-10.
     WellKnownAddress {
         path: "mpl_token_metadata::ID",
         address: "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
@@ -74,9 +86,10 @@ const SYSVAR_ID_NAMES: &[&str] = &["rent", "clock", "instructions"];
 const PUBKEY_LITERAL_LABEL: &str = "pubkey!(\"…\")";
 const PUBKEY_LITERAL_SNIPPET: &str = "pubkey!(\"$1\")";
 
-pub(super) fn well_known_address_items() -> Vec<CompletionItem> {
+pub(super) fn well_known_address_items(document: &ParsedDocument) -> Vec<CompletionItem> {
     let non_sysvar_items = NON_SYSVAR_ADDRESSES
         .iter()
+        .filter(|address| non_sysvar_address_is_available(document, address.path))
         .enumerate()
         .map(|(rank, address)| non_sysvar_address_item(address, rank));
 
@@ -85,6 +98,11 @@ pub(super) fn well_known_address_items() -> Vec<CompletionItem> {
     let mut items: Vec<CompletionItem> = non_sysvar_items.chain(sysvar_items).collect();
     items.push(pubkey_literal_item());
     items
+}
+
+#[cfg(test)]
+pub(super) fn non_sysvar_address_paths() -> impl Iterator<Item = &'static str> {
+    NON_SYSVAR_ADDRESSES.iter().map(|address| address.path)
 }
 
 /// Builds completion items for the common sysvar address constants from the
@@ -131,6 +149,21 @@ fn non_sysvar_address_item(address: &WellKnownAddress, rank: usize) -> Completio
     }
 }
 
+fn non_sysvar_address_is_available(document: &ParsedDocument, path: &str) -> bool {
+    let Some(root) = path_root(path) else {
+        return false;
+    };
+    document
+        .symbols()
+        .imported_names
+        .iter()
+        .any(|import| import.name == root)
+}
+
+fn path_root(path: &str) -> Option<&str> {
+    path.split(PATH_SEPARATOR).next()
+}
+
 /// `pubkey!("…")` lets a human paste a base58 address with no import — the
 /// idiomatic way to pin an external program that has no crate-level `ID` const.
 fn pubkey_literal_item() -> CompletionItem {
@@ -151,12 +184,27 @@ fn pubkey_literal_item() -> CompletionItem {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::document::ParsedDocument;
+
+    #[test]
+    fn system_program_address_matches_solana_program_dependency() {
+        let system_program = NON_SYSVAR_ADDRESSES
+            .iter()
+            .find(|address| address.path == "system_program::ID")
+            .expect("system program address entry");
+
+        assert_eq!(
+            system_program.address,
+            solana_program::system_program::ID.to_string()
+        );
+    }
 
     /// Every sysvar entry in the completions list must reference an address string that
     /// comes from the runtime catalog — verifying there is no independent copy.
     #[test]
     fn sysvar_address_completion_strings_match_runtime_catalog() {
-        let items = well_known_address_items();
+        let document = ParsedDocument::parse("").unwrap();
+        let items = well_known_address_items(&document);
 
         for sysvar_name in SYSVAR_ID_NAMES {
             let spec = runtime_catalog::by_name(sysvar_name)

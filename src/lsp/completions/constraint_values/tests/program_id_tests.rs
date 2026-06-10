@@ -7,6 +7,10 @@ fn labels(items: &[CompletionItem]) -> Vec<&str> {
 #[test]
 fn offers_well_known_ids_and_pubkey_literal_for_address() {
     let source = r#"
+use anchor_lang::system_program;
+use anchor_spl::{associated_token, token, token_2022};
+use mpl_token_metadata;
+
 #[derive(Accounts)]
 pub struct Run<'info> {
     #[account(address = )]
@@ -19,14 +23,37 @@ pub struct Run<'info> {
     let labels = labels(&items);
 
     assert!(labels.contains(&"token::ID"), "{labels:?}");
+    assert!(labels.contains(&"token_2022::ID"), "{labels:?}");
     assert!(labels.contains(&"system_program::ID"), "{labels:?}");
     assert!(labels.contains(&"associated_token::ID"), "{labels:?}");
+    assert!(labels.contains(&"mpl_token_metadata::ID"), "{labels:?}");
+    assert!(labels.iter().any(|label| label.starts_with("pubkey!")));
+}
+
+#[test]
+fn omits_well_known_ids_without_matching_imports() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(address = )]
+    pub program: AccountInfo<'info>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let items =
+        completions(&document, position_after(source, "address = ")).expect("address completions");
+    let labels = labels(&items);
+
+    assert!(!labels.contains(&"token::ID"), "{labels:?}");
+    assert!(!labels.contains(&"system_program::ID"), "{labels:?}");
     assert!(labels.iter().any(|label| label.starts_with("pubkey!")));
 }
 
 #[test]
 fn offers_well_known_ids_for_seeds_program() {
     let source = r#"
+use anchor_spl::associated_token;
+
 #[derive(Accounts)]
 pub struct Run<'info> {
     #[account(seeds = [b"x"], bump, seeds::program = )]
