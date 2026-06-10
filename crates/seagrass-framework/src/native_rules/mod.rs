@@ -3,6 +3,7 @@ use {
     tower_lsp::lsp_types::Diagnostic,
 };
 
+mod common;
 mod raw_account;
 mod validation;
 

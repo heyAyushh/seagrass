@@ -1,10 +1,13 @@
 use {
+    super::common::{
+        called_ident, compact_token_text as expr_text, ident_matches_any, local_ident_name,
+        member_is_named, unsigned_literal,
+    },
     crate::{
         diagnostics::{solana_code_quality_from_span, FrameworkDocument},
         lint::{run_lint_visitor_on_functions, Applicability, Confidence, LintVisitor, Region},
         FrameworkKind,
     },
-    quote::ToTokens,
     std::collections::{HashMap, HashSet},
     syn::{
         parse::Parser,
@@ -640,21 +643,6 @@ fn program_id_expression(expr: &syn::Expr) -> String {
     expr_text(expr).trim_start_matches('*').to_string()
 }
 
-fn called_ident(func: &syn::Expr) -> Option<&syn::Ident> {
-    let syn::Expr::Path(expr_path) = func else {
-        return None;
-    };
-    expr_path.path.segments.last().map(|segment| &segment.ident)
-}
-
-fn ident_matches_any(ident: &syn::Ident, candidates: &[&str]) -> bool {
-    candidates.iter().any(|candidate| ident == *candidate)
-}
-
-fn member_is_named(member: &syn::Member, name: &str) -> bool {
-    matches!(member, syn::Member::Named(ident) if ident == name)
-}
-
 fn path_ends_with(expr: &syn::Expr, expected: &[&str]) -> bool {
     match expr {
         syn::Expr::Path(expr_path) => {
@@ -751,24 +739,6 @@ fn account_index_from_expr(expr: &syn::Expr) -> Option<usize> {
     }
 }
 
-fn local_ident_name(local: &syn::Local) -> Option<String> {
-    match &local.pat {
-        syn::Pat::Ident(pat_ident) => Some(pat_ident.ident.to_string()),
-        syn::Pat::Reference(reference) => pat_ident_name(&reference.pat),
-        syn::Pat::Type(pat_type) => pat_ident_name(&pat_type.pat),
-        _ => None,
-    }
-}
-
-fn pat_ident_name(pat: &syn::Pat) -> Option<String> {
-    match pat {
-        syn::Pat::Ident(pat_ident) => Some(pat_ident.ident.to_string()),
-        syn::Pat::Reference(reference) => pat_ident_name(&reference.pat),
-        syn::Pat::Type(pat_type) => pat_ident_name(&pat_type.pat),
-        _ => None,
-    }
-}
-
 fn account_alias_from_expr(expr: &syn::Expr) -> Option<String> {
     match expr {
         syn::Expr::Path(expr_path) => expr_path.path.get_ident().map(ToString::to_string),
@@ -817,27 +787,6 @@ fn account_iterator_name(expr: &syn::Expr) -> Option<String> {
         syn::Expr::Group(group) => account_iterator_name(&group.expr),
         _ => None,
     }
-}
-
-fn unsigned_literal(expr: &syn::Expr) -> Option<usize> {
-    match expr {
-        syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
-            syn::Lit::Int(lit) => lit.base10_parse().ok(),
-            _ => None,
-        },
-        syn::Expr::Group(group) => unsigned_literal(&group.expr),
-        syn::Expr::Paren(paren) => unsigned_literal(&paren.expr),
-        _ => None,
-    }
-}
-
-fn expr_text(tokens: &impl ToTokens) -> String {
-    tokens
-        .to_token_stream()
-        .to_string()
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect()
 }
 
 fn parse_vec_macro_expressions(mac: &syn::Macro) -> Vec<syn::Expr> {

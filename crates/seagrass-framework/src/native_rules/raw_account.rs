@@ -1,4 +1,8 @@
 use {
+    super::common::{
+        called_ident, compact_token_text as normalized_token_text, ident_matches_any,
+        local_ident_name, member_is_named, pat_ident_name, unsigned_literal,
+    },
     crate::{
         diagnostics::{solana_code_quality_from_span, FrameworkDocument},
         lint::{
@@ -7,7 +11,6 @@ use {
         },
         FrameworkKind,
     },
-    quote::ToTokens,
     std::collections::{HashMap, HashSet},
     syn::{
         spanned::Spanned,
@@ -422,7 +425,7 @@ impl<'ast> Visit<'ast> for NativeRawAccountInvariantVisitor {
     }
 
     fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
-        if let Some(ident) = called_function_ident(&node.func) {
+        if let Some(ident) = called_ident(&node.func) {
             if ident_matches_any(ident, RAW_DESERIALIZATION_CALLS) {
                 self.raw_deserializations.push(NativeRawDeserialization {
                     span: ident.span(),
@@ -635,19 +638,6 @@ fn generic_type_arg_is_account_info(segment: &syn::PathSegment) -> bool {
     })
 }
 
-fn local_ident_name(local: &syn::Local) -> Option<String> {
-    pat_ident_name(&local.pat)
-}
-
-fn pat_ident_name(pat: &syn::Pat) -> Option<String> {
-    match pat {
-        syn::Pat::Ident(pat_ident) => Some(pat_ident.ident.to_string()),
-        syn::Pat::Reference(reference) => pat_ident_name(&reference.pat),
-        syn::Pat::Type(pat_type) => pat_ident_name(&pat_type.pat),
-        _ => None,
-    }
-}
-
 fn destructured_account_names(pattern: &syn::Pat) -> Vec<Option<String>> {
     match pattern {
         syn::Pat::Slice(slice) => slice.elems.iter().map(pat_ident_name).collect(),
@@ -710,7 +700,7 @@ fn account_iterator_collection(expr: &syn::Expr) -> Option<String> {
 
 fn next_account_info_iterator_name(expr: &syn::Expr) -> Option<String> {
     match expr {
-        syn::Expr::Call(call) if called_function_ident(&call.func)? == "next_account_info" => {
+        syn::Expr::Call(call) if called_ident(&call.func)? == "next_account_info" => {
             call.args.first().and_then(account_iterator_name)
         }
         syn::Expr::Try(expr_try) => next_account_info_iterator_name(&expr_try.expr),
@@ -749,42 +739,6 @@ fn path_ident_name(expr: &syn::Expr) -> Option<String> {
         return None;
     };
     path.path.get_ident().map(ToString::to_string)
-}
-
-fn unsigned_literal(expr: &syn::Expr) -> Option<usize> {
-    match expr {
-        syn::Expr::Lit(expr_lit) => match &expr_lit.lit {
-            syn::Lit::Int(lit) => lit.base10_parse().ok(),
-            _ => None,
-        },
-        syn::Expr::Group(group) => unsigned_literal(&group.expr),
-        syn::Expr::Paren(paren) => unsigned_literal(&paren.expr),
-        _ => None,
-    }
-}
-
-fn called_function_ident(func: &syn::Expr) -> Option<&syn::Ident> {
-    let syn::Expr::Path(expr_path) = func else {
-        return None;
-    };
-    expr_path.path.segments.last().map(|segment| &segment.ident)
-}
-
-fn ident_matches_any(ident: &syn::Ident, candidates: &[&str]) -> bool {
-    candidates.iter().any(|candidate| ident == *candidate)
-}
-
-fn member_is_named(member: &syn::Member, name: &str) -> bool {
-    matches!(member, syn::Member::Named(ident) if ident == name)
-}
-
-fn normalized_token_text(tokens: &impl ToTokens) -> String {
-    tokens
-        .to_token_stream()
-        .to_string()
-        .chars()
-        .filter(|ch| !ch.is_whitespace())
-        .collect()
 }
 
 fn tail_expr_from_block(block: &syn::Block) -> Option<&syn::Expr> {
