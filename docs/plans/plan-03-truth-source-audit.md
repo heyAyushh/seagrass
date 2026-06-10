@@ -1,4 +1,4 @@
-# Plan 02 — Truth-Source Audit of All Diagnostics + Prune Shallow Heuristics
+# Plan 03 — Truth-Source Audit of All Diagnostics + Prune Shallow Heuristics
 
 ## Context
 
@@ -49,7 +49,7 @@
 | `docs/diagnostics-strategy.md` | Strategy doc — must record dispositions |
 
 **NEW files this plan creates:**
-- `docs/plans/plan-02-truth-source-audit.md` — this file
+- `docs/plans/plan-03-truth-source-audit.md` — this file
 - No new source files required; changes are edits to existing files listed above
 
 ### Known corpus FP families
@@ -126,7 +126,7 @@ If any tests fail, STOP. Fix failing tests before proceeding. Do not edit any pr
 If green, commit the working tree:
 ```
 git add -A
-git commit -m "chore: baseline before truth-source audit (plan-02)"
+git commit -m "chore: baseline before truth-source audit (plan-03)"
 ```
 
 Then confirm with `cargo test` + `cargo clippy --all-targets -- -D warnings` both pass on the committed baseline.
@@ -526,7 +526,7 @@ rm docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md
 
 Then update `docs/lints/index.html` to remove the three table rows that reference those deleted pages (grep for `seagrass/security.account.duplicate-mutable`, `seagrass/security.token-account`, and `seagrass/solana.code-quality.unchecked-arithmetic`). Whether or not the audit script validates lint doc pages against registry codes, leaving stale pages and index entries creates misleading user-facing documentation.
 
-Then append to `docs/diagnostics-strategy.md` a section titled `## Truth-Source Audit Results (Plan 02)` containing:
+Then append to `docs/diagnostics-strategy.md` a section titled `## Truth-Source Audit Results (Plan 03)` containing:
 
 1. A summary of the audit table from the plan (compact form).
 2. **Dispositions:**
@@ -582,7 +582,7 @@ Every criterion below must be satisfied before this plan is considered complete.
 | 9 | `grep -c "SecurityStaticPda" src/lsp/diagnostics/registry.rs` | At least 1 match (variant kept as Speculative) |
 | 10 | `grep "Speculative" src/lsp/diagnostics/registry.rs` | Shows `Provability::Speculative` variant and match arm |
 | 11 | `grep "TruthSource" src/lsp/diagnostics/registry.rs` | Shows enum and `truth_source()` method |
-| 12 | `grep "Plan 02" docs/diagnostics-strategy.md` | Section appended |
+| 12 | `grep "Plan 03" docs/diagnostics-strategy.md` | Section appended |
 | 13 | `AnchorDiagnosticKind::all().len() == 29` | Verified by test or `grep "\[Self; 29\]" src/lsp/diagnostics/registry.rs` |
 | 14 | `bun run scripts/check-diagnostic-topics.ts` | Zero failures (stale entries removed from `docs/topics.json`) |
 | 15 | `bun run scripts/check-diagnostic-audit.ts` | Zero failures (stale rows removed from `docs/diagnostic-audit.md`) |

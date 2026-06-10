@@ -1,4 +1,4 @@
-# Plan 05 — Ecosystem Distribution: Prebuilt Binaries, VS Code Extension, Zero-Config, Editor Docs
+# Plan 07 — Ecosystem Distribution: Prebuilt Binaries, VS Code Extension, Zero-Config, Editor Docs
 
 ## Context
 
@@ -25,7 +25,7 @@ Tower-lsp + syn/tree-sitter + salsa 0.26 stack. Binary name: `seagrass` (crate: 
   NativeSolana), detection via `Anchor.toml` presence (`detect_anchor_programs`) and
   Cargo.toml dependency inspection (`classify_program`). No gap here for detection itself.
 
-**Sequencing gate**: plan-05 builds on plan-01 (FP fixes for corpus programs) and plan-02
+**Sequencing gate**: plan-07 builds on plan-01 (FP fixes for corpus programs) and plan-03
 (heuristic lint prune). Do NOT widen distribution before both plans are merged to main
 and their acceptance criteria pass. Widening install base before FP fixes multiplies user
 exposure to the ~38 known false positives.
@@ -53,7 +53,7 @@ block a GitHub release until that evidence is populated.
 | `/src/solana/project/mod.rs` | exists | Server-side framework auto-detection |
 | `/.github/workflows/publish-vscode.yaml` | **NEW** | Separate workflow to publish VSIX to Marketplace |
 | `/editors/vscode/src/serverInstall.ts` | **NEW** | Binary download/cache logic for bundled-server mode |
-| `/docs/plans/plan-05-distribution.md` | this file | Execution plan |
+| `/docs/plans/plan-07-distribution.md` | this file | Execution plan |
 
 ---
 
@@ -68,7 +68,7 @@ block a GitHub release until that evidence is populated.
   published to Marketplace; no in-extension auto-updater needed).
 - Changing the existing release gate shape (`check-release-readiness.ts` logic is correct;
   evidence must be earned, not bypassed).
-- Any diagnostic logic, FP fixes, or lint changes (those are plan-01 and plan-02).
+- Any diagnostic logic, FP fixes, or lint changes (those are plan-01 and plan-03).
 
 ---
 
@@ -86,7 +86,7 @@ cargo clippy --all-targets -- -D warnings 2>&1 | tail -5
 
 Both must exit 0. The working tree has ~50 modified files (uncommitted at plan write time).
 Commit or stash all current changes as a baseline commit before starting any step below.
-Commit message format: `chore: baseline before plan-05 distribution work`.
+Commit message format: `chore: baseline before plan-07 distribution work`.
 
 Verify the baseline test count matches ≥ 1485 passing tests.
 
@@ -683,9 +683,9 @@ this via the "Anything else → exit 1" branch.
 **R7 — Windows binary resolution in extension** (LOW): Windows paths require `.exe`
 suffix. `serverInstall.ts` must append `.exe` to the cached binary name on `process.platform === 'win32'`. Use a named constant `BINARY_EXTENSION = process.platform === 'win32' ? '.exe' : ''`.
 
-**R8 — Sequencing violation: widening distribution before plan-01/plan-02** (HIGH):
+**R8 — Sequencing violation: widening distribution before plan-01/plan-03** (HIGH):
 DO NOT publish to the VS Code Marketplace or promote the install script in public docs
-before plan-01 (FP family A/B fixes) and plan-02 (heuristic lint prune) are merged and
+before plan-01 (FP family A/B fixes) and plan-03 (heuristic lint prune) are merged and
 their acceptance tests pass. The ~38 known FPs will reach a larger install base otherwise.
 The Marketplace publish workflow (Step 4) is `workflow_dispatch` only, providing the
 human gate needed to enforce this sequencing.

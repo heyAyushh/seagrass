@@ -4,25 +4,30 @@ Self-contained plans for zero-context executors. Each plan carries its own conte
 doctrine, file paths (verified at write time), steps, and acceptance criteria — read
 nothing else to execute one, except this index for ordering.
 
-## Execution order
+## Execution order (numerical = execution; run 01 → 07)
 
 | # | Plan | Depends on | Why this position |
 |---|---|---|---|
-| 1 | [plan-01-fp-families](plan-01-fp-families.md) | — | Kills the 38 known FPs found on real mainnet programs; everything else assumes a non-lying baseline |
-| 2 | [plan-02-truth-source-audit](plan-02-truth-source-audit.md) | plan-01 | Prunes/demotes heuristic lints; adds `TruthSource` enforcement to the registry |
-| 3 | [plan-03-resolution-delegation](plan-03-resolution-delegation.md) | — (parallel-safe with 2) | Glob-import open-world guards + workspace-inherited feature detection |
-| 4 | [plan-04-semantic-graph](plan-04-semantic-graph.md) | 1–3 recommended | Staged migration to the framework-agnostic semantic model; long-running |
-| 5 | [plan-05-distribution](plan-05-distribution.md) | **hard gate: 1 and 2 merged** | Widening install base before FP fixes multiplies exposure to known FPs |
-| 6 | [plan-06-capability-registry](plan-06-capability-registry.md) | plan-03 (manifest plumbing) | Crate-agnostic recognition: solves the solana-program crate split, Pinocchio, and future frameworks in one mechanism |
+| 01 | [plan-01-fp-families](plan-01-fp-families.md) | — (in flight; see its RESUME STATE) | Kills the 38 known FPs found on real mainnet programs; everything else assumes a non-lying baseline |
+| 02 | [plan-02-debt-remediation](plan-02-debt-remediation.md) | plan-01 | Two P0 live bugs (topic-mismatch dedup break, catalog drift) + uncovered rot from [debt-inventory](debt-inventory.md) |
+| 03 | [plan-03-truth-source-audit](plan-03-truth-source-audit.md) | plan-01 | Prunes/demotes heuristic lints; adds `TruthSource` enforcement to the registry |
+| 04 | [plan-04-resolution-delegation](plan-04-resolution-delegation.md) | — (parallel-safe with 03) | Glob-import open-world guards + workspace-inherited feature detection |
+| 05 | [plan-05-capability-registry](plan-05-capability-registry.md) | plan-04 (manifest plumbing) | Crate-agnostic recognition: solves the solana-program crate split, Pinocchio, and future frameworks in one mechanism |
+| 06 | [plan-06-semantic-graph](plan-06-semantic-graph.md) | 01–05 recommended | Staged migration to the framework-agnostic semantic model; consumes 05's registry; long-running |
+| 07 | [plan-07-distribution](plan-07-distribution.md) | **hard gate: 01 and 03 merged** | Widening install base before FP fixes multiplies exposure to known FPs |
+
+[debt-inventory.md](debt-inventory.md) is the findings register behind plan-02;
+it also assigns P1 items to plans 03/05/06 — those plans absorb them at
+execution time.
 
 ## Overlap resolution (binding)
 
-- **plan-02 steps 4–5 duplicate plan-01 steps 1–2** (FP families A and B, approached
-  slightly differently). Execute plan-01's version. When executing plan-02, treat its
+- **plan-03 steps 4–5 duplicate plan-01 steps 1–2** (FP families A and B, approached
+  slightly differently). Execute plan-01's version. When executing plan-03, treat its
   steps 4–5 as **verify-only**: confirm the regression tests from plan-01 exist and pass,
-  then skip the code changes. If plan-01 was not executed first, follow plan-02's version
+  then skip the code changes. If plan-01 was not executed first, follow plan-03's version
   and mark plan-01's steps 1–2 verify-only instead. Never apply both.
-- **plan-04 Stage 3** re-ports the family-B fix as a model query. That is intentional
+- **plan-06 Stage 3** re-ports the family-B fix as a model query. That is intentional
   (proof-of-concept port of an already-correct rule), not a duplicate fix.
 
 ## Invariants for every plan

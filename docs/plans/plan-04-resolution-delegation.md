@@ -1,4 +1,4 @@
-# Plan 03: Delegate Rust-Resolution Facts to the Toolchain
+# Plan 04: Delegate Rust-Resolution Facts to the Toolchain
 
 ## Context
 
@@ -84,7 +84,7 @@ All paths verified to exist unless marked NEW.
 | `src/lsp/diagnostics/rules.rs` | static `RULES` array; `collect_constraint_expressions` at line 85, `collect_context_accounts` at line 43 |
 | `src/solana/project/mod.rs` | `parse_cargo_manifest`; `CargoManifest` struct |
 | `src/lsp/diagnostics/check_cfg/tests/mod.rs` | existing tests for init-if-needed feature check |
-| `docs/plans/plan-03-resolution-delegation.md` | **THIS FILE** (NEW) |
+| `docs/plans/plan-04-resolution-delegation.md` | **THIS FILE** (NEW) |
 | `src/lsp/diagnostics/check_cfg/tests/workspace_feature_tests.rs` | NEW — tests for workspace-inherited feature |
 
 ---
@@ -118,7 +118,7 @@ If the working tree is uncommitted, commit it first:
 
 ```bash
 git add -p   # stage selectively — avoid .env, secrets
-git commit -m "chore: baseline before plan-03"
+git commit -m "chore: baseline before plan-04"
 ```
 
 Verify `cargo clippy --workspace --all-targets -- -D warnings` passes before

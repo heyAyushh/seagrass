@@ -167,7 +167,7 @@ format) before making any plan changes.
 
 **The exact code path is unknown; investigation is required first.**
 
-**Strong lead (verified during plan-04 grounding):** the likely true source is
+**Strong lead (verified during plan-06 grounding):** the likely true source is
 `src/lsp/diagnostics/spl_semantics.rs` — `token_program_kind()` (~line 369) only
 recognizes `Program<Token>`, `Program<Token2022>`, and `Interface<TokenInterface>`;
 `token_program_override_diagnostics` (~line 112) emits `AnchorSplTokenInterface`

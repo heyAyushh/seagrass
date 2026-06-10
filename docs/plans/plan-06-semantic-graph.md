@@ -1,4 +1,4 @@
-# Plan 04 — Framework-Agnostic Solana Semantic Model (Staged Migration)
+# Plan 06 — Framework-Agnostic Solana Semantic Model (Staged Migration)
 
 ## Context
 
@@ -126,14 +126,14 @@ If both pass, commit the current working tree as a baseline:
 
 ```bash
 git add -A
-git commit -m "chore: baseline commit before plan-04 semantic graph migration"
+git commit -m "chore: baseline commit before plan-06 semantic graph migration"
 ```
 
 If tests or clippy fail, **stop and report**; do not proceed.
 
 #### Step 0.2 — Distance audit (file, not executable)
 
-Produce a file `docs/plans/plan-04-distance-audit.md` (NEW) classifying every rule in
+Produce a file `docs/plans/plan-06-distance-audit.md` (NEW) classifying every rule in
 `src/lsp/diagnostics/rules.rs`. For each of the 19 rule entries, record:
 
 - Rule name (code string from registry)
@@ -927,6 +927,6 @@ File as a separate plan item; do not touch in Stages 0–4.
 | `crates/seagrass-framework/src/extractor/tests.rs` | NEW | 4 |
 | `crates/seagrass-framework/src/lib.rs` | EXISTING — add `pub mod extractor;` | 4 |
 | `crates/seagrass-framework/src/native_rules/mod.rs` | EXISTING — add model extraction call | 4 |
-| `docs/plans/plan-04-distance-audit.md` | NEW | 0 |
+| `docs/plans/plan-06-distance-audit.md` | NEW | 0 |
 | `corpus/manifest.toml` | EXISTING (read only; fix SPL subpath if needed) | 0 |
 | `scripts/fetch-corpus.sh` | EXISTING (read only) | 0 |

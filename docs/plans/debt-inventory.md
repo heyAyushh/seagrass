@@ -43,7 +43,7 @@ solana-program pin, lint.rs twins) is listed only where the scan added new preci
 
 ## P1 — Architectural debt, owner plan exists
 
-### P1.1 Account wrapper-type lists: 14 independent copies → plan-04
+### P1.1 Account wrapper-type lists: 14 independent copies → plan-06
 Fourteen sites enumerate subsets of Anchor wrappers with no canonical list, and
 they already disagree: `account_generic_argument_with_box_state`
 (`anchor_syn/mod.rs:432`) includes `Migration`; its sibling
@@ -52,10 +52,10 @@ they already disagree: `account_generic_argument_with_box_state`
 `account_usage/mod.rs:97+470` (verbatim same-file duplicate),
 `evidence/mod.rs:393` + `security/mod.rs:481` (is_unchecked_account twice),
 3× signer lists, 3× program lists, 1 sort-priority table.
-→ plan-04's `AccountType` enum is the single source; add "collapse the 14 wrapper
+→ plan-06's `AccountType` enum is the single source; add "collapse the 14 wrapper
 lists onto AccountType" to its Stage 2/3 scope when executed.
 
-### P1.2 Framework/crate detection lists duplicated and incomplete → plan-06
+### P1.2 Framework/crate detection lists duplicated and incomplete → plan-05
 - `PINOCCHIO_DEPENDENCIES` exists in both `solana/frameworks.rs:23` and
   `solana/project/mod.rs:13` (hyphen vs underscore forms, two files, no
   drift test). `NATIVE_SOLANA_DEPENDENCIES` similarly duplicated and will miss
@@ -63,18 +63,18 @@ lists onto AccountType" to its Stage 2/3 scope when executed.
 - `classify_program` requires `crate-type = ["cdylib"]` — breaks if Cargo grows a
   first-class `sbf` crate-type. `process_instruction` substring check misfires on
   Pinocchio.
-→ plan-06's registry becomes the one place crate names live; extend its Step 4 to
+→ plan-05's registry becomes the one place crate names live; extend its Step 4 to
 rewire `SolanaProjectKind` detection through the registry.
 
-### P1.3 SPL type-name strings scattered across 8+ files → plan-04 (+01)
+### P1.3 SPL type-name strings scattered across 8+ files → plan-06 (+01)
 `account_semantics/mod.rs` alone has ~18 `"Mint"`/`"TokenAccount"` literals — an
 inline SPL catalog. Plus `constraint_shape/token.rs`, `spl_semantics.rs`,
 `candidates.rs`, `space_values.rs`, `assists/program_fields.rs`,
 `account_references/mod.rs:280`, `security/mod.rs:246`.
-→ plan-04's `token_interface_candidate` / catalog-derived type relations are the
+→ plan-06's `token_interface_candidate` / catalog-derived type relations are the
 fix; plan-01 already fixes the diagnostic-emitting subset.
 
-### P1.4 Sysvar names hardcoded outside the catalog → small task, attach to plan-06
+### P1.4 Sysvar names hardcoded outside the catalog → small task, attach to plan-05
 - `constraint_expressions/resolution.rs:15` `BUILTIN_ASSOCIATED_PATH_ROOTS`
   hardcodes `"Clock"`, `"Rent"` → a newly-active sysvar (e.g. `EpochRewards`)
   becomes an "unresolved path" FP.
@@ -94,23 +94,23 @@ all (sysvar ones do).
 → extend `parity_tests.rs` to cover every NON_SYSVAR_ADDRESSES entry; add
 ID-vs-real-crate parity for the five addresses (anchor-spl/dev-dep or catalog).
 
-### P1.6 Diagnostic-code raw strings bypass registry constants → fold into plan-02
+### P1.6 Diagnostic-code raw strings bypass registry constants → fold into plan-03
 ~25 production sites type codes like `"anchor-constraint-shape"` raw
 (actions/*, engine.rs:232,286, arbitration.rs:265). Renaming a registry constant
 breaks nothing at compile time; the action silently stops matching.
-→ mechanical sweep: replace literals with registry constants; add to plan-02's
+→ mechanical sweep: replace literals with registry constants; add to plan-03's
 registry-hardening scope. Same for `confidence_rank()` in arbitration.rs:202
 (string round-trip with dead `"high"|"medium"|"low"` arms — should match on a
-shared enum, plan-02's derive-confidence-from-provability note).
+shared enum, plan-03's derive-confidence-from-provability note).
 
-### P1.7 Anchor idiom names (macro-emitted symbols) → centralize, plan-04 extractor
+### P1.7 Anchor idiom names (macro-emitted symbols) → centralize, plan-06 extractor
 `"DISCRIMINATOR"`, `"INIT_SPACE"` (defined independently in 2 files each),
 `"CLOSED_ACCOUNT_DISCRIMINATOR"`, `"declare_id"` (3 sites; `declare_program!`
 already missed), `CpiContext::new/new_with_signer/invoke` lists (2 files),
 `"reload"` suppression, borsh deserialize method lists. These are facts about
 what anchor-lang macros emit — version-coupled to the pinned anchor-syn.
 → centralize into one `anchor_idioms` module colocated with the generated
-catalog, regenerated/reviewed on Anchor bump; plan-04's extractor becomes the
+catalog, regenerated/reviewed on Anchor bump; plan-06's extractor becomes the
 sole consumer.
 
 ---
@@ -131,7 +131,7 @@ sole consumer.
   network FS; tracked `Xargo.toml` is dead upstream. Note in docs; low urgency
   since artifact diagnostics are already default-off.
 - **`anchor-lang` literal dependency-name checks** (check_cfg:439,
-  dependency_source.rs:383) — v2 crate-name change breaks both; plan-06 registry
+  dependency_source.rs:383) — v2 crate-name change breaks both; plan-05 registry
   covers the mechanism, add these call sites to its Step 4 list.
 
 ## P3 — Ops/toolchain pins (review cadence, not code)
@@ -140,7 +140,7 @@ sole consumer.
   with per-platform SHA-512; `VSCE_VERSION 3.9.1`; Node 24; binary target list
   hardcoded in 4 places (script, release.yaml, 2 tests); Zed target
   `wasm32-wasip2` (unstable ABI). Acceptable as pins — the debt is that the
-  target list has no single source. Revisit at release cadence (plan-05 touches
+  target list has no single source. Revisit at release cadence (plan-07 touches
   this machinery anyway).
 
 ---
@@ -149,7 +149,7 @@ sole consumer.
 
 - `src/lsp/diagnostics/lint.rs` (439 ln) vs `crates/seagrass-framework/src/lint.rs`
   (335 ln): ~95% identical; framework copy has 4 `Applicability` variants vs main's
-  1, plus `allows_executable_lints`. Deferred by plan-04 ("do not merge in this
+  1, plus `allows_executable_lints`. Deferred by plan-06 ("do not merge in this
   plan") — keep on the register so it isn't forgotten.
 - `SOLANA_CODE_QUALITY_CODE`/`SOURCE` constants and `topic_lint_doc_url` defined
   in both registry.rs and seagrass-framework/diagnostics.rs (identical values

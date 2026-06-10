@@ -1,4 +1,4 @@
-# Plan 06 — Capability Registry: Crate-Agnostic Recognition of Runtime Concepts
+# Plan 05 — Capability Registry: Crate-Agnostic Recognition of Runtime Concepts
 
 ## Context
 
@@ -49,7 +49,7 @@ a registered crate.
 | `src/solana/project/mod.rs` | `parse_cargo_manifest` via `cargo_toml` crate; `SolanaProjectKind` framework detection from deps |
 | `src/lsp/diagnostics/security/mod.rs` | `SysvarAddressVisitor` (`SecuritySysvar`) — consumes sysvar knowledge |
 | `Cargo.toml` (workspace) | `solana-program = "=2.2.1"` pinned; `cargo_toml = "0.22.3"` |
-| `docs/plans/plan-06-capability-registry.md` | THIS FILE |
+| `docs/plans/plan-05-capability-registry.md` | THIS FILE |
 | `src/solana/capability_registry.rs` | NEW — the registry + resolution |
 
 ### Architecture doctrine (must hold in every step)
@@ -87,8 +87,8 @@ cargo clippy --workspace --all-targets -- -D warnings 2>&1 | tail -3
 ```
 
 Green + committed tree required. If plan-01/02/03 work is in flight on this clone,
-coordinate: this plan touches `src/core/document/imports.rs` (also touched by plan-03
-Step 1). Execute after plan-03 lands, or rebase carefully.
+coordinate: this plan touches `src/core/document/imports.rs` (also touched by plan-04
+Step 1). Execute after plan-04 lands, or rebase carefully.
 
 ### Step 1 — Record import origins (extend `imports.rs`)
 
@@ -205,7 +205,7 @@ Consumers of sysvar knowledge switch from hard-coded `solana_program` path check
    `rg -n "sysvar_generic_candidates" src/`).
 
 Each call site needs `import_origins` (from `AnchorSymbols`, Step 1) and the parsed
-manifest deps (already plumbed for `AnchorCheckCfg`; after plan-03, workspace-inherited
+manifest deps (already plumbed for `AnchorCheckCfg`; after plan-04, workspace-inherited
 deps too). Where a call site has no manifest available, pass an empty dep set — the
 chain then resolves nothing new and behavior is unchanged (silence, not regression).
 
@@ -225,11 +225,11 @@ Behavior delta to test: a document importing `solana_clock::Clock` with
 - `pinocchio/` — `use pinocchio::sysvars::clock::Clock;` + pinocchio dep. Expected:
   recognized via the pinocchio registry entry.
 
-Wire as unit tests with `include_str!`, mirroring the plan-03 fixture approach.
+Wire as unit tests with `include_str!`, mirroring the plan-04 fixture approach.
 
 ### Step 6 — Document the model
 
-Append to `docs/diagnostics-strategy.md`, section `## Capability Registry (Plan 06)`:
+Append to `docs/diagnostics-strategy.md`, section `## Capability Registry (Plan 05)`:
 facts-vs-naming split, the resolution chain diagram, the rule for adding a new
 crate/framework (one registry entry + optional dev-dep parity test), and the explicit
 statement that registry entries are never facts.
@@ -245,7 +245,7 @@ statement that registry entries are never facts.
 5. Fixture tests: `modular` recognized, `no_dep` silent, `pinocchio` recognized.
 6. `grep -n "solana-clock\|solana-rent" Cargo.toml` shows them under
    `[dev-dependencies]` only.
-7. `grep -n "Plan 06" docs/diagnostics-strategy.md` — section present.
+7. `grep -n "Plan 05" docs/diagnostics-strategy.md` — section present.
 
 ## Risks / Edge Cases
 
@@ -257,12 +257,12 @@ statement that registry entries are never facts.
   a user importing through `solana_program::clock` keeps working via the existing
   entry. Both entries coexist; resolution is per-import-origin.
 - **Workspace-inherited deps**: a member manifest with `solana-clock.workspace = true`
-  needs plan-03's `nearest_workspace_manifest` plumbing. Until plan-03 lands, such
-  projects resolve nothing new (silent, not wrong). Sequencing: execute after plan-03.
+  needs plan-04's `nearest_workspace_manifest` plumbing. Until plan-04 lands, such
+  projects resolve nothing new (silent, not wrong). Sequencing: execute after plan-04.
 - **Version-range false negatives**: declared req `"2"` vs registry min `"0.1"` —
   use `semver::VersionReq` intersection only if `semver` is already a dep
   (`rg '^semver' Cargo.lock`); otherwise compare leniently (presence beats precision;
   a wrong-version match still required the user to import the name from that crate).
-- **Plan-04 interaction**: extractors (plan-04 Stages 2/4) should consume
+- **Plan-04 interaction**: extractors (plan-06 Stages 2/4) should consume
   `resolve_concept` for runtime types instead of growing their own path lists. Add a
-  pointer in plan-04 at execution time if plan-06 lands first.
+  pointer in plan-06 at execution time if plan-05 lands first.
