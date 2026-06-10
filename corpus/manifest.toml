@@ -61,6 +61,57 @@ repo    = "https://github.com/aarjn/solana-programs-list"
 sha     = "587f5fc3b00c533d024222519f4d58b770d9ecef"
 license = "CC-BY-NC-4.0"
 
+# --- Live mainnet protocols (open-source) ---
+
+# OpenBook v2 — central limit order book, dense Anchor constraints
+[[program]]
+name    = "openbook-v2"
+repo    = "https://github.com/openbook-dex/openbook-v2"
+sha     = "47807da4b81fe473ebde23964cb0d6c39969b479"
+license = "unlicensed"
+
+# Orca Whirlpools — concentrated liquidity AMM, Token-2022, heavy CPI
+[[program]]
+name    = "orca-whirlpools"
+repo    = "https://github.com/orca-so/whirlpools"
+sha     = "4cbf541a390f241ee1a0d70f6bac90e32cb9e111"
+license = "unlicensed"
+
+# Raydium CLMM — concentrated liquidity, Apache-2.0
+[[program]]
+name    = "raydium-clmm"
+repo    = "https://github.com/raydium-io/raydium-clmm"
+sha     = "1e91dd514d4cb380ec6734bd807009418ec4a35a"
+license = "Apache-2.0"
+
+# Kamino Lending — lending/borrowing protocol, complex account validation
+[[program]]
+name    = "kamino-lending"
+repo    = "https://github.com/Kamino-Finance/klend"
+sha     = "adbd50fd85ad0fa6019b3505a988dd3a21f469cd"
+license = "unlicensed"
+
+# Mango v4 — multi-asset margin trading, largest Anchor constraint surface
+[[program]]
+name    = "mango-v4"
+repo    = "https://github.com/blockworks-foundation/mango-v4"
+sha     = "2e8b475038c5f43d2d1d51eeddbc3ba4bfe3a686"
+license = "unlicensed"
+
+# Light Protocol — ZK compression, complex PDA/CPI patterns
+[[program]]
+name    = "light-protocol"
+repo    = "https://github.com/Lightprotocol/light-protocol"
+sha     = "b460f43c27938ed4832c93f4394d2fdc979995b3"
+license = "Apache-2.0"
+
+# Ondo Global Markets — Token-2022 extensions, role-based access, oracle
+[[program]]
+name    = "ondo-global-markets"
+repo    = "https://github.com/ondoprotocol/global-markets-solana"
+sha     = "5883d1c64f932fd2431ed14abf17deaafafcbaaa"
+license = "unlicensed"
+
 # --- Submodule repos from solana-programs-list (each added as a direct entry) ---
 # None of these declare an explicit license; all are public repos.
 # Fetch-at-test-time only — never committed or redistributed.
