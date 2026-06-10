@@ -558,7 +558,9 @@ fn runtime_evidence_report() -> RuntimeEvidenceReport {
 mod tests {
     use {
         super::*,
-        crate::solana::program_artifacts::test_fixtures::sbf_elf_with_text_instruction_count,
+        crate::solana::{
+            artifact_paths, program_artifacts::test_fixtures::sbf_elf_with_text_instruction_count,
+        },
         clap::CommandFactory,
         std::{
             fs,
@@ -677,7 +679,7 @@ pub struct Route<'info> {
         let temp_root = unique_temp_dir("seagrass-analyze-sbf-compute");
         let source_dir = temp_root.join("programs/demo/src");
         fs::create_dir_all(&source_dir).unwrap();
-        fs::create_dir_all(temp_root.join("target/deploy")).unwrap();
+        fs::create_dir_all(artifact_paths::deploy_dir(&temp_root)).unwrap();
         fs::write(
             temp_root.join("Anchor.toml"),
             r#"
@@ -713,7 +715,7 @@ pub struct Route<'info> {
         )
         .unwrap();
         fs::write(
-            temp_root.join("target/deploy/demo.so"),
+            artifact_paths::deploy_file(&temp_root, "demo"),
             sbf_elf_with_text_instruction_count(5),
         )
         .unwrap();

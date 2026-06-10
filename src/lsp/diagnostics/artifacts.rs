@@ -6,6 +6,7 @@ use {
             self, ArtifactInput, DeployArtifactState, FilePresence, IdlArtifactState,
             ProgramArtifactReport, ProgramKeypairState,
         },
+        solana::artifact_paths,
         solana_project::{SolanaProgram, SolanaProjectKind},
     },
     std::{path::Path, time::SystemTime},
@@ -401,12 +402,12 @@ fn diagnostic_range(document: &ParsedDocument) -> Range {
 
 fn should_expect_idl(report: &ProgramArtifactReport) -> bool {
     (report.program.kind == SolanaProjectKind::Anchor && report.deploy_file().is_some())
-        || report.root.join("target/idl").is_dir()
+        || artifact_paths::idl_dir(&report.root).is_dir()
 }
 
 fn should_expect_typescript(report: &ProgramArtifactReport) -> bool {
     (report.program.kind == SolanaProjectKind::Anchor && report.idl_file().is_some())
-        || report.root.join("target/types").is_dir()
+        || artifact_paths::types_dir(&report.root).is_dir()
 }
 
 fn metadata_message(report: &ProgramArtifactReport) -> String {
@@ -489,7 +490,7 @@ mod tests {
         let root = unique_temp_dir("seagrass-artifacts-missing");
         let source_dir = root.join("programs/demo/src");
         fs::create_dir_all(&source_dir).unwrap();
-        fs::create_dir_all(root.join("target/idl")).unwrap();
+        fs::create_dir_all(artifact_paths::idl_dir(&root)).unwrap();
         let source = source("Demo111111111111111111111111111111111");
         let lib = source_dir.join("lib.rs");
         fs::write(&lib, source).unwrap();
@@ -510,14 +511,14 @@ mod tests {
         let root = unique_temp_dir("seagrass-artifacts-invalid");
         let source_dir = root.join("programs/demo/src");
         fs::create_dir_all(&source_dir).unwrap();
-        fs::create_dir_all(root.join("target/deploy")).unwrap();
-        fs::create_dir_all(root.join("target/idl")).unwrap();
+        fs::create_dir_all(artifact_paths::deploy_dir(&root)).unwrap();
+        fs::create_dir_all(artifact_paths::idl_dir(&root)).unwrap();
         let source = source("Demo111111111111111111111111111111111");
         let lib = source_dir.join("lib.rs");
         fs::write(&lib, source).unwrap();
-        fs::write(root.join("target/deploy/demo.so"), "not elf").unwrap();
+        fs::write(artifact_paths::deploy_file(&root, "demo"), "not elf").unwrap();
         fs::write(
-            root.join("target/idl/demo.json"),
+            artifact_paths::idl_file(&root, "demo"),
             r#"{"address":"Other11111111111111111111111111111111","metadata":{"name":"demo"}}"#,
         )
         .unwrap();
@@ -539,8 +540,12 @@ mod tests {
         let root = unique_temp_dir("seagrass-artifacts-stale");
         let source_dir = root.join("programs/demo/src");
         fs::create_dir_all(&source_dir).unwrap();
-        fs::create_dir_all(root.join("target/deploy")).unwrap();
-        fs::write(root.join("target/deploy/demo.so"), minimal_sbf_elf()).unwrap();
+        fs::create_dir_all(artifact_paths::deploy_dir(&root)).unwrap();
+        fs::write(
+            artifact_paths::deploy_file(&root, "demo"),
+            minimal_sbf_elf(),
+        )
+        .unwrap();
         thread::sleep(Duration::from_millis(5));
         let source = source("Demo111111111111111111111111111111111");
         let lib = source_dir.join("lib.rs");
@@ -569,7 +574,7 @@ mod tests {
         let program_root = root.join("programs/pinocchio-counter");
         let source_dir = program_root.join("src");
         fs::create_dir_all(&source_dir).unwrap();
-        fs::create_dir_all(root.join("target/deploy")).unwrap();
+        fs::create_dir_all(artifact_paths::deploy_dir(&root)).unwrap();
         fs::write(
             root.join("Cargo.toml"),
             r#"
@@ -598,7 +603,11 @@ pinocchio-pubkey = "0.3"
         let source = pinocchio_source();
         let lib = source_dir.join("lib.rs");
         fs::write(&lib, source).unwrap();
-        fs::write(root.join("target/deploy/pinocchio_counter.so"), "not elf").unwrap();
+        fs::write(
+            artifact_paths::deploy_file(&root, "pinocchio_counter"),
+            "not elf",
+        )
+        .unwrap();
 
         let diagnostics = collect(
             &ParsedDocument::parse(source).unwrap(),
@@ -624,7 +633,7 @@ pinocchio-pubkey = "0.3"
         let root = unique_temp_dir("seagrass-native-diagnostics");
         let source_dir = root.join("src");
         fs::create_dir_all(&source_dir).unwrap();
-        fs::create_dir_all(root.join("target/deploy")).unwrap();
+        fs::create_dir_all(artifact_paths::deploy_dir(&root)).unwrap();
         fs::write(
             root.join("Cargo.toml"),
             r#"
@@ -643,7 +652,7 @@ solana-program = "3"
         )
         .unwrap();
         fs::write(
-            root.join("target/deploy/native_counter_program.so"),
+            artifact_paths::deploy_file(&root, "native_counter_program"),
             minimal_sbf_elf(),
         )
         .unwrap();

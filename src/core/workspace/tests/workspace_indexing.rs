@@ -1,5 +1,8 @@
 use super::*;
-use std::fs;
+use {
+    crate::solana::artifact_paths,
+    std::{fs, path::Path},
+};
 
 #[test]
 fn indexes_open_document_symbols() {
@@ -85,12 +88,16 @@ pub struct State {}
 #[test]
 fn workspace_symbols_include_no_build_idl_bridge_definitions() {
     let root = unique_temp_dir("seagrass-idl-bridge-index");
-    fs::create_dir_all(root.join("target").join("idl")).unwrap();
+    fs::create_dir_all(artifact_paths::idl_dir(&root)).unwrap();
     fs::write(
-            root.join("target").join("idl").join("escrow.json"),
+            artifact_paths::idl_file(&root, "escrow"),
             r#"{"instructions":[{"name":"makeOffer","args":[{"name":"id","type":"u64"}]}],"accounts":[{"name":"Offer","type":{"kind":"struct","fields":[{"name":"maker","type":"pubkey"}]}}]}"#,
         )
         .unwrap();
+    let idl_uri_suffix = format!(
+        "/{}",
+        artifact_paths::idl_file(Path::new(""), "escrow").display()
+    );
 
     let root_uri = Url::from_directory_path(&root).unwrap();
     let index = WorkspaceIndex::build(std::slice::from_ref(&root_uri), []);
@@ -98,11 +105,7 @@ fn workspace_symbols_include_no_build_idl_bridge_definitions() {
     assert!(index.workspace_symbols("make").iter().any(|symbol| {
         symbol.name == "makeOffer"
             && symbol.kind == SymbolKind::FUNCTION
-            && symbol
-                .location
-                .uri
-                .as_str()
-                .ends_with("/target/idl/escrow.json")
+            && symbol.location.uri.as_str().ends_with(&idl_uri_suffix)
     }));
     assert!(!index
         .symbol_locations_with_kinds("Offer", &[SymbolKind::STRUCT])
@@ -110,7 +113,7 @@ fn workspace_symbols_include_no_build_idl_bridge_definitions() {
     assert!(index
         .symbol_locations_in_container("maker", &[SymbolKind::FIELD], "Offer")
         .iter()
-        .any(|location| location.uri.as_str().ends_with("/target/idl/escrow.json")));
+        .any(|location| location.uri.as_str().ends_with(&idl_uri_suffix)));
     let maker = index
         .field_info_in_container("maker", "Offer")
         .expect("IDL account field info");

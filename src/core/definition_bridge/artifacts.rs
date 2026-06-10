@@ -1,5 +1,6 @@
 use {
     super::{push_unique_symbol, BridgeSymbol},
+    crate::solana::artifact_paths,
     std::{
         collections::HashSet,
         fs,
@@ -50,7 +51,7 @@ struct ArtifactBridgePath {
 fn artifact_paths(root: &Path) -> Vec<ArtifactBridgePath> {
     let mut artifacts = Vec::new();
     collect_artifacts_from_dir(
-        &root.join("target").join("types"),
+        &artifact_paths::types_dir(root),
         "ts",
         SymbolKind::FILE,
         "Anchor TypeScript artifacts",
@@ -58,14 +59,14 @@ fn artifact_paths(root: &Path) -> Vec<ArtifactBridgePath> {
         &mut artifacts,
     );
     collect_artifacts_from_dir(
-        &root.join("target").join("deploy"),
+        &artifact_paths::deploy_dir(root),
         "so",
         SymbolKind::FILE,
         "Anchor SBPF artifacts",
         "SBPF ELF artifact",
         &mut artifacts,
     );
-    collect_keypair_artifacts(&root.join("target").join("deploy"), &mut artifacts);
+    collect_keypair_artifacts(&artifact_paths::deploy_dir(root), &mut artifacts);
     artifacts.sort_by(|left, right| left.path.cmp(&right.path));
     artifacts
 }

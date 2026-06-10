@@ -1,7 +1,10 @@
 use {
     super::*,
-    crate::solana::program_artifacts::test_fixtures::{
-        minimal_sbf_elf, sbf_elf_with_text_bytes, sbf_elf_with_text_instruction_count,
+    crate::solana::{
+        artifact_paths,
+        program_artifacts::test_fixtures::{
+            minimal_sbf_elf, sbf_elf_with_text_bytes, sbf_elf_with_text_instruction_count,
+        },
     },
     std::{env, thread, time::Duration},
 };
@@ -52,7 +55,7 @@ fn reports_anchor_build_artifact_paths_from_anchor_toml() {
     let root = unique_temp_dir("seagrass-artifacts");
     let source_dir = root.join("programs/my-program/src");
     fs::create_dir_all(&source_dir).unwrap();
-    fs::create_dir_all(root.join("target/idl")).unwrap();
+    fs::create_dir_all(artifact_paths::idl_dir(&root)).unwrap();
     let source_text = r#"declare_id!("Demo111111111111111111111111111111111");"#;
     fs::write(source_dir.join("lib.rs"), source_text).unwrap();
     let anchor_toml = root.join("Anchor.toml");
@@ -73,8 +76,12 @@ my_program = "Demo111111111111111111111111111111111"
 
     assert!(report.build_surface_exists());
     assert!(matches!(report.deploy, DeployArtifactState::Missing));
-    assert!(report.deploy_path.ends_with("target/deploy/my_program.so"));
-    assert!(report.idl_path.ends_with("target/idl/my_program.json"));
+    assert!(report
+        .deploy_path
+        .ends_with(artifact_paths::deploy_file(Path::new(""), "my_program")));
+    assert!(report
+        .idl_path
+        .ends_with(artifact_paths::idl_file(Path::new(""), "my_program")));
     assert_eq!(report.source_inputs.len(), 1);
 }
 
@@ -99,13 +106,13 @@ fn detects_stale_deploy_artifact_from_source_inputs() {
             path: PathBuf::from("/workspace/programs/demo/src/lib.rs"),
             modified: newer,
         }],
-        deploy_path: PathBuf::from("/workspace/target/deploy/demo.so"),
-        keypair_path: PathBuf::from("/workspace/target/deploy/demo-keypair.json"),
-        idl_path: PathBuf::from("/workspace/target/idl/demo.json"),
-        types_path: PathBuf::from("/workspace/target/types/demo.ts"),
+        deploy_path: artifact_paths::deploy_file(Path::new("/workspace"), "demo"),
+        keypair_path: artifact_paths::keypair_file(Path::new("/workspace"), "demo"),
+        idl_path: artifact_paths::idl_file(Path::new("/workspace"), "demo"),
+        types_path: artifact_paths::typescript_file(Path::new("/workspace"), "demo"),
         deploy: DeployArtifactState::Present {
             file: ArtifactFile {
-                path: PathBuf::from("/workspace/target/deploy/demo.so"),
+                path: artifact_paths::deploy_file(Path::new("/workspace"), "demo"),
                 byte_len: 64,
                 modified: older,
             },
@@ -130,18 +137,26 @@ fn validates_real_artifact_files_when_present() {
     let root = unique_temp_dir("seagrass-artifacts-present");
     let source_dir = root.join("programs/demo/src");
     fs::create_dir_all(&source_dir).unwrap();
-    fs::create_dir_all(root.join("target/deploy")).unwrap();
-    fs::create_dir_all(root.join("target/idl")).unwrap();
-    fs::create_dir_all(root.join("target/types")).unwrap();
+    fs::create_dir_all(artifact_paths::deploy_dir(&root)).unwrap();
+    fs::create_dir_all(artifact_paths::idl_dir(&root)).unwrap();
+    fs::create_dir_all(artifact_paths::types_dir(&root)).unwrap();
     let source_text = r#"declare_id!("Demo111111111111111111111111111111111");"#;
     fs::write(source_dir.join("lib.rs"), source_text).unwrap();
-    fs::write(root.join("target/deploy/demo.so"), minimal_sbf_elf()).unwrap();
     fs::write(
-        root.join("target/idl/demo.json"),
+        artifact_paths::deploy_file(&root, "demo"),
+        minimal_sbf_elf(),
+    )
+    .unwrap();
+    fs::write(
+        artifact_paths::idl_file(&root, "demo"),
         r#"{"metadata":{"name":"demo"},"instructions":[]}"#,
     )
     .unwrap();
-    fs::write(root.join("target/types/demo.ts"), "export type Demo = {};").unwrap();
+    fs::write(
+        artifact_paths::typescript_file(&root, "demo"),
+        "export type Demo = {};",
+    )
+    .unwrap();
     thread::sleep(Duration::from_millis(2));
     let anchor_toml = root.join("Anchor.toml");
     fs::write(
@@ -168,7 +183,7 @@ fn reports_pinocchio_manifest_without_anchor_toml() {
     let program_root = root.join("programs/pinocchio-counter");
     let source_dir = program_root.join("src");
     fs::create_dir_all(&source_dir).unwrap();
-    fs::create_dir_all(root.join("target/deploy")).unwrap();
+    fs::create_dir_all(artifact_paths::deploy_dir(&root)).unwrap();
     fs::write(
         root.join("Cargo.toml"),
         r#"
@@ -198,7 +213,7 @@ pinocchio-pubkey = "0.3"
     let lib = source_dir.join("lib.rs");
     fs::write(&lib, source).unwrap();
     fs::write(
-        root.join("target/deploy/pinocchio_counter.so"),
+        artifact_paths::deploy_file(&root, "pinocchio_counter"),
         "not an elf",
     )
     .unwrap();
@@ -253,12 +268,14 @@ solana-program = "3"
 
     assert_eq!(report.program.kind, SolanaProjectKind::NativeSolana);
     assert_eq!(report.program.name, "native_counter_program");
-    assert!(report
-        .deploy_path
-        .ends_with("target/deploy/native_counter_program.so"));
-    assert!(report
-        .keypair_path
-        .ends_with("target/deploy/native_counter_program-keypair.json"));
+    assert!(report.deploy_path.ends_with(artifact_paths::deploy_file(
+        Path::new(""),
+        "native_counter_program"
+    )));
+    assert!(report.keypair_path.ends_with(artifact_paths::keypair_file(
+        Path::new(""),
+        "native_counter_program"
+    )));
 }
 
 #[test]

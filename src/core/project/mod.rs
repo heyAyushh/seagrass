@@ -1,6 +1,7 @@
 use {
     crate::{document::ParsedDocument, file_text, program_artifacts},
     std::path::{Path, PathBuf},
+    toml_edit::{Document, InlineTable, Item, Table, Value as TomlValue},
     tower_lsp::lsp_types::{Position, Range, Url},
 };
 
@@ -27,62 +28,35 @@ pub struct AnchorProgramId {
 }
 
 pub fn parse_anchor_toml(source: &str) -> AnchorToml {
-    let mut current_cluster = None;
-    let mut in_provider = false;
-    let mut provider_cluster = None;
+    let Ok(document) = Document::parse(source) else {
+        return AnchorToml::default();
+    };
+    let provider_cluster = document
+        .get("provider")
+        .and_then(Item::as_table)
+        .and_then(|provider| provider.get("cluster"))
+        .and_then(item_string);
     let mut programs = Vec::new();
 
-    for (line_idx, line) in source.lines().enumerate() {
-        let trimmed = strip_inline_comment(line).trim();
-        if trimmed.is_empty() {
-            continue;
+    if let Some(programs_item) = document.get("programs") {
+        if let Some(programs_table) = programs_item.as_table() {
+            for (cluster, entries) in programs_table.iter() {
+                collect_program_entries(source, cluster, entries, &mut programs);
+            }
+        } else if let Some(programs_inline) = programs_item.as_inline_table() {
+            for (cluster, entries) in programs_inline.iter() {
+                collect_inline_program_entries(source, cluster, entries, &mut programs);
+            }
         }
-        if trimmed.starts_with('[') && trimmed.ends_with(']') {
-            current_cluster = trimmed
-                .strip_prefix("[programs.")
-                .and_then(|rest| rest.strip_suffix(']'))
-                .map(str::to_string);
-            in_provider = trimmed == "[provider]";
-            continue;
-        }
-
-        let Some((raw_name, raw_value)) = trimmed.split_once('=') else {
-            continue;
-        };
-        let name = raw_name.trim();
-        if in_provider && name == "cluster" {
-            provider_cluster = quoted_value(raw_value);
-            continue;
-        }
-
-        let Some(cluster) = current_cluster.as_ref() else {
-            continue;
-        };
-        let Some(value) = quoted_value(raw_value) else {
-            continue;
-        };
-
-        let value_start = line.find(&value).unwrap_or_default();
-        let line = u32::try_from(line_idx).unwrap_or_default();
-        let start = u32::try_from(value_start).unwrap_or_default();
-        let end = start + u32::try_from(value.chars().count()).unwrap_or_default();
-
-        programs.push(AnchorProgramId {
-            cluster: cluster.clone(),
-            name: normalize_program_name(name),
-            value,
-            range: Range {
-                start: Position {
-                    line,
-                    character: start,
-                },
-                end: Position {
-                    line,
-                    character: end,
-                },
-            },
-        });
     }
+    programs.sort_by_key(|program| {
+        (
+            program.range.start.line,
+            program.range.start.character,
+            program.cluster.clone(),
+            program.name.clone(),
+        )
+    });
 
     AnchorToml {
         provider_cluster,
@@ -272,39 +246,120 @@ pub fn summary(
     })
 }
 
-fn quoted_value(raw: &str) -> Option<String> {
-    let trimmed = raw.trim();
-    let start = trimmed.find('"')? + 1;
-    let rest = &trimmed[start..];
-    let end = rest.find('"')?;
-    Some(rest[..end].to_string())
-}
-
-fn strip_inline_comment(line: &str) -> &str {
-    let mut in_string = false;
-    let mut escaped = false;
-    for (idx, ch) in line.char_indices() {
-        if in_string {
-            if escaped {
-                escaped = false;
-            } else if ch == '\\' {
-                escaped = true;
-            } else if ch == '"' {
-                in_string = false;
-            }
-            continue;
-        }
-        if ch == '"' {
-            in_string = true;
-        } else if ch == '#' {
-            return &line[..idx];
-        }
-    }
-    line
-}
-
 pub(crate) fn normalize_program_name(name: &str) -> String {
     name.trim().trim_matches('"').replace('-', "_")
+}
+
+fn collect_program_entries(
+    source: &str,
+    cluster: &str,
+    entries: &Item,
+    programs: &mut Vec<AnchorProgramId>,
+) {
+    if let Some(program_table) = entries.as_table() {
+        collect_table_program_entries(source, cluster, program_table, programs);
+    } else if let Some(program_inline) = entries.as_inline_table() {
+        collect_inline_table_program_entries(source, cluster, program_inline, programs);
+    }
+}
+
+fn collect_inline_program_entries(
+    source: &str,
+    cluster: &str,
+    entries: &TomlValue,
+    programs: &mut Vec<AnchorProgramId>,
+) {
+    let Some(program_inline) = entries.as_inline_table() else {
+        return;
+    };
+    collect_inline_table_program_entries(source, cluster, program_inline, programs);
+}
+
+fn collect_table_program_entries(
+    source: &str,
+    cluster: &str,
+    program_table: &Table,
+    programs: &mut Vec<AnchorProgramId>,
+) {
+    for (name, program_id) in program_table.iter() {
+        let Some(program_id) = program_id.as_value() else {
+            continue;
+        };
+        push_program_id(source, cluster, name, program_id, programs);
+    }
+}
+
+fn collect_inline_table_program_entries(
+    source: &str,
+    cluster: &str,
+    program_inline: &InlineTable,
+    programs: &mut Vec<AnchorProgramId>,
+) {
+    for (name, program_id) in program_inline.iter() {
+        push_program_id(source, cluster, name, program_id, programs);
+    }
+}
+
+fn push_program_id(
+    source: &str,
+    cluster: &str,
+    name: &str,
+    program_id_value: &TomlValue,
+    programs: &mut Vec<AnchorProgramId>,
+) {
+    let Some(program_id) = program_id_value.as_str() else {
+        return;
+    };
+    programs.push(AnchorProgramId {
+        cluster: cluster.to_string(),
+        name: normalize_program_name(name),
+        value: program_id.to_string(),
+        range: range_for_toml_string(source, program_id_value, program_id),
+    });
+}
+
+fn item_string(item: &Item) -> Option<String> {
+    item.as_value()
+        .and_then(TomlValue::as_str)
+        .map(str::to_string)
+}
+
+fn range_for_toml_string(source: &str, value: &TomlValue, decoded: &str) -> Range {
+    let Some(span) = value.span() else {
+        return Range::default();
+    };
+    let Some(raw_value) = source.get(span.clone()) else {
+        return Range::default();
+    };
+    let value_start = raw_value
+        .find(decoded)
+        .map(|offset| span.start + offset)
+        .unwrap_or(span.start);
+    source_range_at(source, value_start, decoded.chars().count())
+}
+
+fn source_range_at(source: &str, offset: usize, width: usize) -> Range {
+    let prefix = &source[..offset];
+    let line =
+        u32::try_from(prefix.bytes().filter(|byte| *byte == b'\n').count()).unwrap_or_default();
+    let character = prefix
+        .rsplit_once('\n')
+        .map(|(_, line)| line)
+        .unwrap_or(prefix)
+        .chars()
+        .count();
+    let start = u32::try_from(character).unwrap_or_default();
+    let end = start + u32::try_from(width).unwrap_or_default();
+    Range {
+        start: Position {
+            line,
+            character: start,
+        },
+        end: Position {
+            line,
+            character: end,
+        },
+    }
 }
 
 #[cfg(test)]
@@ -334,6 +389,68 @@ basic_1 = "Devnet11111111111111111111111111111111111" # comment
             parsed.programs[1].value,
             "Devnet11111111111111111111111111111111111"
         );
+    }
+
+    #[test]
+    fn parses_program_ids_from_inline_program_tables() {
+        let parsed = parse_anchor_toml(
+            r#"
+[provider]
+cluster = "devnet"
+
+[programs]
+localnet = { basic_1 = "Localnet111111111111111111111111111111111" }
+devnet = { "basic-1" = "Devnet11111111111111111111111111111111111" }
+"#,
+        );
+
+        assert_eq!(parsed.programs.len(), 2);
+        assert_eq!(parsed.provider_cluster.as_deref(), Some("devnet"));
+        assert_eq!(parsed.programs[1].cluster, "devnet");
+        assert_eq!(parsed.programs[1].name, "basic_1");
+        assert_eq!(
+            parsed.programs[1].value,
+            "Devnet11111111111111111111111111111111111"
+        );
+    }
+
+    #[test]
+    fn program_id_ranges_use_parsed_toml_value_spans() {
+        let source = r#"
+# "Shared11111111111111111111111111111111111"
+[provider]
+cluster = "Shared11111111111111111111111111111111111"
+
+[programs.devnet]
+basic_1 = "Shared11111111111111111111111111111111111"
+"#;
+        let parsed = parse_anchor_toml(source);
+        let program = parsed.programs.first().unwrap();
+
+        assert_eq!(
+            range_text(source, program.range),
+            "Shared11111111111111111111111111111111111"
+        );
+        assert_eq!(program.range.start.line, 6);
+    }
+
+    #[test]
+    fn parses_reordered_anchor_toml_sections() {
+        let source = r#"
+[programs.devnet]
+basic_1 = "Devnet11111111111111111111111111111111111"
+
+[provider]
+cluster = "devnet"
+
+[programs.localnet]
+basic_1 = "Localnet111111111111111111111111111111111"
+"#;
+        let uri = Url::parse("file:///tmp/project/programs/basic-1/src/lib.rs").unwrap();
+        let selected = preferred_program_id(&uri, source).unwrap();
+
+        assert_eq!(selected.cluster, "devnet");
+        assert_eq!(selected.value, "Devnet11111111111111111111111111111111111");
     }
 
     #[test]
@@ -384,6 +501,14 @@ basic_1 = "Devnet11111111111111111111111111111111111"
 
         assert_eq!(found_uri, Url::from_file_path(config).unwrap());
         assert!(text.contains("unchecked-arithmetic"));
+    }
+
+    fn range_text(source: &str, range: Range) -> String {
+        let line = source.lines().nth(range.start.line as usize).unwrap();
+        line.chars()
+            .skip(range.start.character as usize)
+            .take((range.end.character - range.start.character) as usize)
+            .collect()
     }
 
     #[test]

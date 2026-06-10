@@ -2,6 +2,7 @@ use {
     crate::{
         document::ParsedDocument,
         ecosystem, file_text, project,
+        solana::{artifact_paths, idl},
         solana_project::{self, SolanaProgram, SolanaProjectKind},
     },
     serde_json::Value,
@@ -117,9 +118,9 @@ pub enum ElfEndian {
 
 impl ProgramArtifactReport {
     pub fn build_surface_exists(&self) -> bool {
-        self.root.join("target/deploy").is_dir()
-            || self.root.join("target/idl").is_dir()
-            || self.root.join("target/types").is_dir()
+        artifact_paths::deploy_dir(&self.root).is_dir()
+            || artifact_paths::idl_dir(&self.root).is_dir()
+            || artifact_paths::types_dir(&self.root).is_dir()
             || !matches!(self.deploy, DeployArtifactState::Missing)
             || !matches!(self.keypair, ProgramKeypairState::Missing)
             || !matches!(self.idl, IdlArtifactState::Missing)
@@ -227,13 +228,13 @@ impl ProgramArtifactReport {
     pub fn idl_applicable(&self) -> bool {
         self.program.kind == SolanaProjectKind::Anchor
             || !matches!(self.idl, IdlArtifactState::Missing)
-            || self.root.join("target/idl").is_dir()
+            || artifact_paths::idl_dir(&self.root).is_dir()
     }
 
     pub fn typescript_applicable(&self) -> bool {
         self.program.kind == SolanaProjectKind::Anchor
             || !matches!(self.typescript, FilePresence::Missing)
-            || self.root.join("target/types").is_dir()
+            || artifact_paths::types_dir(&self.root).is_dir()
     }
 }
 
@@ -264,22 +265,10 @@ pub fn reports_for_roots(roots: &[Url]) -> Vec<ProgramArtifactReport> {
 
 pub fn report_for_program(program: SolanaProgram) -> Option<ProgramArtifactReport> {
     let root = program.root.clone();
-    let deploy_path = root
-        .join("target")
-        .join("deploy")
-        .join(format!("{}.so", program.name));
-    let keypair_path = root
-        .join("target")
-        .join("deploy")
-        .join(format!("{}-keypair.json", program.name));
-    let idl_path = root
-        .join("target")
-        .join("idl")
-        .join(format!("{}.json", program.name));
-    let types_path = root
-        .join("target")
-        .join("types")
-        .join(format!("{}.ts", program.name));
+    let deploy_path = artifact_paths::deploy_file(&root, &program.name);
+    let keypair_path = artifact_paths::keypair_file(&root, &program.name);
+    let idl_path = artifact_paths::idl_file(&root, &program.name);
+    let types_path = artifact_paths::typescript_file(&root, &program.name);
     let source_root = program.source_root.clone();
     let source_inputs = source_root
         .as_ref()
@@ -379,8 +368,8 @@ fn idl_state(path: &Path) -> IdlArtifactState {
     {
         Ok(value) => IdlArtifactState::Present {
             file,
-            program_name: idl_program_name(&value),
-            address: idl_address(&value),
+            program_name: idl::program_name(&value),
+            address: idl::address(&value),
         },
         Err(reason) => IdlArtifactState::Invalid { file, reason },
     }
@@ -498,33 +487,6 @@ fn should_skip_dir(path: &Path) -> bool {
         path.file_name().and_then(|name| name.to_str()),
         Some(".git" | "node_modules" | "target" | ".anchor")
     )
-}
-
-fn idl_program_name(value: &Value) -> Option<String> {
-    value
-        .get("metadata")
-        .and_then(|metadata| metadata.get("name"))
-        .or_else(|| value.get("name"))
-        .and_then(|name| name.as_str())
-        .map(str::to_string)
-}
-
-fn idl_address(value: &Value) -> Option<String> {
-    value
-        .get("address")
-        .or_else(|| {
-            value
-                .get("metadata")
-                .and_then(|metadata| metadata.get("address"))
-        })
-        .or_else(|| {
-            value
-                .get("metadata")
-                .and_then(|metadata| metadata.get("programId"))
-        })
-        .or_else(|| value.get("programId"))
-        .and_then(|address| address.as_str())
-        .map(str::to_string)
 }
 
 pub fn keypair_public_key(text: &str) -> Result<String, String> {
