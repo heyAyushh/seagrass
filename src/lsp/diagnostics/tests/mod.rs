@@ -8,6 +8,7 @@ use {
     tower_lsp::lsp_types::{NumberOrString, Position, Range, Url},
 };
 
+mod corpus;
 mod parse_errors;
 mod related_information;
 

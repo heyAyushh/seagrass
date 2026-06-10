@@ -1,5 +1,9 @@
 /target/
 /.sisyphus/
+
+# External corpus source trees are fetched on demand; never committed.
+# See corpus/manifest.toml and scripts/fetch-corpus.sh.
+corpus/programs/
 /.commandcode/
 /.antigravitycli/
 /node_modules/

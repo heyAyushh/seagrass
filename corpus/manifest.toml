@@ -1,0 +1,51 @@
+# External corpus manifest — committed; source trees are NOT committed.
+#
+# Each entry pins a real Apache-2.0 or MIT Anchor program at an exact commit
+# SHA.  The fetch script (scripts/fetch-corpus.sh) materialises the source
+# trees into corpus/programs/<name>/, which is gitignored.
+#
+# Fields
+# ------
+# name    – unique slug used as the directory name under corpus/programs/
+# repo    – HTTPS clone URL
+# sha     – exact commit SHA (resolve with: git ls-remote <repo> HEAD)
+# subpath – (optional) sparse path to clone; omit to clone the whole repo
+# license – SPDX identifier of the upstream licence
+
+[[program]]
+name    = "spl-token"
+repo    = "https://github.com/solana-labs/solana-program-library"
+sha     = "264ca72de06b0c2b45c0b15d298000fe3f82db2e"
+subpath = "token/program"
+license = "Apache-2.0"
+
+[[program]]
+name    = "program-examples"
+repo    = "https://github.com/solana-developers/program-examples"
+sha     = "203b246141d15d54ce8a782749b901d76a4e7c51"
+license = "MIT"
+
+[[program]]
+name    = "tensor-amm"
+repo    = "https://github.com/tensor-foundation/amm"
+sha     = "f6aab5e5b7ad20b0085561321eb1ebf484fe076d"
+license = "Apache-2.0"
+
+[[program]]
+name    = "marginfi-v2"
+repo    = "https://github.com/mrgnlabs/marginfi-v2"
+sha     = "4d57e2c234a41a868c519b722a6cce1c0431a699"
+license = "Apache-2.0"
+
+[[program]]
+name    = "drift"
+repo    = "https://github.com/drift-labs/protocol-v2"
+sha     = "0ae3e3b1db782a6765c3525b3dec38ad4d9d3a62"
+subpath = "programs/drift"
+license = "Apache-2.0"
+
+[[program]]
+name    = "mpl-token-metadata"
+repo    = "https://github.com/metaplex-foundation/mpl-token-metadata"
+sha     = "349e061053c6fc5b6b815e03e896e4db57012893"
+license = "Apache-2.0"
