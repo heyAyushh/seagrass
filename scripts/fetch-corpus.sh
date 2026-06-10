@@ -102,6 +102,10 @@ while IFS='|' read -r NAME REPO SHA SUBPATH; do
 
     git checkout --quiet "$SHA"
 
+    # Quasar coverage is intentionally excluded from the corpus; prune any
+    # quasar-* program directories bundled inside multi-program collections.
+    rm -rf quasar-*/
+
     popd > /dev/null
 
     echo "  [ok]    $NAME"

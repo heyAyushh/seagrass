@@ -131,8 +131,9 @@ license = "Apache-2.0"
 # Educational breadth — Anchor + native + Pinocchio + Quasar patterns
 # ---------------------------------------------------------------------------
 
-# 33 inline programs (escrow, vault, PDA, AMM, SPL, NFT, CPI, merkle tree,
-# collateral stablecoin). CC BY-NC 4.0 — fetch-at-test-time only.
+# Inline programs (escrow, vault, PDA, AMM, SPL, NFT, CPI, merkle tree,
+# collateral stablecoin); quasar-* subdirectories pruned at fetch time.
+# CC BY-NC 4.0 — fetch-at-test-time only.
 # Last push: 2026-03-29
 [[program]]
 name    = "solana-programs-list"
@@ -182,14 +183,5 @@ repo    = "https://github.com/subhdotsol/AMM-Sandbox"
 sha     = "8e8471f10fee280715396cf0f2ab014e034e2dcb"
 license = "unlicensed"
 
-[[program]]
-name    = "quasar-vault"
-repo    = "https://github.com/Vinayapr23/quaser-vault"
-sha     = "b6696c3e6f6db4cbcce1875ce68179c879333531"
-license = "unlicensed"
-
-[[program]]
-name    = "quasar-spl-token"
-repo    = "https://github.com/subhdotsol/quasar-spl-token"
-sha     = "2a719ba700f0b38816122a0bb32cc91ea06f6dae"
-license = "unlicensed"
+# Quasar entries removed intentionally — Quasar coverage is out of scope.
+# fetch-corpus.sh also prunes quasar-* directories inside collections.
