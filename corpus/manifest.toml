@@ -49,3 +49,14 @@ name    = "mpl-token-metadata"
 repo    = "https://github.com/metaplex-foundation/mpl-token-metadata"
 sha     = "349e061053c6fc5b6b815e03e896e4db57012893"
 license = "Apache-2.0"
+
+# Educational collection covering Anchor, native, Pinocchio, and Quasar patterns
+# (escrow, vault, PDA, AMM, SPL token, NFT, CPI, merkle tree, collateral stablecoin).
+# 33 inline programs; 7 submodule entries are not fetched (submodule recursion not
+# implemented in fetch-corpus.sh).
+# License: CC BY-NC 4.0 — fetch-at-test-time only, not redistributed.
+[[program]]
+name    = "solana-programs-list"
+repo    = "https://github.com/aarjn/solana-programs-list"
+sha     = "587f5fc3b00c533d024222519f4d58b770d9ecef"
+license = "CC-BY-NC-4.0"
