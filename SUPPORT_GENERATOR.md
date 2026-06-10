@@ -22,6 +22,7 @@ Before committing generated changes:
 
 ```sh
 bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1 --check
+bun scripts/check-generated-support.ts
 cargo test -p seagrass constraint_catalog anchor_support anchor_errors anchor_types
 ```
 
@@ -65,3 +66,10 @@ Anchor v2 remains preview-only until a v2 checkout generates a stable profile
 and every semantic analyzer has been audited against the v2 parser, error, and
 corpus output. Generate v2 output with `--family v2-preview` and keep it out of
 the default v1 catalog until that audit is complete.
+
+The v2-preview catalog is generated from an `anchor-next` checkout, so it is not
+expected to match the v1 catalog byte-for-byte. The checked-in
+`scripts/generated-support.lock.json` records the committed generated file
+digests and makes hand-edits fail in CI. Set `SEAGRASS_ANCHOR_V2_PREVIEW_PATH`
+when running `bun scripts/check-generated-support.ts` to add a source-backed
+v2-preview regeneration check against a local `anchor-next` checkout.

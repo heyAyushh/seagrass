@@ -24,8 +24,11 @@ on:
       - "docs/topics.schema.json"
       - "docs/release-readiness.json"
       - "scripts/check-diagnostic-topics.ts"
+      - "scripts/check-generated-support.ts"
+      - "scripts/check-generated-support.test.ts"
       - "scripts/check-lint-catalog.ts"
       - "scripts/check-release-readiness.ts"
+      - "scripts/generated-support.lock.json"
       - "scripts/package-release.ts"
   push:
     branches:
@@ -49,8 +52,11 @@ on:
       - "docs/topics.schema.json"
       - "docs/release-readiness.json"
       - "scripts/check-diagnostic-topics.ts"
+      - "scripts/check-generated-support.ts"
+      - "scripts/check-generated-support.test.ts"
       - "scripts/check-lint-catalog.ts"
       - "scripts/check-release-readiness.ts"
+      - "scripts/generated-support.lock.json"
       - "scripts/package-release.ts"
   workflow_dispatch:
 
@@ -102,6 +108,10 @@ jobs:
         run: bun scripts/check-lint-catalog.ts
       - name: Test lint catalog checker
         run: bun test scripts/check-lint-catalog.test.ts
+      - name: Check generated Anchor support integrity
+        run: bun scripts/check-generated-support.ts
+      - name: Test generated Anchor support checker
+        run: bun test scripts/check-generated-support.test.ts
       - name: Check release readiness evidence shape
         run: bun scripts/check-release-readiness.ts --allow-pending --version "$(tr -d '[:space:]' < VERSION)"
       - name: Test release readiness checker

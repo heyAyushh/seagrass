@@ -128,6 +128,8 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain("bun scripts/check-research-citations.ts");
     expect(workflow).toContain("bun test scripts/check-research-citations.test.ts");
     expect(workflow).toContain("bun test scripts/check-lint-catalog.test.ts");
+    expect(workflow).toContain("bun scripts/check-generated-support.ts");
+    expect(workflow).toContain("bun test scripts/check-generated-support.test.ts");
     expect(workflow).toContain("bun test scripts/check-release-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/fuzz-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/import-fuzz-artifacts.test.ts");
@@ -167,6 +169,8 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain('"release-plz.toml"');
     expect(workflow).toContain('"VERSION"');
     expect(workflow).toContain('"bump-version.sh"');
+    expect(workflow).toContain('"scripts/check-generated-support.ts"');
+    expect(workflow).toContain('"scripts/generated-support.lock.json"');
     expect(workflow).toContain('"scripts/package-release.ts"');
   });
 
@@ -187,6 +191,8 @@ describe("release workflow packaging", () => {
     expect(script).toContain('"scripts/check-research-citations.ts"');
     expect(script).toContain('"scripts/check-research-citations.test.ts"');
     expect(script).toContain('"scripts/check-lint-catalog.test.ts"');
+    expect(script).toContain('"scripts/check-generated-support.ts"');
+    expect(script).toContain('"scripts/check-generated-support.test.ts"');
     expect(script).toContain('"scripts/verify-proptest.ts"');
     expect(script).toContain('"scripts/package-release.test.ts"');
   });
