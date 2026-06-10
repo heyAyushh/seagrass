@@ -13,6 +13,7 @@ nothing else to execute one, except this index for ordering.
 | 3 | [plan-03-resolution-delegation](plan-03-resolution-delegation.md) | — (parallel-safe with 2) | Glob-import open-world guards + workspace-inherited feature detection |
 | 4 | [plan-04-semantic-graph](plan-04-semantic-graph.md) | 1–3 recommended | Staged migration to the framework-agnostic semantic model; long-running |
 | 5 | [plan-05-distribution](plan-05-distribution.md) | **hard gate: 1 and 2 merged** | Widening install base before FP fixes multiplies exposure to known FPs |
+| 6 | [plan-06-capability-registry](plan-06-capability-registry.md) | plan-03 (manifest plumbing) | Crate-agnostic recognition: solves the solana-program crate split, Pinocchio, and future frameworks in one mechanism |
 
 ## Overlap resolution (binding)
 
