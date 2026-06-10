@@ -458,11 +458,11 @@ fn has_path_property_access(text: &str, field_name: &str, property: &str) -> boo
         let previous_ok = text[..start]
             .chars()
             .next_back()
-            .is_none_or(|ch| !is_ident_char(ch) && ch != ':');
+            .is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch) && ch != ':');
         let next_ok = text[end..]
             .chars()
             .next()
-            .is_none_or(|ch| !is_ident_char(ch));
+            .is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch));
         if previous_ok && next_ok {
             return true;
         }
@@ -509,11 +509,10 @@ fn take_constraint_value(value: &str) -> Option<String> {
 }
 
 fn simple_identifier(value: String) -> Option<String> {
-    value.chars().all(is_ident_char).then_some(value)
-}
-
-fn is_ident_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
+    value
+        .chars()
+        .all(crate::syntax::is_ascii_identifier_char)
+        .then_some(value)
 }
 
 fn account_constraint_texts_from_attrs(attrs: &[Attribute]) -> Vec<String> {

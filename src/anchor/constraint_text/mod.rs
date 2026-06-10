@@ -222,13 +222,8 @@ fn has_constraint_key_boundary(text: &str, idx: usize) -> bool {
     text[..idx]
         .chars()
         .next_back()
-        .map(|ch| !(is_ident_char(ch) || ch == ':'))
+        .map(|ch| !(crate::syntax::is_ascii_identifier_char(ch) || ch == ':'))
         .unwrap_or(true)
-}
-
-/// Returns `true` for ASCII alphanumeric characters and `_`.
-fn is_ident_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
 }
 
 /// Splits a comma-separated list at the top level, trimming whitespace
