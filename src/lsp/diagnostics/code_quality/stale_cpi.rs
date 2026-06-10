@@ -1,4 +1,5 @@
 use {
+    crate::anchor::idioms,
     crate::diagnostics::{
         diagnostic_from_span,
         lint::{run_lint_visitor_on_functions, Applicability, Confidence, LintVisitor, Region},
@@ -84,7 +85,7 @@ impl<'ast> Visit<'ast> for StaleAccountAfterCpiVisitor {
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
-        if node.method == "reload" {
+        if node.method == idioms::ACCOUNT_RELOAD_METHOD {
             if let Some(account) = ctx_account_name(&node.receiver) {
                 self.record_reload(account);
             }
@@ -121,9 +122,16 @@ fn stale_account_after_cpi_diagnostic(span: proc_macro2::Span, account: String) 
 }
 
 fn is_cpi_call(func: &syn::Expr) -> bool {
-    expr_path_ends_with(func, &["CpiContext", "new"])
-        || expr_path_ends_with(func, &["CpiContext", "new_with_signer"])
-        || expr_path_ends_with(func, &["invoke"])
+    expr_path_ends_with(
+        func,
+        &[idioms::CPI_CONTEXT_TYPE, idioms::CPI_CONTEXT_NEW_METHOD],
+    ) || expr_path_ends_with(
+        func,
+        &[
+            idioms::CPI_CONTEXT_TYPE,
+            idioms::CPI_CONTEXT_NEW_WITH_SIGNER_METHOD,
+        ],
+    ) || expr_path_ends_with(func, &[idioms::SOLANA_INVOKE_FUNCTION])
 }
 
 fn ctx_account_field_read_name(field: &syn::ExprField) -> Option<String> {

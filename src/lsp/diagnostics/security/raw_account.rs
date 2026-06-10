@@ -1,5 +1,6 @@
 use {
     crate::{
+        anchor::idioms,
         document::ParsedDocument,
         syntax::{expr_path_last_ident, member_is_named},
     },
@@ -494,37 +495,28 @@ fn is_type_validation_helper(ident: &syn::Ident) -> bool {
 }
 
 fn is_safe_deserialize_function(ident: &syn::Ident) -> bool {
-    ident == "try_deserialize"
+    idioms::ident_is_any(ident, idioms::SAFE_DESERIALIZE_METHODS)
 }
 
 fn is_raw_deserialize_function(ident: &syn::Ident) -> bool {
-    matches!(
-        ident.to_string().as_str(),
-        "try_from_slice" | "deserialize" | "try_deserialize_unchecked" | "from_account_info"
-    )
+    idioms::ident_is_any(ident, idioms::RAW_DESERIALIZE_METHODS)
 }
 
 fn is_safe_deserialize_method(ident: &syn::Ident) -> bool {
-    ident == "try_deserialize"
+    idioms::ident_is_any(ident, idioms::SAFE_DESERIALIZE_METHODS)
 }
 
 fn is_raw_deserialize_method(ident: &syn::Ident) -> bool {
-    matches!(
-        ident.to_string().as_str(),
-        "try_from_slice" | "deserialize" | "try_deserialize_unchecked" | "from_account_info"
-    )
+    idioms::ident_is_any(ident, idioms::RAW_DESERIALIZE_METHODS)
 }
 
 fn expr_has_discriminator(expr: &syn::Expr) -> bool {
     match expr {
         syn::Expr::Path(path) => path.path.segments.iter().any(|segment| {
-            matches!(
-                segment.ident.to_string().as_str(),
-                "DISCRIMINATOR" | "discriminator"
-            )
+            idioms::ident_is_any(&segment.ident, idioms::ACCOUNT_DISCRIMINATOR_NAMES)
         }),
         syn::Expr::Field(field) => {
-            matches!(&field.member, syn::Member::Named(ident) if matches!(ident.to_string().as_str(), "DISCRIMINATOR" | "discriminator"))
+            matches!(&field.member, syn::Member::Named(ident) if idioms::ident_is_any(ident, idioms::ACCOUNT_DISCRIMINATOR_NAMES))
                 || expr_has_discriminator(&field.base)
         }
         syn::Expr::Call(call) => call.args.iter().any(expr_has_discriminator),

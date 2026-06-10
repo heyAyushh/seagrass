@@ -1,7 +1,7 @@
 #![allow(deprecated)]
 
 use {
-    crate::{range::range_from_span, syntax::RustSyntax},
+    crate::{anchor::idioms, range::range_from_span, syntax::RustSyntax},
     proc_macro2::Span,
     quote::ToTokens,
     std::collections::{HashMap, HashSet},
@@ -209,7 +209,10 @@ impl AnchorSymbols {
                     );
                 }
                 Item::Macro(item_macro)
-                    if path_last_is_ident(&item_macro.mac.path, "declare_id") =>
+                    if path_last_is_any_ident(
+                        &item_macro.mac.path,
+                        idioms::PROGRAM_DECLARATION_MACROS,
+                    ) =>
                 {
                     if let Some(declared) = declared_program_id(item_macro) {
                         symbols.declared_program_id = Some(declared);
@@ -436,10 +439,10 @@ pub fn has_attr(attrs: &[Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident(name))
 }
 
-fn path_last_is_ident(path: &Path, name: &str) -> bool {
+fn path_last_is_any_ident(path: &Path, names: &[&str]) -> bool {
     path.segments
         .last()
-        .is_some_and(|segment| segment.ident == name)
+        .is_some_and(|segment| idioms::ident_is_any(&segment.ident, names))
 }
 
 pub fn derives_accounts(attrs: &[Attribute]) -> bool {

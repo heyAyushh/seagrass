@@ -3,7 +3,7 @@ use {
         context_accounts_type, AccountDataFieldUsage, AccountKeyComparison, AccountPathUsage,
         AccountUsage, FunctionCall, NamedRange,
     },
-    crate::{range::range_from_span, syntax::member_is_named},
+    crate::{anchor::idioms, range::range_from_span, syntax::member_is_named},
     aliases::{
         account_field_alias_target_for_expr, direct_account_usage_from_expr, AccountFieldAlias,
     },
@@ -491,13 +491,13 @@ fn is_cpi_context_constructor(expr: &syn::Expr) -> bool {
     let Some(path) = expr_path(expr) else {
         return false;
     };
-    path.segments
-        .last()
-        .is_some_and(|segment| segment.ident == "new" || segment.ident == "new_with_signer")
-        && path
-            .segments
-            .iter()
-            .any(|segment| segment.ident == "CpiContext")
+    path.segments.last().is_some_and(|segment| {
+        segment.ident == idioms::CPI_CONTEXT_NEW_METHOD
+            || segment.ident == idioms::CPI_CONTEXT_NEW_WITH_SIGNER_METHOD
+    }) && path
+        .segments
+        .iter()
+        .any(|segment| segment.ident == idioms::CPI_CONTEXT_TYPE)
 }
 
 fn is_instruction_constructor(expr: &syn::Expr) -> bool {
@@ -527,18 +527,12 @@ fn is_token_account_unpack_call(expr: &syn::Expr) -> bool {
     let Some(last) = path.segments.last() else {
         return false;
     };
-    if !matches!(
-        last.ident.to_string().as_str(),
-        "unpack" | "unpack_unchecked" | "unpack_from_slice"
-    ) {
+    if !idioms::ident_is_any(&last.ident, idioms::TOKEN_ACCOUNT_UNPACK_METHODS) {
         return false;
     }
-    path.segments.iter().any(|segment| {
-        matches!(
-            segment.ident.to_string().as_str(),
-            "Account" | "TokenAccount" | "SplTokenAccount" | "StateWithExtensions"
-        )
-    })
+    path.segments
+        .iter()
+        .any(|segment| idioms::ident_is_any(&segment.ident, idioms::TOKEN_ACCOUNT_UNPACK_TYPES))
 }
 
 fn is_instruction_path(path: &Path) -> bool {
@@ -579,8 +573,6 @@ fn is_bool_true(expr: &syn::Expr) -> bool {
 }
 
 fn is_mutating_account_method(method: &str) -> bool {
-    matches!(
-        method,
-        "set_inner" | "reload" | "load_mut" | "close" | "realloc"
-    )
+    method == idioms::ACCOUNT_RELOAD_METHOD
+        || matches!(method, "set_inner" | "load_mut" | "close" | "realloc")
 }

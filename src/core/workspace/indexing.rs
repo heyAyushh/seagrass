@@ -1,6 +1,7 @@
 use {
     super::{WorkspaceAccountField, WorkspaceAccountsStruct},
     crate::{
+        anchor::idioms,
         definition_bridge::BridgeSymbol,
         document::{
             document_symbols, AccountUsage, AssociatedValueKind, InstructionSymbol, ParsedDocument,
@@ -292,7 +293,7 @@ fn indexed_symbols(document: &ParsedDocument) -> Vec<IndexedSymbol> {
 
     if let Some(declared) = document.symbols().declared_program_id.as_ref() {
         symbols.push(IndexedSymbol {
-            name: "declare_id!".to_string(),
+            name: idioms::DECLARE_ID_MACRO_INVOCATION.to_string(),
             kind: SymbolKind::CONSTANT,
             selection_range: declared.range,
             container_name: Some(declared.value.clone()),

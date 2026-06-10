@@ -1,5 +1,8 @@
 use {
-    crate::{document::ParsedDocument, file_text, project, solana::frameworks::FrameworkId},
+    crate::{
+        anchor::idioms, document::ParsedDocument, file_text, project,
+        solana::frameworks::FrameworkId,
+    },
     cargo_toml::{DepsSet, Manifest},
     std::{
         collections::HashSet,
@@ -254,7 +257,7 @@ fn classify_program(manifest: &CargoManifest, source_text: &str) -> Option<Solan
     });
     let has_native_entrypoint = source_text.contains("entrypoint!")
         || source_text.contains("process_instruction")
-        || source_text.contains("declare_id!");
+        || source_text.contains(idioms::DECLARE_ID_MACRO_INVOCATION);
     if (has_native_dependency && has_native_entrypoint)
         || source_text.contains("solana_program::entrypoint")
     {

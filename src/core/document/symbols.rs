@@ -1,9 +1,12 @@
 use {
     super::{
-        derives_accounts, has_attr, is_anchor_helper_function, path_last_is_ident,
+        derives_accounts, has_attr, is_anchor_helper_function, path_last_is_any_ident,
         InstructionSymbol, ParsedDocument, SymbolRange,
     },
-    crate::{constraint_catalog, constraint_ranges::constraint_key_ranges, range::range_from_span},
+    crate::{
+        anchor::idioms, constraint_catalog, constraint_ranges::constraint_key_ranges,
+        range::range_from_span,
+    },
     syn::{spanned::Spanned, Item},
     tower_lsp::lsp_types::{DocumentSymbol, SymbolKind},
 };
@@ -13,12 +16,17 @@ pub fn document_symbols(document: &ParsedDocument) -> Vec<DocumentSymbol> {
 
     for item in &document.syntax().items {
         match item {
-            Item::Macro(item_macro) if path_last_is_ident(&item_macro.mac.path, "declare_id") => {
+            Item::Macro(item_macro)
+                if path_last_is_any_ident(
+                    &item_macro.mac.path,
+                    idioms::PROGRAM_DECLARATION_MACROS,
+                ) =>
+            {
                 let Some(declared) = document.symbols().declared_program_id.as_ref() else {
                     continue;
                 };
                 symbols.push(DocumentSymbol {
-                    name: "declare_id!".to_string(),
+                    name: macro_symbol_name(item_macro),
                     detail: Some(declared.value.clone()),
                     kind: SymbolKind::CONSTANT,
                     tags: None,
@@ -101,6 +109,16 @@ pub fn document_symbols(document: &ParsedDocument) -> Vec<DocumentSymbol> {
     }
 
     symbols
+}
+
+fn macro_symbol_name(item_macro: &syn::ItemMacro) -> String {
+    item_macro
+        .mac
+        .path
+        .segments
+        .last()
+        .map(|segment| format!("{}!", segment.ident))
+        .unwrap_or_default()
 }
 
 fn instruction_document_symbol(instruction: &InstructionSymbol) -> DocumentSymbol {
