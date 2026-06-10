@@ -117,7 +117,8 @@ pub struct Initialize<'info> {
         );
 
         let diagnostic = missing_init_diagnostic(&diagnostics);
-        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::ERROR));
+        // AnchorMissingInitConstraint is WholeProgram provability, so it defaults to WARNING.
+        assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
         assert_eq!(diagnostic.range.start.line, 12);
         assert_eq!(
             diagnostic

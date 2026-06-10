@@ -21,6 +21,14 @@ pub fn collect_with_workspace(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Vec<Diagnostic> {
+    // The standard multi-file Anchor layout defines account structs in sibling
+    // instruction modules and pulls them into the program module with a glob
+    // `use` (e.g. `use instructions::*;`). When the file glob-imports names and
+    // we have no workspace-wide visibility, we cannot prove a `Context<T>` type
+    // is missing — emitting a "create the struct" error would be a false
+    // positive on this canonical layout.
+    let resolution_may_be_incomplete =
+        document_has_local_glob_import(document) && workspace_lacks_visibility(workspace_index);
     let mut diagnostics = empty_context_type_diagnostics(document, workspace_index);
     diagnostics.extend(
         document
@@ -54,6 +62,8 @@ pub fn collect_with_workspace(
                             Some(format!("struct `{}` is declared here.", reference.name)),
                         )),
                     ))
+                } else if resolution_may_be_incomplete {
+                    None
                 } else {
                     Some(diagnostic_from_range_with_related(
                         reference.range,
@@ -225,6 +235,71 @@ fn pascal_case(value: &str) -> String {
     output
 }
 
+/// True when the workspace index gives us no cross-file visibility into account
+/// structs — either it is absent, or it has indexed no `#[derive(Accounts)]`
+/// structs at all. In that state we cannot trust a single file's view of which
+/// `Context<T>` types exist.
+fn workspace_lacks_visibility(workspace_index: Option<&WorkspaceIndex>) -> bool {
+    workspace_index.is_none_or(|index| index.accounts_struct_names().is_empty())
+}
+
+/// Roots whose glob imports re-export names from elsewhere in this crate rather
+/// than from an external dependency.
+const LOCAL_GLOB_ROOTS: &[&str] = &["crate", "super", "self"];
+
+/// True when the document contains a glob `use` that could bring **local**
+/// account structs into scope — i.e. one rooted at `crate`/`super`/`self` or at
+/// a module declared in this crate (e.g. `use instructions::*;` paired with
+/// `mod instructions;`). The ubiquitous `use anchor_lang::prelude::*;` is
+/// deliberately excluded: it re-exports an external crate's prelude, not local
+/// account structs, so it must not gate this diagnostic.
+fn document_has_local_glob_import(document: &ParsedDocument) -> bool {
+    #[derive(Default)]
+    struct GlobScan {
+        module_names: std::collections::HashSet<String>,
+        glob_roots: Vec<String>,
+    }
+
+    impl<'ast> Visit<'ast> for GlobScan {
+        fn visit_item_mod(&mut self, node: &'ast syn::ItemMod) {
+            self.module_names.insert(node.ident.to_string());
+            visit::visit_item_mod(self, node);
+        }
+
+        fn visit_item_use(&mut self, node: &'ast syn::ItemUse) {
+            if let Some(root) = glob_root_segment(&node.tree) {
+                self.glob_roots.push(root);
+            }
+            visit::visit_item_use(self, node);
+        }
+    }
+
+    let mut scan = GlobScan::default();
+    scan.visit_file(document.syntax());
+    scan.glob_roots.iter().any(|root| {
+        LOCAL_GLOB_ROOTS.contains(&root.as_str()) || scan.module_names.contains(root)
+    })
+}
+
+/// The leading path segment of a `use` tree that terminates in a glob, e.g.
+/// `"super"` for `use super::*;` or `"anchor_lang"` for
+/// `use anchor_lang::prelude::*;`. Returns `None` when the tree imports no glob.
+fn glob_root_segment(tree: &syn::UseTree) -> Option<String> {
+    fn ends_in_glob(tree: &syn::UseTree) -> bool {
+        match tree {
+            syn::UseTree::Glob(_) => true,
+            syn::UseTree::Path(path) => ends_in_glob(&path.tree),
+            syn::UseTree::Group(group) => group.items.iter().any(ends_in_glob),
+            _ => false,
+        }
+    }
+
+    match tree {
+        syn::UseTree::Path(path) if ends_in_glob(&path.tree) => Some(path.ident.to_string()),
+        _ => None,
+    }
+}
+
 fn workspace_has_accounts_struct(workspace_index: Option<&WorkspaceIndex>, name: &str) -> bool {
     workspace_index.is_some_and(|index| {
         index
@@ -346,12 +421,12 @@ pub struct MakeOffer<'info> {
 
     #[test]
     fn still_reports_missing_accounts_struct_without_workspace_evidence() {
+        // No glob import: the file's view of which structs exist is complete, so
+        // a missing `Context<T>` struct is a real error even without a workspace.
         let lib = ParsedDocument::parse(
             r#"
 #[program]
 pub mod escrow {
-    use super::*;
-
     pub fn make_offer(ctx: Context<MakeOffer>) -> Result<()> {
         Ok(())
     }
@@ -371,6 +446,77 @@ pub mod escrow {
             .expect("expected related handler context")
             .iter()
             .any(|info| info.message.contains("uses `Context<MakeOffer>`")));
+    }
+
+    #[test]
+    fn suppresses_missing_struct_when_glob_import_hides_resolution() {
+        // Regression: the canonical multi-file Anchor layout defines account
+        // structs in sibling modules and pulls them in via `use instructions::*;`.
+        // Without workspace visibility we cannot prove the struct is absent, so
+        // we must not emit a confident "create the struct" error.
+        let lib = ParsedDocument::parse(
+            r#"
+use instructions::*;
+
+#[program]
+pub mod escrow {
+    use super::*;
+
+    pub fn make(ctx: Context<Make>) -> Result<()> {
+        Ok(())
+    }
+}
+"#,
+        )
+        .unwrap();
+
+        assert!(
+            collect(&lib).is_empty(),
+            "glob import without workspace evidence must not be reported as a missing struct: {:#?}",
+            collect(&lib)
+        );
+    }
+
+    #[test]
+    fn reports_missing_struct_through_glob_when_workspace_confirms_absence() {
+        // A populated workspace index that has crawled sibling files gives real
+        // visibility: a `Context<T>` it does not know about is genuinely missing,
+        // glob import or not.
+        let lib = ParsedDocument::parse(
+            r#"
+use instructions::*;
+
+#[program]
+pub mod escrow {
+    use super::*;
+
+    pub fn make(ctx: Context<Make>) -> Result<()> {
+        Ok(())
+    }
+}
+"#,
+        )
+        .unwrap();
+        let accounts_uri = Url::parse("file:///tmp/instructions/take.rs").unwrap();
+        let index = WorkspaceIndex::build(
+            &[],
+            [(
+                accounts_uri,
+                r#"
+#[derive(Accounts)]
+pub struct Take<'info> {
+    pub taker: Signer<'info>,
+}
+"#
+                .to_string(),
+            )],
+        );
+
+        let diagnostics = collect_with_workspace(&lib, Some(&index));
+        assert_eq!(diagnostics.len(), 1);
+        assert!(diagnostics[0]
+            .message
+            .contains("`Context<Make>` has no matching `#[derive(Accounts)]` struct"));
     }
 
     #[test]

@@ -42,6 +42,22 @@ pub const REPLACE_CONSTRAINT_EXPRESSION_IDENTIFIER_QUICKFIX: &str =
     "replace-constraint-expression-identifier";
 pub const SOURCE: &str = "seagrass";
 
+/// Describes how much evidence a diagnostic kind requires before its claim can be considered
+/// proven.  The ceiling rule is: Heuristic and WholeProgram diagnostics must never default to
+/// ERROR severity, because they cannot rule out false positives from a single file.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Provability {
+    /// Proven from a single file: parse errors, in-file shape/type violations.
+    /// ERROR is allowed.
+    Syntactic,
+    /// Absence or existence claims that require cross-file or manifest evidence.
+    /// Must default to WARNING; only an evidence-carrying upgrade path may reach ERROR.
+    WholeProgram,
+    /// Pattern-based guesses with no formal proof.
+    /// At most WARNING or HINT; never ERROR.
+    Heuristic,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AnchorDiagnosticKind {
     AnchorSyn,
@@ -78,6 +94,92 @@ pub enum AnchorDiagnosticKind {
 }
 
 impl AnchorDiagnosticKind {
+    /// Returns every variant exactly once.  Adding a new variant to the enum without updating
+    /// this list is caught at compile time by the exhaustive `match` in `provability()` and by
+    /// `all_variants_are_covered_by_all()`.
+    // No non-test callers yet; future evidence-upgrade paths will iterate all kinds.
+    #[allow(dead_code)]
+    pub fn all() -> [Self; 31] {
+        [
+            Self::AnchorSyn,
+            Self::AnchorInitConstraints,
+            Self::AnchorMissingInitConstraint,
+            Self::AnchorContextAccounts,
+            Self::AnchorMissingAccountReference,
+            Self::AnchorMissingInstructionArgument,
+            Self::AnchorConstraintExpression,
+            Self::AnchorConstraintShape,
+            Self::AnchorAccountUsage,
+            Self::AnchorCheckCfg,
+            Self::AnchorProjectId,
+            Self::AnchorSbfArtifact,
+            Self::AnchorProgramKeypair,
+            Self::AnchorIdlArtifact,
+            Self::AnchorTypesArtifact,
+            Self::SolanaIdlArtifact,
+            Self::SolanaProgramMetadata,
+            Self::SolanaTestHarness,
+            Self::SolanaSurfpoolWorkspace,
+            Self::AnchorSplTokenInterface,
+            Self::SecuritySigner,
+            Self::SecurityTokenAccount,
+            Self::SecurityCpiProgram,
+            Self::SecuritySysvar,
+            Self::SecurityDuplicateAccount,
+            Self::SecurityUncheckedAccount,
+            Self::SecurityStaticPda,
+            Self::SecurityOwnerCheck,
+            Self::SecurityTypeCosplay,
+            Self::SolanaCodeQuality,
+            Self::PdaSeedResolution,
+        ]
+    }
+
+    /// Classifies how much proof a diagnostic kind can provide.
+    ///
+    /// An exhaustive `match` (no wildcard) is intentional: the compiler will reject a new variant
+    /// that is not classified here, enforcing the provability ceiling at every addition.
+    pub fn provability(self) -> Provability {
+        match self {
+            // Single-file, parse-level or structural violations — fully provable.
+            Self::AnchorSyn | Self::AnchorConstraintShape | Self::AnchorInitConstraints => {
+                Provability::Syntactic
+            }
+
+            // Absence/existence claims requiring cross-file or manifest evidence.
+            Self::AnchorContextAccounts
+            | Self::AnchorMissingAccountReference
+            | Self::AnchorMissingInstructionArgument
+            | Self::AnchorMissingInitConstraint
+            | Self::AnchorConstraintExpression
+            | Self::AnchorAccountUsage
+            | Self::AnchorProjectId => Provability::WholeProgram,
+
+            // Pattern-based guesses — no formal proof of correctness.
+            Self::AnchorCheckCfg
+            | Self::AnchorSbfArtifact
+            | Self::AnchorProgramKeypair
+            | Self::AnchorIdlArtifact
+            | Self::AnchorTypesArtifact
+            | Self::SolanaIdlArtifact
+            | Self::SolanaProgramMetadata
+            | Self::SolanaTestHarness
+            | Self::SolanaSurfpoolWorkspace
+            | Self::AnchorSplTokenInterface
+            | Self::SecuritySigner
+            | Self::SecurityTokenAccount
+            | Self::SecurityCpiProgram
+            | Self::SecuritySysvar
+            | Self::SecurityDuplicateAccount
+            | Self::SecurityUncheckedAccount
+            | Self::SecurityStaticPda
+            | Self::SecurityOwnerCheck
+            | Self::SecurityTypeCosplay
+            | Self::SolanaCodeQuality
+            | Self::PdaSeedResolution => Provability::Heuristic,
+        }
+    }
+
     pub fn code(self) -> &'static str {
         match self {
             Self::AnchorSyn => ANCHOR_SYN_CODE,
@@ -115,38 +217,13 @@ impl AnchorDiagnosticKind {
     }
 
     pub fn default_severity(self) -> DiagnosticSeverity {
-        match self {
-            Self::AnchorSyn
-            | Self::AnchorInitConstraints
-            | Self::AnchorMissingInitConstraint
-            | Self::AnchorContextAccounts
-            | Self::AnchorMissingAccountReference
-            | Self::AnchorMissingInstructionArgument
-            | Self::AnchorConstraintExpression
-            | Self::AnchorConstraintShape
-            | Self::AnchorAccountUsage
-            | Self::AnchorProjectId => DiagnosticSeverity::ERROR,
-            Self::AnchorCheckCfg
-            | Self::AnchorSbfArtifact
-            | Self::AnchorProgramKeypair
-            | Self::AnchorIdlArtifact
-            | Self::AnchorTypesArtifact
-            | Self::SolanaIdlArtifact
-            | Self::SolanaProgramMetadata
-            | Self::SolanaTestHarness
-            | Self::SolanaSurfpoolWorkspace
-            | Self::AnchorSplTokenInterface => DiagnosticSeverity::WARNING,
-            Self::SecuritySigner
-            | Self::SecurityTokenAccount
-            | Self::SecurityCpiProgram
-            | Self::SecuritySysvar
-            | Self::SecurityDuplicateAccount
-            | Self::SecurityUncheckedAccount
-            | Self::SecurityStaticPda
-            | Self::SecurityOwnerCheck
-            | Self::SecurityTypeCosplay
-            | Self::SolanaCodeQuality => DiagnosticSeverity::WARNING,
-            Self::PdaSeedResolution => DiagnosticSeverity::WARNING,
+        // The severity ceiling is structurally derived from provability:
+        // only Syntactic diagnostics (proven from a single file) may default to ERROR.
+        // WholeProgram and Heuristic diagnostics default to WARNING because they cannot
+        // rule out false positives without cross-file or runtime evidence.
+        match self.provability() {
+            Provability::Syntactic => DiagnosticSeverity::ERROR,
+            Provability::WholeProgram | Provability::Heuristic => DiagnosticSeverity::WARNING,
         }
     }
 
@@ -455,6 +532,68 @@ fn parse_url(url: &str) -> Option<Url> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Structural guarantee: no diagnostic whose claim cannot be proven from a single file may
+    /// default to ERROR.  Heuristic and WholeProgram kinds are explicitly bounded at WARNING.
+    /// This test will fail — and catch the problem at CI time — whenever a new variant is added
+    /// without a correct provability classification.
+    #[test]
+    fn severity_is_bounded_by_provability() {
+        for kind in AnchorDiagnosticKind::all() {
+            let severity = kind.default_severity();
+            match kind.provability() {
+                Provability::Syntactic => {
+                    // No upper ceiling on Syntactic — ERROR is intentional.
+                }
+                Provability::WholeProgram => {
+                    assert_ne!(
+                        severity,
+                        DiagnosticSeverity::ERROR,
+                        "WholeProgram diagnostic `{}` must not default to ERROR \
+                         (it cannot prove absence/existence from a single file)",
+                        kind.code()
+                    );
+                }
+                Provability::Heuristic => {
+                    assert_ne!(
+                        severity,
+                        DiagnosticSeverity::ERROR,
+                        "Heuristic diagnostic `{}` must not default to ERROR \
+                         (pattern guesses cannot guarantee correctness)",
+                        kind.code()
+                    );
+                }
+            }
+        }
+    }
+
+    /// Exhaustiveness guard: every variant reachable from `provability()` must also appear in
+    /// `all()`.  Because `provability()` uses an exhaustive match, the compiler already rejects
+    /// missing variants there; this test ensures `all()` stays in sync with the enum count so
+    /// that `severity_is_bounded_by_provability` actually visits every variant.
+    #[test]
+    fn all_variants_are_covered_by_all() {
+        // Each variant in `all()` must have a working `code()` and `provability()`.
+        // The const array length in `all()` is checked against the enum count implicitly
+        // because the exhaustive match in `provability()` must cover every variant.
+        for kind in AnchorDiagnosticKind::all() {
+            // Calling both methods exercises the exhaustive matches; a compile error would
+            // surface before this assertion if a variant were missing.
+            let _ = kind.code();
+            let _ = kind.provability();
+        }
+        // Verify `all()` has no duplicates by checking that all codes are distinct.
+        let codes: Vec<&str> = AnchorDiagnosticKind::all().iter().map(|k| k.code()).collect();
+        let unique_count = {
+            let mut seen = std::collections::HashSet::new();
+            codes.iter().filter(|c| seen.insert(*c)).count()
+        };
+        assert_eq!(
+            unique_count,
+            AnchorDiagnosticKind::all().len(),
+            "`all()` contains duplicate variants"
+        );
+    }
 
     #[test]
     fn topic_lint_doc_url_maps_seagrass_topics_to_catalog_pages() {

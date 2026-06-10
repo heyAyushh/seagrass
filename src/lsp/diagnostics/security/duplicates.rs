@@ -6,6 +6,7 @@ use {
             registry::AnchorDiagnosticKind,
         },
         document::{ParsedDocument, SymbolRange},
+        syntax::member_name,
         workspace::{WorkspaceAccountField, WorkspaceIndex},
     },
     std::collections::{HashMap, HashSet},
@@ -474,13 +475,6 @@ fn account_path(expr: &syn::Expr) -> Option<String> {
         syn::Expr::Reference(reference) => account_path(&reference.expr),
         syn::Expr::Unary(unary) => account_path(&unary.expr),
         _ => None,
-    }
-}
-
-fn member_name(member: &syn::Member) -> Option<String> {
-    match member {
-        syn::Member::Named(ident) => Some(ident.to_string()),
-        syn::Member::Unnamed(_) => None,
     }
 }
 

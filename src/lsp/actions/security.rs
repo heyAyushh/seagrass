@@ -414,7 +414,7 @@ fn account_type_before_marker(line: &str, marker_start: usize) -> Option<String>
 
 fn terminal_rust_path_segment(raw_path: &str) -> Option<&str> {
     let segment = raw_path.rsplit("::").next()?.trim();
-    is_rust_identifier(segment).then_some(segment)
+    crate::syntax::is_ascii_identifier(segment).then_some(segment)
 }
 
 fn call_arguments_after(line: &str, search_start: usize) -> Option<&str> {
@@ -461,18 +461,12 @@ fn safe_discriminator_data_expression(argument: &str) -> Option<String> {
     if let Some((base, _slice)) = candidate.split_once('[') {
         candidate = base.trim_end();
     }
-    is_rust_identifier(candidate).then(|| candidate.to_string())
+    crate::syntax::is_ascii_identifier(candidate).then(|| candidate.to_string())
 }
 
 fn non_empty_trimmed(value: &str) -> Option<&str> {
     let trimmed = value.trim();
     (!trimmed.is_empty()).then_some(trimmed)
-}
-
-fn is_rust_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    matches!(chars.next(), Some(ch) if ch == '_' || ch.is_ascii_alphabetic())
-        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 fn data_string(diagnostic: &Diagnostic, key: &str) -> Option<String> {

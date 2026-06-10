@@ -253,8 +253,6 @@ declare_id!("Declared111111111111111111111111111111111");
 
 #[program]
 pub mod demo {
-    use super::*;
-
     pub fn create(ctx: Context<Create>) -> Result<()> {
         Ok(())
     }

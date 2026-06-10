@@ -18,7 +18,8 @@ pub struct Create<'info> {
     );
 
     let diagnostic = missing_reference_diagnostic(&diagnostics);
-    assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::ERROR));
+    // AnchorMissingAccountReference is WholeProgram provability, so it defaults to WARNING.
+    assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
     assert_eq!(diagnostic.range.start.line, 3);
     assert_eq!(
         diagnostic.range.end.character - diagnostic.range.start.character,

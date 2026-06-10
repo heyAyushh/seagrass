@@ -1,7 +1,13 @@
 use super::*;
 
+// The security-bundle test checks instruction-data-bounds, signer-authorization,
+// and arbitrary-cpi together.  The pda-seed-collision check is tested separately
+// below because the new trie-based detector requires two distinct PDAs whose
+// literal prefixes are ambiguous — a single struct with purely-dynamic seeds
+// (like [user.key(), mint.key()]) carries no literal prefix and is intentionally
+// not flagged (open-world: prefer silence over a false positive).
 #[test]
-fn reports_native_signer_cpi_instruction_bounds_and_pda_seed_collision() {
+fn reports_native_signer_cpi_instruction_bounds() {
     let source = r#"
 use solana_program::{
     account_info::AccountInfo,
@@ -18,14 +24,6 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo], instruction_data: 
     invoke(&ix, accounts)?;
     Ok(())
 }
-
-#[derive(Accounts)]
-pub struct Seeds<'info> {
-    #[account(seeds = [user.key().as_ref(), mint.key().as_ref()], bump)]
-    state: AccountInfo<'info>,
-    user: Signer<'info>,
-    mint: AccountInfo<'info>,
-}
 "#;
     let document = ParsedDocument::parse_or_empty(source);
     let diagnostics = collect(&document);
@@ -33,7 +31,6 @@ pub struct Seeds<'info> {
         "instruction-data-bounds",
         "signer-authorization",
         "arbitrary-cpi",
-        "pda-seed-collision",
     ] {
         assert!(
             diagnostics.iter().any(|diagnostic| {
@@ -45,8 +42,76 @@ pub struct Seeds<'info> {
     }
 }
 
+/// True positive: two PDAs whose leading literal bytes form a proper prefix
+/// relationship — `b"pr"` is a byte-prefix of `b"product"`.  The Solana
+/// runtime cannot distinguish these PDAs if the variable-length opaque
+/// component happens to start with the bytes that "product" appends.
 #[test]
-fn accepts_pda_seed_collision_with_static_domain_separator() {
+fn reports_pda_seed_prefix_collision() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct InitProduct<'info> {
+    #[account(seeds = [b"product", authority.key().as_ref()], bump)]
+    product: AccountInfo<'info>,
+    authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct InitPr<'info> {
+    // b"pr" is a byte-prefix of b"product" — genuine Zellic-class collision.
+    #[account(seeds = [b"pr", authority.key().as_ref()], bump)]
+    pr_account: AccountInfo<'info>,
+    authority: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+    assert_has_attack(&diagnostics, "pda-seed-collision");
+    // Every colliding site must be WARNING, never ERROR (Heuristic provability).
+    for diagnostic in &diagnostics {
+        if diagnostic
+            .data
+            .as_ref()
+            .and_then(|d| d.get("attack"))
+            == Some(&serde_json::json!("pda-seed-collision"))
+        {
+            assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
+        }
+    }
+}
+
+/// True negative: `b"escrow"` and `b"vault"` start with different bytes —
+/// no prefix relationship, no diagnostic.
+#[test]
+fn no_collision_for_distinct_literal_prefixes() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct MakeEscrow<'info> {
+    #[account(seeds = [b"escrow", maker.key().as_ref(), seed.to_le_bytes().as_ref()], bump)]
+    escrow: AccountInfo<'info>,
+    maker: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct MakeVault<'info> {
+    #[account(seeds = [b"vault", depositor.key().as_ref()], bump)]
+    vault: AccountInfo<'info>,
+    depositor: Signer<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
+    assert_no_attack(&diagnostics, "pda-seed-collision");
+}
+
+/// True negative: a single PDA with a static domain separator has no
+/// second entry to collide with — trie carries one key, zero pairs.
+#[test]
+fn no_collision_for_single_pda_with_static_domain() {
     let source = r#"
 use anchor_lang::prelude::*;
 
@@ -60,7 +125,35 @@ pub struct Seeds<'info> {
 "#;
     let document = ParsedDocument::parse_or_empty(source);
     let diagnostics = collect(&document);
+    assert_no_attack(&diagnostics, "pda-seed-collision");
+}
 
+/// True negative: purely-dynamic seeds `[user.key(), mint.key()]` have an
+/// empty literal-byte prefix — the new detector skips them rather than
+/// guessing.
+#[test]
+fn no_collision_for_purely_dynamic_seeds() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct SeedsA<'info> {
+    #[account(seeds = [user.key().as_ref(), mint.key().as_ref()], bump)]
+    state: AccountInfo<'info>,
+    user: Signer<'info>,
+    mint: AccountInfo<'info>,
+}
+
+#[derive(Accounts)]
+pub struct SeedsB<'info> {
+    #[account(seeds = [owner.key().as_ref(), token.key().as_ref()], bump)]
+    state: AccountInfo<'info>,
+    owner: Signer<'info>,
+    token: AccountInfo<'info>,
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&document);
     assert_no_attack(&diagnostics, "pda-seed-collision");
 }
 

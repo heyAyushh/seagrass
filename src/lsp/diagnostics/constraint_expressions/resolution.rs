@@ -125,7 +125,7 @@ fn path_resolves(
     }
 
     if LOCAL_PATH_ROOTS.contains(&first) {
-        return local_path_value_resolves(document, segments);
+        return local_path_value_resolves(document, workspace_index, segments);
     }
     if document_has_imported_name(document, first) || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&first)
     {
@@ -135,13 +135,34 @@ fn path_resolves(
         && associated_path_value_resolves(document, workspace_index, segments)
 }
 
-fn local_path_value_resolves(document: &ParsedDocument, segments: &[String]) -> bool {
+/// Resolve a `crate::…` / `self::…` / `super::…` qualified path.
+///
+/// Three resolution strategies are attempted in order:
+///
+/// 1. **Same-file value item** — the leaf symbol is declared in this file.
+/// 2. **Declared program-id constant** — the path ends in `ID` and this file
+///    has a `declare_id!`.
+/// 3. **Same-file associated value** — `Type::CONST` where `Type` is in this
+///    file (checked without workspace context to avoid widening scope).
+/// 4. **Trie-based cross-file lookup** — the workspace module-path trie maps
+///    the module prefix to the file that declares the leaf symbol; this handles
+///    paths like `crate::state::Escrow::INIT_SPACE` where `Escrow` lives in
+///    `src/state.rs`.
+fn local_path_value_resolves(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    segments: &[String],
+) -> bool {
     let Some(name) = segments.last().map(String::as_str) else {
         return false;
     };
     document_has_value_item(document, name)
         || (name == DECLARED_PROGRAM_ID_VALUE && document.symbols().declared_program_id.is_some())
         || associated_path_value_resolves(document, None, segments)
+        // Cross-file resolution: the trie maps module-path prefixes to the
+        // file that declares the symbol, resolving `crate::module::Symbol`
+        // paths without emitting a false-positive absence claim.
+        || workspace_index.is_some_and(|index| index.symbol_exists_at_qualified_path(segments))
 }
 
 fn associated_path_value_resolves(

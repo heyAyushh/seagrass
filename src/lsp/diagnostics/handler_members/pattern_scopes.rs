@@ -1,13 +1,26 @@
 use {
     super::HandlerMemberVisitor,
     crate::lsp::local_types,
-    syn::{visit::Visit, BinOp, Expr, FnArg, ItemFn},
+    syn::{visit::Visit, BinOp, Expr, FnArg, ImplItemFn, ItemFn},
 };
 
 impl HandlerMemberVisitor<'_> {
     pub(super) fn declare_function_inputs(&mut self, item_fn: &ItemFn) {
-        for input in &item_fn.sig.inputs {
+        self.declare_signature_typed_inputs(&item_fn.sig.inputs);
+    }
+
+    /// Declare the typed parameters of an impl-block method into the current
+    /// scope, mirroring `declare_function_inputs` for free functions.
+    /// `self` receivers have no type annotation that we can resolve here, so
+    /// they are skipped — the open-world principle: suppress rather than guess.
+    pub(super) fn declare_impl_method_inputs(&mut self, method: &ImplItemFn) {
+        self.declare_signature_typed_inputs(&method.sig.inputs);
+    }
+
+    fn declare_signature_typed_inputs(&mut self, inputs: &syn::punctuated::Punctuated<FnArg, syn::token::Comma>) {
+        for input in inputs {
             let FnArg::Typed(pat_type) = input else {
+                // `self` receiver: no resolvable type annotation available here.
                 continue;
             };
             if let Some(context_name) = local_types::context_type_name_from_type(&pat_type.ty) {

@@ -1,5 +1,8 @@
 use {
-    crate::document::ParsedDocument,
+    crate::{
+        document::ParsedDocument,
+        syntax::{expr_path_last_ident, member_is_named},
+    },
     syn::visit::{self, Visit},
 };
 
@@ -41,7 +44,29 @@ impl<'ast> Visit<'ast> for RawAccountFileVisitor<'_> {
         if context_names.is_empty() {
             return;
         }
+        self.analyse_block(&node.block, context_names);
+    }
 
+    /// Analyse impl-block methods the same way as free functions. Without this
+    /// override, syn's default recursion still enters the method body but
+    /// `visit_item_fn` is never called, so the context-argument scan is skipped
+    /// and the method body is never checked — an under-report that is
+    /// inconsistent with free-function handling.
+    fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
+        let context_names =
+            context_argument_names_for_impl_method(node, self.accounts_name);
+        if context_names.is_empty() {
+            return;
+        }
+        self.analyse_block(&node.block, context_names);
+    }
+}
+
+impl RawAccountFileVisitor<'_> {
+    /// Run the per-function evidence visitor over `block` and fold the results
+    /// into `self.risk`. Extracted so both `visit_item_fn` and
+    /// `visit_impl_item_fn` can share identical post-processing logic.
+    fn analyse_block(&mut self, block: &syn::Block, context_names: Vec<String>) {
         let mut function = RawAccountFunctionVisitor {
             field_name: self.field_name,
             context_names,
@@ -50,7 +75,7 @@ impl<'ast> Visit<'ast> for RawAccountFileVisitor<'_> {
             data_aliases: Vec::new(),
             evidence: RawAccountFunctionEvidence::default(),
         };
-        function.visit_block(&node.block);
+        function.visit_block(block);
         let evidence = function.evidence;
         if evidence.raw_data && !evidence.owner_check {
             self.risk.missing_owner_check = true;
@@ -120,19 +145,19 @@ impl<'ast> Visit<'ast> for RawAccountFunctionVisitor<'_> {
     }
 
     fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
-        if called_ident(&node.func).is_some_and(is_owner_validation_helper)
+        if expr_path_last_ident(&node.func).is_some_and(is_owner_validation_helper)
             && node.args.iter().any(|arg| expr_mentions_field(arg, self))
         {
             self.evidence.owner_check = true;
         }
-        if called_ident(&node.func).is_some_and(is_type_validation_helper)
+        if expr_path_last_ident(&node.func).is_some_and(is_type_validation_helper)
             && node.args.iter().any(|arg| expr_mentions_field(arg, self))
         {
             self.evidence.discriminator_check = true;
         }
-        if called_ident(&node.func).is_some_and(is_safe_deserialize_function) {
+        if expr_path_last_ident(&node.func).is_some_and(is_safe_deserialize_function) {
             self.evidence.discriminator_check = true;
-        } else if called_ident(&node.func).is_some_and(is_raw_deserialize_function)
+        } else if expr_path_last_ident(&node.func).is_some_and(is_raw_deserialize_function)
             && node
                 .args
                 .iter()
@@ -170,9 +195,24 @@ impl<'ast> Visit<'ast> for RawAccountFunctionVisitor<'_> {
 }
 
 fn context_argument_names_for_accounts(item_fn: &syn::ItemFn, accounts_name: &str) -> Vec<String> {
-    item_fn
-        .sig
-        .inputs
+    context_names_from_inputs(&item_fn.sig.inputs, accounts_name)
+}
+
+/// Same extraction logic as `context_argument_names_for_accounts` but for an
+/// impl-block method. `self` receivers carry no usable type annotation, so
+/// only typed arguments are inspected.
+fn context_argument_names_for_impl_method(
+    method: &syn::ImplItemFn,
+    accounts_name: &str,
+) -> Vec<String> {
+    context_names_from_inputs(&method.sig.inputs, accounts_name)
+}
+
+fn context_names_from_inputs(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    accounts_name: &str,
+) -> Vec<String> {
+    inputs
         .iter()
         .filter_map(|arg| {
             let syn::FnArg::Typed(pat_type) = arg else {
@@ -257,7 +297,7 @@ fn is_accounts_container_expr(
 ) -> bool {
     match expr {
         syn::Expr::Field(field) => {
-            matches!(&field.member, syn::Member::Named(ident) if ident == "accounts")
+            member_is_named(&field.member, "accounts")
                 && matches!(
                     field.base.as_ref(),
                     syn::Expr::Path(path)
@@ -352,7 +392,7 @@ fn raw_data_account_from_expr(
 ) -> Option<String> {
     match expr {
         syn::Expr::MethodCall(method) => raw_data_account_from_method(method, visitor),
-        syn::Expr::Field(field) if matches!(&field.member, syn::Member::Named(ident) if ident == "data") => {
+        syn::Expr::Field(field) if member_is_named(&field.member, "data") => {
             account_name_from_expr(
                 &field.base,
                 &visitor.context_names,
@@ -420,7 +460,7 @@ fn owner_account_from_expr(
     visitor: &RawAccountFunctionVisitor<'_>,
 ) -> Option<String> {
     match expr {
-        syn::Expr::Field(field) if matches!(&field.member, syn::Member::Named(ident) if ident == "owner") => {
+        syn::Expr::Field(field) if member_is_named(&field.member, "owner") => {
             account_name_from_expr(
                 &field.base,
                 &visitor.context_names,
@@ -434,13 +474,6 @@ fn owner_account_from_expr(
         syn::Expr::Unary(unary) => owner_account_from_expr(&unary.expr, visitor),
         _ => None,
     }
-}
-
-fn called_ident(func: &syn::Expr) -> Option<&syn::Ident> {
-    let syn::Expr::Path(path) = func else {
-        return None;
-    };
-    path.path.segments.last().map(|segment| &segment.ident)
 }
 
 fn is_owner_validation_helper(ident: &syn::Ident) -> bool {

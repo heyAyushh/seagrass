@@ -12,6 +12,9 @@ const CURRENT_DOCUMENT_PLACEHOLDER_URI: &str = "file:///seagrass/current-documen
 pub struct DiagnosticSettings {
     pub security_diagnostics: bool,
     pub experimental_diagnostics: bool,
+    /// Mirrors `ServerSettings::artifact_diagnostics`. When false, all mtime-based
+    /// artifact diagnostics (stale/missing SBPF ELF, IDL, TypeScript) are suppressed.
+    pub artifact_diagnostics: bool,
     pub security_levels: BTreeMap<String, DiagnosticLevel>,
     pub strict_native_security: bool,
     pub typing_suppression: Option<TypingSuppressionRegion>,
@@ -56,6 +59,7 @@ impl Default for DiagnosticSettings {
         Self {
             security_diagnostics: true,
             experimental_diagnostics: true,
+            artifact_diagnostics: false,
             security_levels: BTreeMap::new(),
             strict_native_security: true,
             typing_suppression: None,
@@ -79,6 +83,9 @@ fn apply_settings(diagnostics: Vec<Diagnostic>, settings: DiagnosticSettings) ->
                 return Some(diagnostic);
             };
             if !settings.security_diagnostics && is_security_code(code) {
+                return None;
+            }
+            if !settings.artifact_diagnostics && is_artifact_code(code) {
                 return None;
             }
             if !settings.experimental_diagnostics && code == "anchor-missing-init-constraint" {
@@ -256,6 +263,12 @@ fn dedupe_related_information(related: &mut Vec<DiagnosticRelatedInformation>) {
 
 fn is_security_code(code: &str) -> bool {
     code.starts_with("anchor-security-") || code == "solana-code-quality"
+}
+
+/// Returns true for mtime-based artifact diagnostic codes that are noisy before a build runs.
+/// These codes are produced by the `artifacts` and `ecosystem` rules.
+fn is_artifact_code(code: &str) -> bool {
+    code.ends_with("-artifact") || code == "anchor-program-keypair"
 }
 
 fn config_key(diagnostic: &Diagnostic) -> Option<&str> {
@@ -436,6 +449,7 @@ mod tests {
             DiagnosticSettings {
                 security_diagnostics: false,
                 experimental_diagnostics: false,
+                artifact_diagnostics: false,
                 security_levels: BTreeMap::new(),
                 strict_native_security: true,
                 typing_suppression: None,
@@ -470,6 +484,7 @@ mod tests {
             DiagnosticSettings {
                 security_diagnostics: true,
                 experimental_diagnostics: true,
+                artifact_diagnostics: false,
                 security_levels: levels,
                 strict_native_security: true,
                 typing_suppression: None,
