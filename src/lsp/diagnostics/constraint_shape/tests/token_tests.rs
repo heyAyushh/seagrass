@@ -231,6 +231,32 @@ pub struct Create<'info> {
     ));
 }
 #[test]
+fn accepts_interface_token_account_with_classic_token_mint_wrapper() {
+    let diagnostics = diagnostics_for(
+        r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = payer, token::mint = mint, token::authority = payer)]
+    pub token: InterfaceAccount<'info, TokenAccount>,
+    pub mint: Account<'info, anchor_spl::token::Mint>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
+}
+"#,
+    );
+
+    assert!(
+        !has_code_and_message(
+            &diagnostics,
+            ANCHOR_CONSTRAINT_SHAPE_CODE,
+            "is not `InterfaceAccount<'info, Mint>`"
+        ),
+        "classic Token program mint accounts are compatible with InterfaceAccount<TokenAccount>"
+    );
+}
+#[test]
 fn accepts_interface_token_account_with_interface_mint_wrapper() {
     let diagnostics = diagnostics_for(
         r#"
@@ -356,6 +382,88 @@ pub struct Create<'info> {
         Some("program-field-type")
     );
 }
+
+#[test]
+fn accepts_program_token2022_for_account_token_account_init() {
+    let diagnostics = diagnostics_for(
+        r#"
+#[derive(Accounts)]
+pub struct CreateToken2022<'info> {
+    #[account(init, payer = payer, token::mint = mint, token::authority = payer)]
+    pub token: Account<'info, TokenAccount>,
+    pub mint: Account<'info, Mint>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub token_program: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+}
+"#,
+    );
+
+    assert!(
+        !has_code_and_message(
+            &diagnostics,
+            ANCHOR_CONSTRAINT_SHAPE_CODE,
+            "must be an Anchor token program account"
+        ),
+        "Program<Token2022> must not trigger token-program-type diagnostic for Account<TokenAccount> init"
+    );
+}
+
+#[test]
+fn accepts_interface_token_interface_for_account_token_account_init() {
+    let diagnostics = diagnostics_for(
+        r#"
+#[derive(Accounts)]
+pub struct CreateAny<'info> {
+    #[account(init, payer = payer, token::mint = mint, token::authority = payer)]
+    pub token: Account<'info, TokenAccount>,
+    pub mint: Account<'info, Mint>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
+}
+"#,
+    );
+
+    assert!(
+        !has_code_and_message(
+            &diagnostics,
+            ANCHOR_CONSTRAINT_SHAPE_CODE,
+            "must be an Anchor token program account"
+        ),
+        "Interface<TokenInterface> must not trigger token-program-type diagnostic for Account<TokenAccount> init"
+    );
+}
+
+#[test]
+fn accepts_program_token2022_for_interface_token_account_init() {
+    let diagnostics = diagnostics_for(
+        r#"
+#[derive(Accounts)]
+pub struct CreateInterfaceToken2022<'info> {
+    #[account(init, payer = payer, token::mint = mint, token::authority = payer, token::token_program = token_program)]
+    pub token: InterfaceAccount<'info, TokenAccount>,
+    pub mint: InterfaceAccount<'info, Mint>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub token_program: Program<'info, Token2022>,
+    pub system_program: Program<'info, System>,
+}
+"#,
+    );
+
+    assert!(
+        !has_code_and_message(
+            &diagnostics,
+            ANCHOR_CONSTRAINT_SHAPE_CODE,
+            "must be an Anchor token program account"
+        ),
+        "Program<Token2022> must not trigger token-program-type diagnostic for InterfaceAccount<TokenAccount> init"
+    );
+}
+
 #[test]
 fn reports_incomplete_token_account_init_shape() {
     let diagnostics = diagnostics_for(
@@ -464,4 +572,32 @@ pub struct UseMint<'info> {
         ANCHOR_CONSTRAINT_SHAPE_CODE,
         "mint constraints require `Account<'info, Mint>`"
     ));
+}
+
+#[test]
+fn accepts_import_alias_for_interface_account_mint_constraints() {
+    let diagnostics = diagnostics_for(
+        r#"
+use anchor_spl::{
+    token_2022::Token2022,
+    token_interface::Mint as MintAccount,
+};
+
+#[derive(Accounts)]
+pub struct ChangeMode<'info> {
+    #[account(mut, mint::token_program = token_program)]
+    pub mint: InterfaceAccount<'info, MintAccount>,
+    pub token_program: Program<'info, Token2022>,
+}
+"#,
+    );
+
+    assert!(
+        !has_code_and_message(
+            &diagnostics,
+            ANCHOR_CONSTRAINT_SHAPE_CODE,
+            "mint constraints require `InterfaceAccount<'info, Mint>`"
+        ),
+        "import alias for token-interface Mint must satisfy mint constraint applicability"
+    );
 }

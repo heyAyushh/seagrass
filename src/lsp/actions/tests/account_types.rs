@@ -278,33 +278,19 @@ pub struct Create<'info> {
 "#;
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = crate::diagnostics::collect(&document);
-    let diagnostic = diagnostics
-        .iter()
-        .find(|diagnostic| {
-            diagnostic_code(diagnostic) == Some("anchor-constraint-shape")
-                && diagnostic
+
+    assert!(
+        diagnostics.iter().all(|diagnostic| {
+            diagnostic_code(diagnostic) != Some("anchor-constraint-shape")
+                || diagnostic
                     .data
                     .as_ref()
                     .and_then(|data| data.get("quickfix"))
                     .and_then(|value| value.as_str())
-                    == Some("program-field-type")
-        })
-        .unwrap();
-    let actions = code_actions(
-        &document,
-        Url::parse("file:///tmp/lib.rs").unwrap(),
-        diagnostic.range,
-        &diagnostics,
+                    != Some("program-field-type")
+        }),
+        "Program<Token> is a valid token program for InterfaceAccount token init"
     );
-
-    let action = actions
-        .iter()
-        .find(|action| action.title.contains("Interface<'info, TokenInterface>"))
-        .expect("expected token interface type quickfix");
-    let edit = action.edit.as_ref().unwrap();
-    let changes = edit.changes.as_ref().unwrap();
-    let text_edit = changes.values().next().unwrap().first().unwrap();
-    assert_eq!(text_edit.new_text, "Interface<'info, TokenInterface>");
 }
 #[test]
 fn interface_token_mint_reference_quickfix_replaces_mint_wrapper() {

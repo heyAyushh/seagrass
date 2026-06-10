@@ -7,7 +7,9 @@
 /// separately in `external_corpus` below; those trees are gitignored and only
 /// exercised when `CORPUS_ENABLED=1` is set in the environment.
 use {
-    crate::{diagnostics::collect_with_workspace, document::ParsedDocument, workspace::WorkspaceIndex},
+    crate::{
+        diagnostics::collect_with_workspace, document::ParsedDocument, workspace::WorkspaceIndex,
+    },
     std::{fs, path::Path, path::PathBuf},
     tower_lsp::lsp_types::{DiagnosticSeverity, Url},
 };
@@ -20,8 +22,7 @@ fn committed_corpus_root() -> PathBuf {
 /// Locate `corpus/programs/` — the gitignored external fetch directory — at the
 /// workspace root (one level above the crate manifest directory).
 fn external_programs_dir() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("corpus/programs")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("corpus/programs")
 }
 
 /// Return all immediate sub-directories of `dir`, sorted for determinism.
@@ -102,8 +103,7 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
 fn assert_no_errors_in_program(program_src_dir: &Path) {
     let root_url = Url::from_directory_path(program_src_dir)
         .expect("program src dir must be an absolute path");
-    let workspace_index =
-        WorkspaceIndex::build(&[root_url], std::iter::empty::<(Url, String)>());
+    let workspace_index = WorkspaceIndex::build(&[root_url], std::iter::empty::<(Url, String)>());
 
     let source_files = rust_files_in(program_src_dir);
     assert!(
@@ -162,8 +162,7 @@ fn assert_no_errors_in_program(program_src_dir: &Path) {
 fn collect_errors_in_program(program_src_dir: &Path) -> Vec<(PathBuf, String)> {
     let root_url = Url::from_directory_path(program_src_dir)
         .expect("program src dir must be an absolute path");
-    let workspace_index =
-        WorkspaceIndex::build(&[root_url], std::iter::empty::<(Url, String)>());
+    let workspace_index = WorkspaceIndex::build(&[root_url], std::iter::empty::<(Url, String)>());
 
     let mut errors = Vec::new();
 
@@ -308,7 +307,7 @@ fn external_corpus() {
             total_errors += error_count;
 
             if error_count == 0 {
-                println!("  [{}] {} — 0 errors", program_name, src_dir.display());
+                println!("  [{program_name}] clean corpus source root");
             } else {
                 println!(
                     "  [{}] {} — {} ERROR(s):",

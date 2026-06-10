@@ -53,8 +53,7 @@ impl<'ast> Visit<'ast> for RawAccountFileVisitor<'_> {
     /// and the method body is never checked — an under-report that is
     /// inconsistent with free-function handling.
     fn visit_impl_item_fn(&mut self, node: &'ast syn::ImplItemFn) {
-        let context_names =
-            context_argument_names_for_impl_method(node, self.accounts_name);
+        let context_names = context_argument_names_for_impl_method(node, self.accounts_name);
         if context_names.is_empty() {
             return;
         }

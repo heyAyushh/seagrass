@@ -71,10 +71,7 @@ pub struct InitPr<'info> {
     assert_has_attack(&diagnostics, "pda-seed-collision");
     // Every colliding site must be WARNING, never ERROR (Heuristic provability).
     for diagnostic in &diagnostics {
-        if diagnostic
-            .data
-            .as_ref()
-            .and_then(|d| d.get("attack"))
+        if diagnostic.data.as_ref().and_then(|d| d.get("attack"))
             == Some(&serde_json::json!("pda-seed-collision"))
         {
             assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));

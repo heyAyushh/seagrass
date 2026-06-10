@@ -184,6 +184,9 @@ fn payer_mutability_diagnostics(
                 && reference.name != initialized_or_realloced_field.field.name
         })
         .filter_map(|reference| {
+            if reference_uses_member_path(constraint, reference.key, reference.name) {
+                return None;
+            }
             let payer = accounts
                 .fields()
                 .iter()
@@ -225,6 +228,16 @@ fn payer_mutability_diagnostics(
         })
         .collect()
 }
+
+fn reference_uses_member_path(constraint: &ConstraintEvidence<'_>, key: &str, name: &str) -> bool {
+    constraint.values_after_key(key).into_iter().any(|value| {
+        let Some(rest) = value.trim_start().strip_prefix(name) else {
+            return false;
+        };
+        rest.trim_start().starts_with('.')
+    })
+}
+
 fn realloc_diagnostics(
     accounts: &AccountSetEvidence<'_>,
     field: &FieldEvidence<'_>,

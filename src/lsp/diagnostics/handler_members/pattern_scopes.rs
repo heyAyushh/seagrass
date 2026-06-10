@@ -17,7 +17,10 @@ impl HandlerMemberVisitor<'_> {
         self.declare_signature_typed_inputs(&method.sig.inputs);
     }
 
-    fn declare_signature_typed_inputs(&mut self, inputs: &syn::punctuated::Punctuated<FnArg, syn::token::Comma>) {
+    fn declare_signature_typed_inputs(
+        &mut self,
+        inputs: &syn::punctuated::Punctuated<FnArg, syn::token::Comma>,
+    ) {
         for input in inputs {
             let FnArg::Typed(pat_type) = input else {
                 // `self` receiver: no resolvable type annotation available here.

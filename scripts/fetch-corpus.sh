@@ -15,6 +15,17 @@
 
 set -euo pipefail
 
+# Verify python3 >= 3.11 (required for stdlib tomllib).
+python3 - <<'PYEOF'
+import sys
+if sys.version_info < (3, 11):
+    print(
+        f"ERROR: python3 >= 3.11 required (got {sys.version}); tomllib is stdlib from 3.11.",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+PYEOF
+
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 MANIFEST="$REPO_ROOT/corpus/manifest.toml"
 PROGRAMS_DIR="$REPO_ROOT/corpus/programs"

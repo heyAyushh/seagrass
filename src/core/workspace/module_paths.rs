@@ -30,17 +30,13 @@ pub(super) fn module_path_segments(file_uri: &Url) -> Option<Vec<String>> {
     let file_path = file_uri.to_file_path().ok()?;
 
     // Collect all path components so we can search for the `src` boundary.
-    let all_components: Vec<&std::ffi::OsStr> = file_path
-        .components()
-        .map(|c| c.as_os_str())
-        .collect();
+    let all_components: Vec<&std::ffi::OsStr> =
+        file_path.components().map(|c| c.as_os_str()).collect();
 
     // Find the index of the last `src` component — the one directly above
     // the module files.  We take the *last* occurrence to handle layouts like
     // `workspace/programs/demo/src/…` correctly.
-    let src_index = all_components
-        .iter()
-        .rposition(|c| *c == SRC_DIR)?;
+    let src_index = all_components.iter().rposition(|c| *c == SRC_DIR)?;
 
     // Components after `src/` are the module path components.
     let module_components = &all_components[src_index + 1..];
@@ -81,7 +77,8 @@ fn is_valid_module_name(name: &str) -> bool {
     let Some(first) = chars.next() else {
         return false;
     };
-    (first.is_ascii_alphabetic() || first == '_') && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    (first.is_ascii_alphabetic() || first == '_')
+        && chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 #[cfg(test)]
@@ -133,8 +130,7 @@ mod tests {
     fn programs_anchor_layout_is_handled() {
         // The canonical Anchor layout has `programs/<name>/src/<file>.rs`.
         // There is a `src` component in the path, so the function finds it.
-        let segments =
-            module_path_segments(&url("/workspace/programs/demo/src/state.rs"));
+        let segments = module_path_segments(&url("/workspace/programs/demo/src/state.rs"));
         assert_eq!(
             segments,
             Some(vec!["crate".to_string(), "state".to_string()])

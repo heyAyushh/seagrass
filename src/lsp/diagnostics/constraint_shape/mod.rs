@@ -52,7 +52,9 @@ fn field_diagnostics(
             accounts, field, constraint,
         ));
         diagnostics.extend(catalog::diagnostics(document, field, constraint));
-        diagnostics.extend(applicability::constraint_diagnostics(field, constraint));
+        diagnostics.extend(applicability::constraint_diagnostics(
+            document, field, constraint,
+        ));
         diagnostics.extend(token::constraint_diagnostics(accounts, field, constraint));
         diagnostics.extend(has_one::diagnostic(
             document,

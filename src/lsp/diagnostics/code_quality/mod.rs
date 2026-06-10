@@ -644,8 +644,12 @@ fn pda_seed_collision_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> 
         .flat_map(|(shorter_key, longer_key)| {
             // Both sites are guaranteed present because `prefix_collisions` only
             // reports keys that were actually inserted.
-            let shorter_site = trie.get(shorter_key.iter().copied()).expect("shorter site must be in trie");
-            let longer_site  = trie.get(longer_key.iter().copied()).expect("longer site must be in trie");
+            let shorter_site = trie
+                .get(shorter_key.iter().copied())
+                .expect("shorter site must be in trie");
+            let longer_site = trie
+                .get(longer_key.iter().copied())
+                .expect("longer site must be in trie");
 
             [
                 pda_seed_prefix_collision_diagnostic(shorter_site, &longer_site.display),

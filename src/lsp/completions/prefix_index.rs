@@ -267,9 +267,7 @@ mod tests {
         let index = constraint_key_index();
         let results = index.specs_with_prefix("seeds::");
         assert!(
-            results
-                .iter()
-                .any(|spec| spec.label == "seeds::program ="),
+            results.iter().any(|spec| spec.label == "seeds::program ="),
             "expected 'seeds::program =' for prefix 'seeds::'"
         );
     }
@@ -325,10 +323,7 @@ mod tests {
         );
         for completion in &results {
             assert!(
-                completion
-                    .label
-                    .to_ascii_lowercase()
-                    .starts_with("sysvar"),
+                completion.label.to_ascii_lowercase().starts_with("sysvar"),
                 "unexpected label '{}' for prefix 'Sysvar'",
                 completion.label
             );

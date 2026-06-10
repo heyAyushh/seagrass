@@ -11,6 +11,7 @@ use {
     tower_lsp::lsp_types::{Position, Range},
 };
 
+mod composites;
 mod summaries;
 
 pub use summaries::summary;
@@ -68,11 +69,12 @@ impl<'a> AccountSetEvidence<'a> {
         let instructions =
             reachable_instructions_for_accounts(document, accounts, workspace_reachable_functions);
 
-        let account_names = accounts
+        let mut account_names = accounts
             .fields
             .iter()
             .map(|field| field.name.as_str())
             .collect::<HashSet<_>>();
+        account_names.extend(composites::account_names(document, accounts));
         let instruction_argument_names = instructions
             .iter()
             .flat_map(|instruction| instruction.arguments.iter())

@@ -257,6 +257,12 @@ fn system_program_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Code
                 .and_then(|data| data.get("expected"))
                 .and_then(|value| value.as_str())
                 .unwrap_or("Program<'info, System>");
+            let quickfix_type = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfixType"))
+                .and_then(|value| value.as_str())
+                .unwrap_or(expected);
             let field_name = diagnostic
                 .data
                 .as_ref()
@@ -266,11 +272,11 @@ fn system_program_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Code
             let mut changes = HashMap::new();
             changes.insert(
                 uri.clone(),
-                vec![snippet_text_edit(diagnostic.range, expected)],
+                vec![snippet_text_edit(diagnostic.range, quickfix_type)],
             );
 
             CodeAction {
-                title: format!("Change `{field_name}` type to `{expected}`"),
+                title: format!("Change `{field_name}` type to `{quickfix_type}`"),
                 kind: Some(CodeActionKind::QUICKFIX),
                 diagnostics: Some(vec![diagnostic.clone()]),
                 edit: Some(WorkspaceEdit {
@@ -285,6 +291,7 @@ fn system_program_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Code
                     "anchorAction": "program-field-type",
                     "field": field_name,
                     "expected": expected,
+                    "quickfixType": quickfix_type,
                 })),
             }
         })
@@ -317,6 +324,12 @@ fn add_missing_system_program_actions(
                 .and_then(|data| data.get("expected"))
                 .and_then(|value| value.as_str())
                 .unwrap_or_else(|| default_program_field_type(missing));
+            let quickfix_type = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfixType"))
+                .and_then(|value| value.as_str())
+                .unwrap_or(expected);
             let accounts_name = diagnostic
                 .data
                 .as_ref()
@@ -336,7 +349,7 @@ fn add_missing_system_program_actions(
                         character: 0,
                     },
                 },
-                &format!("{indent}pub {missing}: {expected},\n"),
+                &format!("{indent}pub {missing}: {quickfix_type},\n"),
             );
             let mut changes = HashMap::new();
             changes.insert(uri.clone(), vec![edit]);
@@ -358,6 +371,7 @@ fn add_missing_system_program_actions(
                     "accountsStruct": accounts_name,
                     "field": missing,
                     "expected": expected,
+                    "quickfixType": quickfix_type,
                 })),
             })
         })

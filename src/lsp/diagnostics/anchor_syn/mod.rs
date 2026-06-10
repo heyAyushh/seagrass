@@ -142,6 +142,7 @@ fn unresolved_account_generic_diagnostics(
                 &declared_type_params,
                 &local_struct_names,
                 &inferred_expected,
+                document,
                 workspace_index,
             )
         })
@@ -156,16 +157,20 @@ fn unresolved_account_generic_diagnostic(
         String,
         account_semantics::ExpectedAccountInnerType,
     >,
+    document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Option<Diagnostic> {
     let field_name = field.ident.as_ref()?.to_string();
     let (container, generic, generic_range, container_range, boxed_wrapper) =
         account_generic_argument(&field.ty)?;
+    let resolved_generic = document.symbols().resolve_type_alias(&generic);
 
     if declared_type_params.contains(&generic)
         || local_struct_names.contains(&generic)
+        || local_struct_names.contains(resolved_generic)
         || is_known_workspace_type(workspace_index, &generic)
-        || is_generated_anchor_account_inner_type(&container, &generic)
+        || is_known_workspace_type(workspace_index, resolved_generic)
+        || is_generated_anchor_account_inner_type(&container, resolved_generic)
     {
         return None;
     }

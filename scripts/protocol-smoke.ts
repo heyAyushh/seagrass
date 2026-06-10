@@ -1570,6 +1570,17 @@ try {
   }
 
   notify("initialized", {});
+  notify("workspace/didChangeConfiguration", {
+    settings: {
+      seagrass: {
+        diagnostics: {
+          artifacts: {
+            enabled: true,
+          },
+        },
+      },
+    },
+  });
 
   openDocument(formattingUri, formattingSmokeSource);
   const formattingEdits = await request<TextEdit[] | null>("textDocument/formatting", {

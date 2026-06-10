@@ -491,6 +491,9 @@ fn settings_accept_flat_and_nested_vscode_shapes() {
             "diagnostics.security.enabled": false,
             "diagnostics": {
                 "coldPath": "save",
+                "artifacts": {
+                    "enabled": true
+                },
                 "experimental": {
                     "enabled": false
                 }
@@ -524,6 +527,7 @@ fn settings_accept_flat_and_nested_vscode_shapes() {
 
     assert!(!settings.security_diagnostics);
     assert!(!settings.experimental_diagnostics);
+    assert!(settings.artifact_diagnostics);
     assert_eq!(
         settings.security_levels.get("security.ownerChecks"),
         Some(&diagnostics::DiagnosticLevel::Error)

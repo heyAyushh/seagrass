@@ -169,7 +169,11 @@ pub const CLOCK_FIELDS: &[&str] = &[
 ];
 
 /// Field names for [`solana_program::rent::Rent`] in struct-definition order.
-pub const RENT_FIELDS: &[&str] = &["lamports_per_byte_year", "exemption_threshold", "burn_percent"];
+pub const RENT_FIELDS: &[&str] = &[
+    "lamports_per_byte_year",
+    "exemption_threshold",
+    "burn_percent",
+];
 
 #[cfg(test)]
 mod runtime_catalog_parity {

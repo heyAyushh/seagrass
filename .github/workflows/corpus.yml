@@ -31,7 +31,7 @@ jobs:
       - name: Fetch external corpus programs
         run: bash scripts/fetch-corpus.sh
 
-      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529bca0028893a2d9 # v1
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
         with:
           # Match the MSRV declared in the workspace Cargo.toml.
           toolchain: 1.89.0

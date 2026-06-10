@@ -5,6 +5,13 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: accept compatible SPL token program accounts for Token-2022/interface
+  token initialization, resolve token-interface import aliases, and silence
+  unprovable composite payer member-path checks found by the external corpus.
+- test: add committed corpus regressions for SPL token-program compatibility
+  and composite payer references, and make external-corpus setup fail early
+  when Python is too old for `tomllib`.
+
 ## [0.1.2] - 2026-06-05
 
 - client: expose Seagrass analysis, program report, error coverage, support

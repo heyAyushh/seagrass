@@ -380,6 +380,67 @@ pub struct Create<'info> {
         "`user` pays for `state` via `payer` but is missing `#[account(mut)]`"
     ));
 }
+
+#[test]
+fn no_payer_diagnostic_when_payer_is_in_composite_sub_struct() {
+    let diagnostics = diagnostics_for(
+        r#"
+#[derive(Accounts)]
+pub struct SharedSigners<'info> {
+    #[account(mut)]
+    pub payer: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = payer, space = 8 + 32)]
+    pub record: Account<'info, Record>,
+    pub signers: SharedSigners<'info>,
+    pub system_program: Program<'info, System>,
+}
+"#,
+    );
+
+    assert!(
+        !has_code_and_message(
+            &diagnostics,
+            ANCHOR_CONSTRAINT_SHAPE_CODE,
+            "missing `#[account(mut)]"
+        ),
+        "payer in a nested sub-struct must not trigger a false missing-mut diagnostic"
+    );
+    assert!(
+        !has_code_and_message(&diagnostics, ANCHOR_CONSTRAINT_SHAPE_CODE, "pays for"),
+        "no payer-shape diagnostic expected when payer is in a composite sub-struct"
+    );
+}
+
+#[test]
+fn no_payer_diagnostic_for_member_path_payer_reference() {
+    let diagnostics = diagnostics_for(
+        r#"
+#[derive(Accounts)]
+pub struct SharedTrade<'info> {
+    #[account(mut)]
+    pub taker: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    pub trade: SharedTrade<'info>,
+    #[account(init, payer = trade.taker, space = 8 + 32)]
+    pub record: Account<'info, Record>,
+    pub system_program: Program<'info, System>,
+}
+"#,
+    );
+
+    assert!(
+        !has_code_and_message(&diagnostics, ANCHOR_CONSTRAINT_SHAPE_CODE, "pays for"),
+        "member-path payer references must not diagnose the composite container"
+    );
+}
+
 #[test]
 fn reports_required_init_with_optional_payer() {
     let diagnostics = diagnostics_for(

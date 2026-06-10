@@ -276,9 +276,9 @@ fn document_has_local_glob_import(document: &ParsedDocument) -> bool {
 
     let mut scan = GlobScan::default();
     scan.visit_file(document.syntax());
-    scan.glob_roots.iter().any(|root| {
-        LOCAL_GLOB_ROOTS.contains(&root.as_str()) || scan.module_names.contains(root)
-    })
+    scan.glob_roots
+        .iter()
+        .any(|root| LOCAL_GLOB_ROOTS.contains(&root.as_str()) || scan.module_names.contains(root))
 }
 
 /// The leading path segment of a `use` tree that terminates in a glob, e.g.

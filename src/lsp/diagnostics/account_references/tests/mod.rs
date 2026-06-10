@@ -61,6 +61,35 @@ pub struct Create<'info> {
 }
 
 #[test]
+fn no_missing_reference_for_account_in_composite_sub_struct() {
+    let diagnostics = collect(
+        &ParsedDocument::parse(
+            r#"
+#[derive(Accounts)]
+pub struct SharedSigners<'info> {
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct Update<'info> {
+    #[account(has_one = authority)]
+    pub record: Account<'info, Record>,
+    pub signers: SharedSigners<'info>,
+}
+"#,
+        )
+        .unwrap(),
+    );
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("authority")),
+        "account in composite sub-struct must not be flagged as missing reference"
+    );
+}
+
+#[test]
 fn missing_reference_related_information_lists_candidate_fields() {
     let diagnostics = diagnostics_for(
         r#"

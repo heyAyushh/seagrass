@@ -3,6 +3,7 @@ use {
         account_semantics::{self, ResolvedAccountType},
         constraint_catalog::{self, ConstraintFamily},
         diagnostics::{diagnostic_from_range, registry::AnchorDiagnosticKind},
+        document::ParsedDocument,
         evidence::{ConstraintEvidence, FieldEvidence},
     },
     tower_lsp::lsp_types::Diagnostic,
@@ -15,10 +16,14 @@ enum ExpectedAccountKind {
 }
 
 pub(super) fn constraint_diagnostics(
+    document: &ParsedDocument,
     field: &FieldEvidence<'_>,
     constraint: &ConstraintEvidence<'_>,
 ) -> Vec<Diagnostic> {
-    let declared_type = account_semantics::resolve_declared_field_account_type(field.field);
+    let declared_type = account_semantics::resolve_declared_field_account_type_with_symbols(
+        document.symbols(),
+        field.field,
+    );
     if declared_type == ResolvedAccountType::Unknown {
         return Vec::new();
     }

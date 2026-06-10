@@ -118,13 +118,13 @@ repo    = "https://github.com/tensor-foundation/amm"
 sha     = "f6aab5e5b7ad20b0085561321eb1ebf484fe076d"
 license = "Apache-2.0"
 
-# SPL token — subpath caveat: token/program may be wrong at this SHA
+# SPL token-swap — verified at 264ca72: token/program is absent; token-swap/program exists.
 # Last push: 2025-03-11  [STALE]
 [[program]]
 name    = "spl-token"
 repo    = "https://github.com/solana-labs/solana-program-library"
 sha     = "264ca72de06b0c2b45c0b15d298000fe3f82db2e"
-subpath = "token/program"
+subpath = "token-swap/program"
 license = "Apache-2.0"
 
 # ---------------------------------------------------------------------------

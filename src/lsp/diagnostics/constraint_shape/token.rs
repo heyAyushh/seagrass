@@ -6,6 +6,10 @@ use {
     tower_lsp::lsp_types::Diagnostic,
 };
 
+const TOKEN_PROGRAM_EXPECTED_TYPE: &str = "Program<'info, Token>, Program<'info, Token2022>, Program<'info, TokenInterface>, or Interface<'info, TokenInterface>";
+const DEFAULT_TOKEN_PROGRAM_QUICKFIX_TYPE: &str = "Program<'info, Token>";
+const INTERFACE_TOKEN_PROGRAM_QUICKFIX_TYPE: &str = "Interface<'info, TokenInterface>";
+
 pub(super) fn constraint_diagnostics(
     accounts: &AccountSetEvidence<'_>,
     field: &FieldEvidence<'_>,
@@ -144,6 +148,9 @@ fn token_interface_mint_reference_diagnostic(
     if mint.type_name() == Some("InterfaceAccount") && mint.has_generic_type("Mint") {
         return None;
     }
+    if !token_data_uses_extension_program(accounts, constraint) {
+        return None;
+    }
     if !mint.has_generic_type("Mint") {
         return None;
     }
@@ -163,6 +170,35 @@ fn token_interface_mint_reference_diagnostic(
             "expected": "InterfaceAccount<'info, Mint>",
         })),
     ))
+}
+fn token_data_uses_extension_program(
+    accounts: &AccountSetEvidence<'_>,
+    constraint: &ConstraintEvidence<'_>,
+) -> bool {
+    token_program_for_token_data(accounts, constraint).is_some_and(|program| {
+        program.has_generic_type("Token2022") || program.has_generic_type("TokenInterface")
+    })
+}
+fn token_program_for_token_data<'a>(
+    accounts: &'a AccountSetEvidence<'a>,
+    constraint: &ConstraintEvidence<'_>,
+) -> Option<&'a FieldEvidence<'a>> {
+    let program_name = constraint
+        .account_references()
+        .into_iter()
+        .find(|reference| {
+            matches!(
+                reference.key,
+                "token::token_program" | "associated_token::token_program"
+            )
+        })
+        .map(|reference| reference.name)
+        .unwrap_or("token_program");
+
+    accounts
+        .fields()
+        .iter()
+        .find(|field| field.field.name == program_name)
 }
 fn token_program_init_diagnostics(
     accounts: &AccountSetEvidence<'_>,
@@ -255,6 +291,7 @@ fn required_token_program_diagnostic(
                 "constraint": "init",
                 "quickfix": "program-field-type",
                 "expected": token_program_type_for_initialized_field(field),
+                "quickfixType": token_program_quickfix_type_for_initialized_field(field),
             })),
         )),
         None => Some(diagnostic_from_range(
@@ -270,6 +307,7 @@ fn required_token_program_diagnostic(
                 "constraint": "init",
                 "missing": program_name,
                 "expected": token_program_type_for_initialized_field(field),
+                "quickfixType": token_program_quickfix_type_for_initialized_field(field),
             })),
         )),
     }
@@ -346,21 +384,19 @@ fn required_associated_token_program_diagnostic(
         )),
     }
 }
-fn is_token_program_field(program: &FieldEvidence<'_>, initialized: &FieldEvidence<'_>) -> bool {
-    if initialized.type_name() == Some("InterfaceAccount") {
-        return program.type_name() == Some("Interface")
-            && program.has_generic_type("TokenInterface");
-    }
-
-    (program.type_name() == Some("Program") || program.type_name() == Some("Interface"))
+fn is_token_program_field(program: &FieldEvidence<'_>, _initialized: &FieldEvidence<'_>) -> bool {
+    matches!(program.type_name(), Some("Program") | Some("Interface"))
         && (program.has_generic_type("Token")
             || program.has_generic_type("Token2022")
             || program.has_generic_type("TokenInterface"))
 }
-fn token_program_type_for_initialized_field(field: &FieldEvidence<'_>) -> &'static str {
+fn token_program_type_for_initialized_field(_field: &FieldEvidence<'_>) -> &'static str {
+    TOKEN_PROGRAM_EXPECTED_TYPE
+}
+fn token_program_quickfix_type_for_initialized_field(field: &FieldEvidence<'_>) -> &'static str {
     if field.type_name() == Some("InterfaceAccount") {
-        "Interface<'info, TokenInterface>"
+        INTERFACE_TOKEN_PROGRAM_QUICKFIX_TYPE
     } else {
-        "Program<'info, Token>"
+        DEFAULT_TOKEN_PROGRAM_QUICKFIX_TYPE
     }
 }

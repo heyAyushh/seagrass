@@ -562,6 +562,37 @@ fn process_instruction() {}
         assert_eq!(program.name, "native_sbf");
     }
 
+    #[test]
+    fn detects_anchor_program_from_anchor_toml_without_cargo_manifest() {
+        let root = unique_temp_dir("seagrass-anchor-project");
+        let source_dir = root.join("programs/artifact-demo/src");
+        fs::create_dir_all(&source_dir).unwrap();
+        fs::write(
+            root.join("Anchor.toml"),
+            r#"
+[programs.localnet]
+artifact_demo = "Artifact1111111111111111111111111111111"
+"#,
+        )
+        .unwrap();
+        let source = r#"
+use anchor_lang::prelude::*;
+
+declare_id!("Artifact1111111111111111111111111111111");
+"#;
+        let lib = source_dir.join("lib.rs");
+        fs::write(&lib, source).unwrap();
+        let document = ParsedDocument::parse(source).unwrap();
+        let uri = Url::from_file_path(lib).unwrap();
+
+        let program = detect_for_document(&uri, &document).unwrap();
+
+        assert_eq!(program.kind, SolanaProjectKind::Anchor);
+        assert_eq!(program.name, "artifact_demo");
+        assert_eq!(program.root, root);
+        assert_eq!(program.source_root, Some(source_dir));
+    }
+
     fn unique_temp_dir(name: &str) -> PathBuf {
         let nonce = SystemTime::now()
             .duration_since(UNIX_EPOCH)

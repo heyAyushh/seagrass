@@ -127,11 +127,17 @@ pub fn resolve_field_account_type(
     resolve_field_type_parts(field, type_name, inner)
 }
 
-pub fn resolve_declared_field_account_type(field: &SymbolRange) -> ResolvedAccountType {
+pub fn resolve_declared_field_account_type_with_symbols(
+    symbols: &crate::document::AnchorSymbols,
+    field: &SymbolRange,
+) -> ResolvedAccountType {
     resolve_field_type_parts(
         field,
         field.type_name.as_deref(),
-        field.generic_type_names.last().map(String::as_str),
+        field
+            .generic_type_names
+            .last()
+            .map(|inner| symbols.resolve_type_alias(inner)),
     )
 }
 

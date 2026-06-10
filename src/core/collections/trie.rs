@@ -81,10 +81,7 @@ impl<S: Ord + Clone, V> Trie<S, V> {
     /// An empty prefix collects every entry in the trie.
     /// Results are yielded in lexicographic key order (because children use
     /// `BTreeMap`).
-    pub fn collect_with_prefix(
-        &self,
-        prefix: impl IntoIterator<Item = S>,
-    ) -> Vec<(Vec<S>, &V)> {
+    pub fn collect_with_prefix(&self, prefix: impl IntoIterator<Item = S>) -> Vec<(Vec<S>, &V)> {
         // Walk down to the node that represents the end of `prefix`, collecting
         // the consumed symbols so we can reconstruct full keys below.
         let mut prefix_key: Vec<S> = Vec::new();
@@ -112,10 +109,7 @@ impl<S: Ord + Clone, V> Trie<S, V> {
     /// stored key is a prefix of `key`.
     ///
     /// When `key` itself is stored, that is the longest match and is returned.
-    pub fn longest_prefix_of(
-        &self,
-        key: impl IntoIterator<Item = S>,
-    ) -> Option<(usize, &V)> {
+    pub fn longest_prefix_of(&self, key: impl IntoIterator<Item = S>) -> Option<(usize, &V)> {
         let mut node = &self.root;
         let mut depth: usize = 0;
         // Track the deepest node that had a value, together with its depth.

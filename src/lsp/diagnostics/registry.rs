@@ -583,7 +583,10 @@ mod tests {
             let _ = kind.provability();
         }
         // Verify `all()` has no duplicates by checking that all codes are distinct.
-        let codes: Vec<&str> = AnchorDiagnosticKind::all().iter().map(|k| k.code()).collect();
+        let codes: Vec<&str> = AnchorDiagnosticKind::all()
+            .iter()
+            .map(|k| k.code())
+            .collect();
         let unique_count = {
             let mut seen = std::collections::HashSet::new();
             codes.iter().filter(|c| seen.insert(*c)).count()
