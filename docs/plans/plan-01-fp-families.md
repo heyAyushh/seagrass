@@ -54,6 +54,85 @@ assume tests pass at step entry.
 
 ---
 
+## RESUME STATE (2026-06-10 — read this first, supersedes step ordering below)
+
+A previous executor was stopped mid-plan. Its work is **uncommitted in the working
+tree** (21 modified files — do NOT discard or re-baseline over them). Current
+state, verified by an independent reviewer:
+
+### Already done (do not redo)
+- **Step 1 (FP family A)** — `is_token_program_field` in
+  `src/lsp/diagnostics/constraint_shape/token.rs` now accepts
+  `Program|Interface` × `Token|Token2022|TokenInterface` regardless of the
+  initialized field's wrapper. `token_program_type_for_initialized_field` returns
+  the new `TOKEN_PROGRAM_EXPECTED_TYPE` multi-option string constant.
+- **Step 2 (FP family B)** — composite account names landed in
+  `src/core/evidence/mod.rs` (+20); regression tests added in
+  `constraint_shape/tests/init_lifecycle_tests.rs` (+35) and
+  `account_references/tests/mod.rs` (+29).
+- **Step 4 (alias triage) — resolved as a code fix, beyond plan scope but correct**:
+  the `InterfaceAccount<MintAccount>` case was a single-file import alias
+  (`use ...::Mint as MintAccount`). Fixed generally: `spl_semantics.rs` (+114)
+  resolves import aliases, and `constraint_shape/applicability.rs` now calls
+  `account_semantics::resolve_declared_field_account_type_with_symbols(document.symbols(), ...)`
+  (alias-aware). The triage comment required by Step 4 has NOT been written yet.
+- New regression tests in `constraint_shape/tests/token_tests.rs` (+110).
+- First full corpus run after Step 1/2 fixes: token-program greps returned zero.
+  A second confirmation run (after the alias fix) was interrupted — must re-run.
+
+### BROKEN RIGHT NOW — fix before anything else
+`cargo test --workspace` = **1488 passed, 4 failed**. All 4 in
+`src/lsp/actions/tests/account_types.rs`, all panicking at the
+diagnostic-find `.unwrap()` (the expected `anchor-constraint-shape` token-program
+diagnostic is not in `crate::diagnostics::collect()` output for the fixture):
+
+1. `offers_missing_token_program_field_quickfix` (panic line 170)
+2. `missing_token_program_quickfix_uses_token_interface_for_interface_account` (216)
+3. `offers_program_field_type_quickfix_for_token_program` (263)
+4. `token_program_type_quickfix_uses_token_interface_for_interface_account` (292)
+
+Diagnosis so far (verify before editing):
+- Test 4's fixture (`InterfaceAccount` data + `Program<'info, Token>` program) IS
+  FP family A — the diagnostic correctly no longer fires. This test asserts the
+  old wrong behavior. Update it: assert NO token-program-type diagnostic fires
+  (and remove/replace its quickfix expectations).
+- Tests 1–3 are TRUE positives (missing token_program field / `Program<System>`
+  as token program) that should still fire. The token.rs widening alone cannot
+  suppress a missing-field diagnostic, so the prime suspect is the
+  applicability change: `resolve_declared_field_account_type_with_symbols` may
+  return `Unknown` for fixtures that do not `use anchor_spl::token::{TokenAccount, Mint}`
+  (the test sources have no imports), and the new early-return
+  `if declared_type == ResolvedAccountType::Unknown { return Vec::new(); }` then
+  suppresses everything. Confirm by dumping `crate::diagnostics::collect()` for
+  test 1's fixture. If confirmed, the fix must keep bare unimported type names
+  resolvable (single-file syntax: a bare `TokenAccount` ident with no conflicting
+  local definition and no alias is still catalog truth) — do NOT fix by adding
+  imports to the test fixtures; real user code also omits imports mid-edit.
+- Separately verify the "Add `token_program`" quickfix insertion text: with
+  `token_program_type_for_initialized_field` now returning the multi-option
+  string, check whether any code action interpolates it into inserted code
+  (`pub token_program: <THAT STRING>` would be invalid Rust). The insertion
+  source may be `default_program_field_type` in `src/lsp/actions/accounts/mod.rs`
+  (keyed by field name) — confirm which one feeds the edit, and keep diagnostic
+  message text and quickfix insertion text separate concerns.
+
+### Remaining steps, in order
+1. Fix the 4 tests as diagnosed above (general fixes only — corpus-fix rule).
+2. Step 3 — committed fixtures `fp_family_a_token_interface` / `fp_family_b_composite_payer`.
+3. Step 4 — write the triage outcome comment near the alias handling in
+   `spl_semantics.rs` (the fix exists; the record does not).
+4. Step 5 — corpus caveats. For 5c: CONFIRMED the hash in
+   `.github/workflows/corpus.yml` is a one-character corruption — it reads
+   `...bca0028893a2d9` while every other workflow pins
+   `dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9` (`dca`).
+   Fix by matching the other workflows' hash exactly.
+5. Step 6 — final validation, including a full
+   `CORPUS_ENABLED=1 cargo test external_corpus` re-run (the post-alias-fix
+   confirmation run was interrupted).
+6. Commit the whole plan-01 work as focused commits only when green.
+
+---
+
 ## Non-Goals
 
 - Do NOT implement whole-program Rust type/name resolution.
