@@ -723,7 +723,6 @@ pub struct Route<'info> {
         let report = analyze_path(&source_path).unwrap();
         let compute =
             compute_analysis_json(report.static_layer.files.first().expect("file report"));
-
         assert_eq!(compute["status"].as_str(), Some("staticBytecodeAvailable"));
         assert_eq!(compute["bytecode"]["sbfInstructionCount"].as_u64(), Some(5));
         assert_eq!(
@@ -771,7 +770,6 @@ pub struct Empty<'info> {
         .unwrap();
 
         let report = analyze_path(&temp_root).unwrap();
-
         assert_eq!(report.static_layer.totals.files, 2);
         assert_eq!(report.static_layer.totals.instructions, 1);
         assert_eq!(report.static_layer.totals.account_contexts, 2);

@@ -279,7 +279,6 @@ pub fn run(ctx: Context<Run>) -> Result<()> {
     .unwrap();
 
     let diagnostics = collect_with_workspace(&document, None);
-
     assert!(
         diagnostics.iter().any(|diagnostic| {
             diagnostic
@@ -660,7 +659,6 @@ pub struct Position {
     .unwrap();
 
     let diagnostics = collect_with_workspace(&document, None);
-
     assert!(
         diagnostics
             .iter()

@@ -25,7 +25,6 @@ pub struct StateConfig {
 "#;
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = collect(&document);
-
     assert!(diagnostics
         .iter()
         .any(|diagnostic| diagnostic.message.contains("`state.config.missing`")));
@@ -52,7 +51,6 @@ pub struct StateConfig {
 "#;
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = collect(&document);
-
     assert!(diagnostics
         .iter()
         .any(|diagnostic| diagnostic.message.contains("`state.config.missing`")));
@@ -69,7 +67,6 @@ pub struct Run<'info> {
 "#;
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = collect(&document);
-
     assert!(diagnostics.iter().any(|diagnostic| diagnostic
         .message
         .contains("`missing_owner` does not resolve")));
@@ -86,7 +83,6 @@ pub struct Run<'info> {
 "#;
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = collect(&document);
-
     assert!(diagnostics.iter().any(|diagnostic| diagnostic
         .message
         .contains("`TOKEN_METADATA_PROGRAM_ID` does not resolve")));
@@ -105,7 +101,6 @@ pub struct Run<'info> {
 "#;
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = collect(&document);
-
     assert!(
         diagnostics.is_empty(),
         "imported const-like address identifiers should stay quiet: {diagnostics:#?}"
@@ -123,7 +118,6 @@ pub struct Run<'info> {
 "#;
     let document = ParsedDocument::parse(source).unwrap();
     let diagnostics = collect(&document);
-
     assert!(diagnostics.iter().any(|diagnostic| diagnostic
         .message
         .contains("`fake_metadata::TOKEN_METADATA_PROGRAM_ID` does not resolve")));
