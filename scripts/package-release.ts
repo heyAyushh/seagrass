@@ -14,6 +14,8 @@ import {
 import { basename, dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { requiredArgValue as requiredArg } from "./cli-args.ts";
+
 export const releasePackageKinds = ["server", "zed", "vscode", "fuzz-corpus"] as const;
 export const releaseBinaryTargets = [
   "aarch64-apple-darwin",
@@ -508,14 +510,6 @@ function hostTarget(): string {
 
 function readReleaseVersion(root: string): string {
   return readFileSync(resolve(root, "VERSION"), "utf8").trim();
-}
-
-function requiredArg(args: string[], index: number, option: string): string {
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${option} requires a value`);
-  }
-  return value;
 }
 
 function runChecked(command: string, args: string[], options: RunOptions = {}): void {

@@ -5,7 +5,10 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-type JsonObject = Record<string, unknown>;
+import { type JsonRecord } from "./json-utils.ts";
+import { seagrassServerCommand } from "./seagrass-server-command.ts";
+
+type JsonObject = JsonRecord;
 
 const SERVER_EXIT_TIMEOUT_MILLIS = 5_000;
 const LSP_REQUEST_TIMEOUT_MILLIS = 45_000;
@@ -50,7 +53,7 @@ type Diagnostic = {
       range?: Range;
     };
   }[];
-  data?: JsonObject;
+  data?: JsonRecord;
 };
 
 type DiagnosticReport = {
@@ -113,10 +116,10 @@ type CompletionProvider = {
 
 type AnalysisReport = {
   uri?: string;
-  project?: JsonObject | null;
+  project?: JsonRecord | null;
   evidence?: unknown;
   diagnostics?: unknown[];
-  focus?: JsonObject | null;
+  focus?: JsonRecord | null;
 };
 
 type DocumentSymbol = {
@@ -132,7 +135,7 @@ type SymbolInformation = {
 type DocumentLink = {
   target?: string;
   tooltip?: string;
-  data?: JsonObject;
+  data?: JsonRecord;
 };
 
 type DocumentHighlight = {
@@ -167,7 +170,7 @@ type CodeLens = {
     command?: string;
     arguments?: unknown[];
   };
-  data?: JsonObject;
+  data?: JsonRecord;
 };
 
 type Location = {
@@ -1102,19 +1105,6 @@ function receive(message: LspMessage): void {
   }
 
   notifications.push(message);
-}
-
-function seagrassServerCommand(): [string, string[]] {
-  if (process.env.SEAGRASS_SERVER_BINARY) {
-    return [process.env.SEAGRASS_SERVER_BINARY, []];
-  }
-  if (process.env.SEAGRASS_HOTPATH === "1") {
-    return [
-      "cargo",
-      ["run", "-p", "seagrass-cli", "--features", "hotpath", "--release", "--quiet"],
-    ];
-  }
-  return ["cargo", ["run", "-p", "seagrass-cli", "--quiet"]];
 }
 
 async function waitForServerExit(): Promise<void> {

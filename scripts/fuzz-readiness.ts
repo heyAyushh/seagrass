@@ -3,6 +3,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+import { requiredArgValue } from "./cli-args.ts";
 import {
   assertSameStringSet,
   compareStrings,
@@ -210,14 +211,6 @@ function parseCliOptions(args: string[]): CliOptions {
   }
 
   return options as CliOptions;
-}
-
-function requiredArgValue(args: string[], index: number, flag: string): string {
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
 }
 
 function parseStatus(value: string): FuzzStatus {

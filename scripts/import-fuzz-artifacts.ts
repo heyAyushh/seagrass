@@ -5,14 +5,19 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
-  statSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, dirname, join, relative, resolve } from "node:path";
+import { basename, dirname, relative, resolve } from "node:path";
 
+import { requiredArgValue } from "./cli-args.ts";
+import {
+  finiteNumberField as numberField,
+  readJsonRecord as readJsonObject,
+  stringArrayField as jsonStringArrayField,
+} from "./json-utils.ts";
+import { treeFiles } from "./script-paths.ts";
 import {
   compareStrings,
   corpusTreeSha256,
@@ -149,7 +154,7 @@ export function validateFuzzArtifactEntries(entries: string[], archivePath: stri
 }
 
 function buildImportPlan(artifactRoot: string, expectedCommit: string): ImportPlan {
-  const files = listFiles(artifactRoot);
+  const files = treeFiles(artifactRoot);
   const readinessSource = findReadinessArtifact(files, expectedCommit);
   const readiness = fuzzCleanRun(readJsonObject(readinessSource, "readiness artifact").fuzzCleanRun);
   validateReadiness(readiness, expectedCommit);
@@ -300,7 +305,7 @@ function copyCorpusFiles(input: {
 }): { copied: number; unchanged: number } {
   let copied = 0;
   let unchanged = 0;
-  for (const sourcePath of listFiles(input.source)) {
+  for (const sourcePath of treeFiles(input.source)) {
     const relativePath = relative(input.source, sourcePath);
     const destinationPath = resolve(input.destination, relativePath);
     const sourceBytes = readFileSync(sourcePath);
@@ -323,25 +328,6 @@ function copyCorpusFiles(input: {
   return { copied, unchanged };
 }
 
-function listFiles(root: string): string[] {
-  if (!existsSync(root)) {
-    throw new Error(`path does not exist: ${root}`);
-  }
-  const files: string[] = [];
-  for (const entry of readdirSync(root)) {
-    const path = join(root, entry);
-    const stat = statSync(path);
-    if (stat.isDirectory()) {
-      files.push(...listFiles(path));
-      continue;
-    }
-    if (stat.isFile()) {
-      files.push(path);
-    }
-  }
-  return files.sort(compareStrings);
-}
-
 function fuzzCleanRun(value: unknown): FuzzCleanRun {
   if (!isRecord(value)) {
     throw new Error("fuzzCleanRun must be an object");
@@ -353,18 +339,10 @@ function fuzzCleanRun(value: unknown): FuzzCleanRun {
     startedAt: finiteIsoTimestamp(stringField(value, "startedAt"), "fuzzCleanRun.startedAt"),
     completedAt: finiteIsoTimestamp(stringField(value, "completedAt"), "fuzzCleanRun.completedAt"),
     aggregateFuzzHours: numberField(value, "aggregateFuzzHours"),
-    targets: stringArrayField(value, "targets"),
-    workflowMatrixTargets: stringArrayField(value, "workflowMatrixTargets"),
+    targets: jsonStringArrayField(value, "targets").sort(compareStrings),
+    workflowMatrixTargets: jsonStringArrayField(value, "workflowMatrixTargets").sort(compareStrings),
     targetRuns: targetRunsField(value),
   };
-}
-
-function readJsonObject(path: string, label: string): Record<string, unknown> {
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-  if (!isRecord(parsed)) {
-    throw new Error(`${label} must contain a JSON object`);
-  }
-  return parsed;
 }
 
 function targetRunsField(record: Record<string, unknown>): FuzzTargetRun[] {
@@ -384,22 +362,6 @@ function targetRunsField(record: Record<string, unknown>): FuzzTargetRun[] {
       fuzzHours: numberField(entry, "fuzzHours"),
     };
   });
-}
-
-function numberField(record: Record<string, unknown>, field: string): number {
-  const value = record[field];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${field} must be a finite number`);
-  }
-  return value;
-}
-
-function stringArrayField(record: Record<string, unknown>, field: string): string[] {
-  const value = record[field];
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-    throw new Error(`${field} must be a string array`);
-  }
-  return [...value].sort(compareStrings);
 }
 
 function parseCliOptions(args: string[]): CliOptions {
@@ -455,14 +417,6 @@ function parseCliOptions(args: string[]): CliOptions {
     `fuzz-readiness-${options.expectedCommit}.json`,
   );
   return options as CliOptions;
-}
-
-function requiredArgValue(args: string[], index: number, flag: string): string {
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
 }
 
 function printHelp(): void {

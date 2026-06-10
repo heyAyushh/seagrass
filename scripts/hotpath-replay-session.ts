@@ -5,7 +5,8 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-type JsonRecord = Record<string, unknown>;
+import { type JsonRecord, isRecord } from "./json-utils.ts";
+import { seagrassServerCommand } from "./seagrass-server-command.ts";
 
 type Position = {
   line: number;
@@ -396,19 +397,6 @@ function receive(message: LspMessage): void {
   entry.resolveResponse(message.result);
 }
 
-function seagrassServerCommand(): [string, string[]] {
-  if (process.env.SEAGRASS_SERVER_BINARY) {
-    return [process.env.SEAGRASS_SERVER_BINARY, []];
-  }
-  if (process.env.SEAGRASS_HOTPATH === "1") {
-    return [
-      "cargo",
-      ["run", "-p", "seagrass-cli", "--features", "hotpath", "--release", "--quiet"],
-    ];
-  }
-  return ["cargo", ["run", "-p", "seagrass-cli", "--quiet"]];
-}
-
 async function waitForServerExit(): Promise<void> {
   await Promise.race([
     serverExit,
@@ -424,8 +412,4 @@ async function waitForServerExit(): Promise<void> {
       `seagrass exited unexpectedly: code=${serverExitCode} signal=${serverExitSignal}`,
     );
   }
-}
-
-function isRecord(value: unknown): value is JsonRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }

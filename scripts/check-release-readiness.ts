@@ -3,6 +3,13 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 
+import { requiredArgValue } from "./cli-args.ts";
+import {
+  finiteNumberField as numberField,
+  optionalFiniteNumberField as optionalNumberField,
+  optionalStringField,
+  stringArrayField,
+} from "./json-utils.ts";
 import {
   compareStrings,
   corpusTreeSha256,
@@ -157,14 +164,6 @@ function parseCliOptions(args: string[]): ReleaseCheckOptions {
   }
 
   return options;
-}
-
-function requiredArgValue(args: string[], index: number, flag: string): string {
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
 }
 
 function parseReadiness(path: string): ReleaseReadiness {
@@ -496,36 +495,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function numberField(record: Record<string, unknown>, field: string): number {
-  const value = record[field];
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${field} must be a finite number`);
-  }
-  return value;
-}
-
-function optionalNumberField(record: Record<string, unknown>, field: string): number | undefined {
-  const value = record[field];
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "number" || !Number.isFinite(value)) {
-    throw new Error(`${field} must be a finite number when present`);
-  }
-  return value;
-}
-
-function optionalStringField(record: Record<string, unknown>, field: string): string | undefined {
-  const value = record[field];
-  if (value === undefined) {
-    return undefined;
-  }
-  if (typeof value !== "string") {
-    throw new Error(`${field} must be a string when present`);
-  }
-  return value;
-}
-
 function optionalCorpusSha256(record: Record<string, unknown>): Pick<FuzzCleanRun, "corpusSha256"> {
   const value = optionalStringField(record, "corpusSha256");
   return value === undefined ? {} : { corpusSha256: value };
@@ -589,12 +558,4 @@ function optionalFindingsDisposition(
       artifactUrl: stringField(value, "artifactUrl"),
     },
   };
-}
-
-function stringArrayField(record: Record<string, unknown>, field: string): string[] {
-  const value = record[field];
-  if (!Array.isArray(value) || !value.every((entry) => typeof entry === "string")) {
-    throw new Error(`${field} must be a string array`);
-  }
-  return value;
 }

@@ -4,7 +4,9 @@ import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 
+import { nonEmpty, requiredArgValue } from "./cli-args.ts";
 import { checkReleaseReadiness } from "./check-release-readiness.ts";
+import { readJsonRecord as readJsonObject } from "./json-utils.ts";
 import { gitHead, isRecord, repoRoot } from "./release-evidence.ts";
 
 const defaultReadinessPath = resolve(repoRoot, "docs/release-readiness.json");
@@ -54,8 +56,8 @@ if (import.meta.main) {
 export function applyReleaseReadiness(options: ApplyReleaseReadinessOptions): ReleaseReadiness {
   const readiness = mergeReleaseReadiness({
     releaseVersion: options.releaseVersion,
-    fuzzPayload: readJsonObject(options.fuzzPath, "--fuzz"),
-    reviewPayload: readJsonObject(options.reviewPath, "--review"),
+    fuzzPayload: readJsonObject(options.fuzzPath, "--fuzz", "must point to a JSON object"),
+    reviewPayload: readJsonObject(options.reviewPath, "--review", "must point to a JSON object"),
   });
   assertStrictReleaseReadiness(readiness, {
     releaseVersion: options.releaseVersion,
@@ -103,14 +105,6 @@ function writeValidationCopy(readiness: ReleaseReadiness): string {
   return path;
 }
 
-function readJsonObject(path: string, flag: string): Record<string, unknown> {
-  const parsed = JSON.parse(readFileSync(path, "utf8")) as unknown;
-  if (!isRecord(parsed)) {
-    throw new Error(`${flag} must point to a JSON object`);
-  }
-  return parsed;
-}
-
 function objectField(record: unknown, field: string): unknown {
   if (!isRecord(record)) {
     throw new Error(`${field} payload must be a JSON object`);
@@ -120,14 +114,6 @@ function objectField(record: unknown, field: string): unknown {
     throw new Error(`${field} must be an object`);
   }
   return value;
-}
-
-function nonEmpty(value: string, field: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    throw new Error(`${field} must not be empty`);
-  }
-  return trimmed;
 }
 
 function parseCliOptions(args: string[]): CliOptions {
@@ -178,14 +164,6 @@ function parseCliOptions(args: string[]): CliOptions {
     throw new Error("--review is required");
   }
   return options as CliOptions;
-}
-
-function requiredArgValue(args: string[], index: number, flag: string): string {
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
 }
 
 function printHelp(): void {

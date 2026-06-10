@@ -1,8 +1,10 @@
 #!/usr/bin/env bun
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { rustFiles } from "./script-paths.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -82,17 +84,6 @@ export function scanDiagnosticSource(relativePath: string, source: string): Find
       text: text.trim(),
     })),
   );
-}
-
-function rustFiles(root: string): string[] {
-  return readdirSync(root)
-    .map((name) => resolve(root, name))
-    .flatMap((path) => {
-      if (statSync(path).isDirectory()) {
-        return rustFiles(path);
-      }
-      return path.endsWith(".rs") ? [path] : [];
-    });
 }
 
 function scanFile(path: string): Finding[] {
