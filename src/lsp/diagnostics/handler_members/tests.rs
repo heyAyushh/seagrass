@@ -1,7 +1,8 @@
 use {
     super::collect_with_workspace,
     crate::{
-        diagnostics::registry::ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE, document::ParsedDocument,
+        diagnostics::registry::{AnchorDiagnosticKind, ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE},
+        document::ParsedDocument,
     },
     tower_lsp::lsp_types::NumberOrString,
 };
@@ -44,6 +45,18 @@ pub struct PositionBundle {
     assert!(diagnostic
         .message
         .contains("`PositionBundle` has no field `s`"));
+    assert_eq!(
+        diagnostic_topic(diagnostic),
+        Some(AnchorDiagnosticKind::AnchorMissingAccountReference.topic())
+    );
+}
+
+fn diagnostic_topic(diagnostic: &tower_lsp::lsp_types::Diagnostic) -> Option<&str> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("topic"))
+        .and_then(|value| value.as_str())
 }
 
 #[test]

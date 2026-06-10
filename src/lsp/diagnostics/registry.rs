@@ -393,7 +393,7 @@ impl AnchorDiagnosticKind {
         }
     }
 
-    pub fn topic(self) -> &'static str {
+    pub const fn topic(self) -> &'static str {
         match self {
             Self::AnchorSyn => "seagrass/anchor.syntax",
             Self::AnchorInitConstraints => "seagrass/anchor.init.constraints",

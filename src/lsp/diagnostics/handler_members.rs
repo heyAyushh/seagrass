@@ -30,7 +30,7 @@ use {
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
 
-const TOPIC: &str = "seagrass/anchor.account.usage";
+const TOPIC: &str = AnchorDiagnosticKind::AnchorMissingAccountReference.topic();
 const REASON: &str = "unknown-handler-member";
 const EVIDENCE_SOURCE: &str = "parsed-anchor-handler-local-types";
 

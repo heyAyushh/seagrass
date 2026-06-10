@@ -66,7 +66,7 @@ pub fn handler(ctx: Context<Run>) -> Result<()> {
             .as_ref()
             .map(|description| description.href.as_str()),
         Some(
-            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-account-usage.md"
+            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-constraint-account-reference.md"
         )
     );
 

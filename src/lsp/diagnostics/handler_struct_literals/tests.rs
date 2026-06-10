@@ -1,7 +1,8 @@
 use {
     super::collect_with_workspace,
     crate::{
-        diagnostics::registry::ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE, document::ParsedDocument,
+        diagnostics::registry::{AnchorDiagnosticKind, ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE},
+        document::ParsedDocument,
     },
     tower_lsp::lsp_types::NumberOrString,
 };
@@ -56,8 +57,12 @@ pub fn handler(ctx: Context<Run>) -> Result<()> {
             .as_ref()
             .map(|description| description.href.as_str()),
         Some(
-            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-account-usage.md"
+            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-constraint-account-reference.md"
         )
+    );
+    assert_eq!(
+        diagnostic_topic(diagnostic),
+        Some(AnchorDiagnosticKind::AnchorMissingAccountReference.topic())
     );
 }
 
@@ -136,9 +141,21 @@ pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
             .as_ref()
             .map(|description| description.href.as_str()),
         Some(
-            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-account-usage.md"
+            "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-anchor-constraint-account-reference.md"
         )
     );
+    assert_eq!(
+        diagnostic_topic(diagnostic),
+        Some(AnchorDiagnosticKind::AnchorMissingAccountReference.topic())
+    );
+}
+
+fn diagnostic_topic(diagnostic: &tower_lsp::lsp_types::Diagnostic) -> Option<&str> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("topic"))
+        .and_then(|value| value.as_str())
 }
 
 #[test]

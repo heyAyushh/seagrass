@@ -291,6 +291,7 @@ fn position_le(left: Position, right: Position) -> bool {
 mod tests {
     use {
         super::*,
+        crate::diagnostics::registry::AnchorDiagnosticKind,
         tower_lsp::lsp_types::{DiagnosticSeverity, Position, Range},
     };
 
@@ -370,6 +371,41 @@ mod tests {
         assert!(related
             .iter()
             .any(|info| info.message.contains("heuristic signer near init")));
+    }
+
+    #[test]
+    fn arbitrates_account_reference_diagnostics_by_registry_topic() {
+        let topic = AnchorDiagnosticKind::AnchorMissingAccountReference.topic();
+        let diagnostics = arbitrate(
+            vec![
+                diagnostic_with_topic(
+                    "anchor-account-usage",
+                    "typed handler member did not resolve",
+                    topic,
+                    "medium",
+                ),
+                diagnostic_with_topic(
+                    "anchor-missing-account-reference",
+                    "constraint account reference did not resolve",
+                    topic,
+                    "high",
+                ),
+            ],
+            DiagnosticSettings::default(),
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].message,
+            "constraint account reference did not resolve"
+        );
+        let related = diagnostics[0]
+            .related_information
+            .as_ref()
+            .expect("demoted diagnostic should be related");
+        assert!(related.iter().any(|info| info
+            .message
+            .contains("typed handler member did not resolve")));
     }
 
     #[test]
