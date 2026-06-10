@@ -5,7 +5,7 @@
 Source: `docs/plans/debt-inventory.md` (2026-06-10 three-way scan). This plan
 executes ONLY the items with no owner plan. Items owned elsewhere are out of
 scope here: wrapper-type list collapse (plan-06), crate-detection lists
-(plan-05), SPL type strings (plan-01/04), raw diagnostic-code strings and
+(plan-05), SPL type strings (plan-01/06), raw diagnostic-code strings and
 confidence round-trip (plan-03).
 
 **Repo:** `/Users/ay/Documents/codes/solana/seagrass`. Baseline: run
