@@ -3,14 +3,14 @@ use {
         aliases::{account_field_alias_segment_for_expr, AccountFieldAlias},
         AccountUsage, NamedRange,
     },
-    crate::range::range_from_span,
+    crate::{range::range_from_span, syntax::member_is_named},
 };
 
 fn is_ctx_accounts_base(expr: &syn::Expr, context_names: &[String]) -> bool {
     let syn::Expr::Field(accounts_field) = expr else {
         return false;
     };
-    if !matches!(&accounts_field.member, syn::Member::Named(ident) if ident == "accounts") {
+    if !member_is_named(&accounts_field.member, "accounts") {
         return false;
     }
     matches!(

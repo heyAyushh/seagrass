@@ -1,5 +1,6 @@
 use {
     crate::{
+        collections::Trie,
         definition_bridge::{self, BridgeSymbol},
         document::{AccountConstraint, InstructionAttributeArgument, ParsedDocument},
         file_text,
@@ -17,6 +18,7 @@ mod files;
 mod function_returns;
 mod indexing;
 mod instruction_arguments;
+mod module_paths;
 mod sorting;
 mod type_names;
 
@@ -44,6 +46,9 @@ use files::is_anchor_source_file;
 pub type SymbolName = Arc<str>;
 const ACCOUNT_DATA_CONTAINER: &str = "#[account]";
 
+/// The `crate` pseudo-segment that anchors every in-crate module path.
+const CRATE_ROOT_SEGMENT: &str = "crate";
+
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndex {
     documents: HashSet<Url>,
@@ -52,6 +57,11 @@ pub struct WorkspaceIndex {
     functions_by_name: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
     functions_by_context: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
     accounts_by_name: HashMap<SymbolName, Vec<IndexedAccountsStruct>>,
+    /// Maps `["crate", "module", …]` path segments to the file URI that
+    /// implements that module.  Used by `symbol_exists_at_qualified_path` to
+    /// resolve multi-segment `crate::module::Symbol` references without a
+    /// false-positive absence claim when the symbol lives in another file.
+    module_path_trie: Trie<String, Url>,
 }
 
 #[derive(Debug, Clone)]
@@ -153,6 +163,9 @@ impl WorkspaceIndex {
                         continue;
                     };
                     let document = ParsedDocument::parse_or_empty(source);
+                    // Record the module path before inserting so the trie is
+                    // populated during the same build pass.
+                    index.record_module_path_for_root(&uri);
                     index.insert_parsed_document(uri, &document, false);
                 }
             }
@@ -194,6 +207,60 @@ impl WorkspaceIndex {
 
     pub fn indexed_file_count(&self) -> usize {
         self.documents.len()
+    }
+
+    /// True when `segments` name a known `Symbol` reachable via a fully-qualified
+    /// `crate::module::Symbol` path.
+    ///
+    /// Given `["crate", "state", "Escrow"]` the trie finds the URI for the
+    /// `crate::state` module, then checks that `"Escrow"` is a symbol declared
+    /// in that file.  This resolves multi-segment `crate::…` paths that cross
+    /// file boundaries without claiming absence when the symbol lives elsewhere.
+    ///
+    /// Returns `false` rather than an error when the path is unknown — the
+    /// caller should treat that as "cannot confirm presence" rather than
+    /// "definitely absent", to stay on the safe (no false positive) side.
+    pub fn symbol_exists_at_qualified_path(&self, segments: &[String]) -> bool {
+        // We need at least ["crate", "<symbol>"] — paths shorter than 2 segments
+        // are single-identifier references, not qualified paths.
+        if segments.len() < 2 {
+            return false;
+        }
+        let symbol_name = segments.last().expect("segments non-empty; checked above");
+        // The module prefix is everything except the final symbol segment.
+        let module_prefix = &segments[..segments.len() - 1];
+
+        // longest_prefix_of returns the deepest trie entry that is a prefix of
+        // the query.  For ["crate","state","Escrow"] the deepest entry could be
+        // ["crate","state"] (exact match) or just ["crate"] if "state" was not
+        // directly indexed.  We only trust an exact match (depth == len).
+        let Some((depth, file_uri)) =
+            self.module_path_trie.longest_prefix_of(module_prefix.iter().cloned())
+        else {
+            return false;
+        };
+
+        // Require the full module prefix to have matched (not just a shorter prefix).
+        if depth < module_prefix.len() {
+            return false;
+        }
+
+        // Check that the symbol is declared in the file that implements the module.
+        self.symbols_by_name
+            .get(symbol_name.as_str())
+            .is_some_and(|entries| entries.iter().any(|entry| &entry.location.uri == file_uri))
+    }
+
+    /// Record a `crate::…` module-path → URI mapping in the trie.
+    ///
+    /// Called during `build` for every source file discovered under a workspace
+    /// root.  Files that cannot be mapped to a valid module path (e.g. no `src/`
+    /// ancestor, or non-identifier path components) are silently skipped — the
+    /// trie is an optimistic, best-effort index.
+    fn record_module_path_for_root(&mut self, uri: &Url) {
+        if let Some(segments) = module_paths::module_path_segments(uri) {
+            self.module_path_trie.insert(segments, uri.clone());
+        }
     }
 
     pub fn symbol_locations(&self, name: &str) -> Vec<Location> {

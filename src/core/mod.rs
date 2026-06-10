@@ -1,3 +1,4 @@
+pub mod collections;
 pub(crate) mod definition_bridge;
 pub mod document;
 pub(crate) mod document_stub;

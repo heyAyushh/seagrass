@@ -680,7 +680,7 @@ fn is_init_like_name(name: &str) -> bool {
 fn leading_identifier(value: &str) -> Option<(&str, &str)> {
     let end = value
         .char_indices()
-        .find_map(|(idx, ch)| (!is_ident_char(ch)).then_some(idx))
+        .find_map(|(idx, ch)| (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx))
         .unwrap_or(value.len());
     let identifier = &value[..end];
     if !is_account_identifier(identifier) {
@@ -735,11 +735,8 @@ fn is_account_identifier(value: &str) -> bool {
         return false;
     };
 
-    (first.is_ascii_alphabetic() || first == '_') && chars.all(is_ident_char)
-}
-
-fn is_ident_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
+    crate::syntax::is_ascii_identifier_start(first)
+        && chars.all(crate::syntax::is_ascii_identifier_char)
 }
 
 fn value_range_on_line(source: &str, line_number: u32, key: &str, value: &str) -> Option<Range> {

@@ -397,3 +397,71 @@ pub fn save_offer(context: Context<MakeOffer>, amount: u64) -> Result<()> {
     assert!(references.iter().any(|location| location.uri == helper_uri));
     assert!(references.iter().any(|location| location.uri == lib_uri));
 }
+
+/// The module-path trie maps `crate::module::Symbol` paths across file
+/// boundaries.  Given a multi-file workspace layout:
+///
+/// ```text
+/// src/
+///   lib.rs        — declares #[program] mod, imports via `use state::*`
+///   state.rs      — declares `#[account] pub struct Escrow`
+///   instructions/
+///     mod.rs
+///     make.rs     — declares `#[derive(Accounts)] pub struct Make`
+/// ```
+///
+/// The trie should resolve:
+///  - `["crate", "state", "Escrow"]`     → true  (Escrow in src/state.rs)
+///  - `["crate", "instructions", "make", "Make"]` → true  (Make in src/instructions/make.rs)
+///  - `["crate", "state", "Missing"]`    → false (no such symbol)
+#[test]
+fn trie_resolves_multi_segment_module_path_across_files() {
+    let root = unique_temp_dir("seagrass-module-path-trie");
+    let src = root.join("programs").join("demo").join("src");
+    let instructions_dir = src.join("instructions");
+    fs::create_dir_all(&instructions_dir).unwrap();
+
+    fs::write(
+        src.join("lib.rs"),
+        "#[program]\npub mod demo {}\nuse state::*;",
+    )
+    .unwrap();
+    fs::write(
+        src.join("state.rs"),
+        "#[account]\npub struct Escrow { pub amount: u64 }",
+    )
+    .unwrap();
+    fs::write(instructions_dir.join("mod.rs"), "pub mod make;").unwrap();
+    fs::write(
+        instructions_dir.join("make.rs"),
+        "#[derive(Accounts)]\npub struct Make<'info> {}",
+    )
+    .unwrap();
+
+    let root_uri = Url::from_directory_path(&root).unwrap();
+    let index = WorkspaceIndex::build(&[root_uri], []);
+
+    // Symbol in src/state.rs — reachable as crate::state::Escrow
+    assert!(index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "state".to_string(),
+        "Escrow".to_string(),
+    ]));
+
+    // Symbol in src/instructions/make.rs — reachable as crate::instructions::make::Make
+    assert!(index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "instructions".to_string(),
+        "make".to_string(),
+        "Make".to_string(),
+    ]));
+
+    // Symbol that does not exist under that path
+    assert!(!index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "state".to_string(),
+        "Missing".to_string(),
+    ]));
+
+    let _ = fs::remove_dir_all(root);
+}

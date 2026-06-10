@@ -3,7 +3,7 @@ use {
         context_accounts_type, AccountDataFieldUsage, AccountKeyComparison, AccountPathUsage,
         AccountUsage, FunctionCall, NamedRange,
     },
-    crate::range::range_from_span,
+    crate::{range::range_from_span, syntax::member_is_named},
     aliases::{
         account_field_alias_target_for_expr, direct_account_usage_from_expr, AccountFieldAlias,
     },
@@ -363,7 +363,7 @@ impl<'ast> Visit<'ast> for AccountUsageVisitor {
         self.record_data_field_usage(node);
         self.record_usage(node);
         self.record_account_path_usage(&syn::Expr::Field(node.clone()));
-        if matches!(&node.member, syn::Member::Named(ident) if ident == "is_signer") {
+        if member_is_named(&node.member, "is_signer") {
             self.record_signer_check(node.base.as_ref());
         }
         visit::visit_expr_field(self, node);
@@ -372,7 +372,7 @@ impl<'ast> Visit<'ast> for AccountUsageVisitor {
     fn visit_expr_struct(&mut self, node: &'ast syn::ExprStruct) {
         if is_instruction_path(&node.path) {
             for field in &node.fields {
-                if matches!(&field.member, syn::Member::Named(ident) if ident == "program_id") {
+                if member_is_named(&field.member, "program_id") {
                     self.record_cpi_program_usage(&field.expr);
                 }
             }
@@ -380,14 +380,12 @@ impl<'ast> Visit<'ast> for AccountUsageVisitor {
             let pubkey = node
                 .fields
                 .iter()
-                .find(
-                    |field| matches!(&field.member, syn::Member::Named(ident) if ident == "pubkey"),
-                )
+                .find(|field| member_is_named(&field.member, "pubkey"))
                 .map(|field| &field.expr);
             let is_signer = node
                 .fields
                 .iter()
-                .find(|field| matches!(&field.member, syn::Member::Named(ident) if ident == "is_signer"))
+                .find(|field| member_is_named(&field.member, "is_signer"))
                 .is_some_and(|field| is_bool_true(&field.expr));
             if is_signer {
                 if let Some(pubkey) = pubkey {
