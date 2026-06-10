@@ -8,6 +8,7 @@ mod handler_members;
 mod handler_struct_fields;
 mod handler_values;
 mod instruction_attributes;
+mod prefix_index;
 #[cfg(test)]
 mod proptest_support;
 mod ranking;
@@ -16,7 +17,7 @@ use {
     crate::{document::ParsedDocument, workspace::WorkspaceIndex},
     tower_lsp::lsp_types::{
         CompletionItem, CompletionItemKind, Documentation, InsertTextFormat, MarkupContent,
-        MarkupKind, Position,
+        MarkupKind, Position, Range,
     },
 };
 
@@ -37,6 +38,23 @@ const INIT_PAYER_RANK: u8 = 0;
 const INIT_SPACE_RANK: u8 = 1;
 const SNIPPET_RANK: u8 = 10;
 const DEFAULT_CONSTRAINT_RANK: u8 = 20;
+
+fn matches_completion_prefix(candidate: &str, prefix: &str) -> bool {
+    candidate
+        .to_ascii_lowercase()
+        .starts_with(&prefix.to_ascii_lowercase())
+}
+
+fn prefix_replacement_range(position: Position, prefix: &str) -> Range {
+    let prefix_len = u32::try_from(prefix.chars().count()).unwrap_or_default();
+    Range {
+        start: Position {
+            line: position.line,
+            character: position.character.saturating_sub(prefix_len),
+        },
+        end: position,
+    }
+}
 
 #[cfg(test)]
 pub fn completions(document: &ParsedDocument, position: Position) -> Option<Vec<CompletionItem>> {
@@ -209,31 +227,25 @@ fn snippet_items() -> Vec<CompletionItem> {
 }
 
 fn completion_matches_prefix(item: &CompletionItem, prefix: &str) -> bool {
-    item.label
-        .to_ascii_lowercase()
-        .starts_with(&prefix.to_ascii_lowercase())
-        || item.insert_text.as_deref().is_some_and(|text| {
-            text.to_ascii_lowercase()
-                .starts_with(&prefix.to_ascii_lowercase())
-        })
-}
-
-fn constraint_matches_prefix(label: &str, prefix: &str) -> bool {
-    let key = label.trim_end_matches(" =");
-    key.to_ascii_lowercase()
-        .starts_with(&prefix.to_ascii_lowercase())
+    matches_completion_prefix(&item.label, prefix)
+        || item
+            .insert_text
+            .as_deref()
+            .is_some_and(|text| matches_completion_prefix(text, prefix))
 }
 
 fn account_constraint_items(context: &AccountConstraintCompletionContext) -> Vec<CompletionItem> {
+    // The constraint-key catalog is queried on every keystroke, so use the
+    // trie-backed index to avoid an O(n) linear scan of all ~43 entries.
+    let catalog_items = prefix_index::constraint_key_index()
+        .specs_with_prefix(&context.prefix)
+        .into_iter()
+        .map(|spec| account_constraint_item(spec, context));
+
     let mut items = snippet_items()
         .into_iter()
         .filter(|item| completion_matches_prefix(item, &context.prefix))
-        .chain(
-            account_constraints::CONSTRAINTS
-                .iter()
-                .filter(|spec| constraint_matches_prefix(spec.label, &context.prefix))
-                .map(|spec| account_constraint_item(spec, context)),
-        )
+        .chain(catalog_items)
         .collect::<Vec<_>>();
 
     items.sort_by_key(|item| {

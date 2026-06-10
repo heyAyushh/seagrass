@@ -165,12 +165,5 @@ fn path_root(owner_path: &str) -> Option<&str> {
 /// incidentally; its real job is to reject malformed prefixes (empty segments,
 /// stray punctuation) before we treat the string as a module path.
 fn is_identifier_path(owner_path: &str) -> bool {
-    !owner_path.is_empty()
-        && owner_path.split(PATH_SEPARATOR).all(|segment| {
-            let mut chars = segment.chars();
-            chars
-                .next()
-                .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-                && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-        })
+    crate::syntax::is_ascii_identifier_path(owner_path, PATH_SEPARATOR)
 }

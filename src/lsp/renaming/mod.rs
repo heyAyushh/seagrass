@@ -32,7 +32,7 @@ pub fn rename_with_workspace(
     workspace_index: Option<&WorkspaceIndex>,
     source_for_uri: impl Fn(&Url) -> Option<String>,
 ) -> Option<WorkspaceEdit> {
-    if !is_rust_identifier(new_name) {
+    if !crate::syntax::is_ascii_identifier(new_name) {
         return None;
     }
 
@@ -617,15 +617,6 @@ fn contains_position(range: Range, position: Position) -> bool {
         || position.line == range.start.line && position.character >= range.start.character)
         && (position.line < range.end.line
             || position.line == range.end.line && position.character <= range.end.character)
-}
-
-fn is_rust_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first == '_' || first.is_ascii_alphabetic())
-        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }
 
 #[cfg(test)]

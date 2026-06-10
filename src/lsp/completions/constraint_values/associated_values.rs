@@ -162,14 +162,5 @@ fn associated_function_item(name: &str, detail: &str) -> CompletionItem {
 }
 
 fn is_type_path(value: &str) -> bool {
-    !value.is_empty()
-        && value.split(ASSOCIATED_PATH_SEPARATOR).all(|segment| {
-            segment
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_ascii_uppercase())
-                && segment
-                    .chars()
-                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-        })
+    crate::syntax::is_ascii_type_path(value, ASSOCIATED_PATH_SEPARATOR)
 }

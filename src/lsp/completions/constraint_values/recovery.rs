@@ -172,7 +172,7 @@ fn recover_account_field_from_line(
     let declaration_start = line_start + leading + trimmed.len().saturating_sub(declaration.len());
     let colon = declaration.find(':')?;
     let name = declaration[..colon].trim();
-    if !is_identifier(name) {
+    if !crate::syntax::is_ascii_identifier(name) {
         return None;
     }
 
@@ -274,12 +274,14 @@ fn recovered_field_type_from_text(type_text: &str) -> RecoveredFieldType {
     let wrapper = type_text
         .split(['<', ' ', '\t'])
         .next()
-        .filter(|name| is_identifier(name))
+        .filter(|name| crate::syntax::is_ascii_identifier(name))
         .map(str::to_string);
     let generic_type_names = type_text
         .split(['<', '>', ','])
         .map(str::trim)
-        .filter(|part| is_identifier(part) && part.as_bytes().first() != Some(&b'\''))
+        .filter(|part| {
+            crate::syntax::is_ascii_identifier(part) && part.as_bytes().first() != Some(&b'\'')
+        })
         .skip(1)
         .map(str::to_string)
         .collect();
@@ -353,10 +355,10 @@ fn word_has_boundary(source: &str, start: usize, len: usize) -> bool {
     let previous = source[..start].chars().next_back();
     let next = source[start + len..].chars().next();
     previous
-        .map(is_identifier_char)
+        .map(crate::syntax::is_ascii_identifier_char)
         .is_none_or(|is_ident| !is_ident)
         && next
-            .map(is_identifier_char)
+            .map(crate::syntax::is_ascii_identifier_char)
             .is_none_or(|is_ident| !is_ident)
 }
 
@@ -369,28 +371,15 @@ fn skip_whitespace(source: &str, start: usize) -> Option<usize> {
 fn identifier_end(source: &str, start: usize) -> Option<usize> {
     let mut end = start;
     for (idx, ch) in source[start..].char_indices() {
-        if idx == 0 && !is_identifier_start(ch) {
+        if idx == 0 && !crate::syntax::is_ascii_identifier_start(ch) {
             return None;
         }
-        if !is_identifier_char(ch) {
+        if !crate::syntax::is_ascii_identifier_char(ch) {
             break;
         }
         end = start + idx + ch.len_utf8();
     }
     (end > start).then_some(end)
-}
-
-fn is_identifier(name: &str) -> bool {
-    let mut chars = name.chars();
-    chars.next().is_some_and(is_identifier_start) && chars.all(is_identifier_char)
-}
-
-fn is_identifier_start(ch: char) -> bool {
-    ch == '_' || ch.is_ascii_alphabetic()
-}
-
-fn is_identifier_char(ch: char) -> bool {
-    is_identifier_start(ch) || ch.is_ascii_digit()
 }
 
 fn matching_close_brace(source: &str, open_brace: usize) -> Option<usize> {

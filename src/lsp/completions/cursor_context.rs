@@ -602,10 +602,6 @@ fn is_anchor_context_receiver(receiver: &str) -> bool {
     matches!(receiver, "ctx" | "context")
 }
 
-pub(crate) fn is_identifier_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
-}
-
 fn instruction_attribute_typed_prefix(prefix: &str) -> Option<&str> {
     let start = prefix.rfind("#[instruction(")? + "#[instruction(".len();
     typed_tail(&prefix[start..])
@@ -661,7 +657,9 @@ fn handler_value_typed_prefix<'a>(
     let tail_start = line_prefix
         .char_indices()
         .rev()
-        .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx + ch.len_utf8()))
+        .find_map(|(idx, ch)| {
+            (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx + ch.len_utf8())
+        })
         .unwrap_or(0);
     let prefix = &line_prefix[tail_start..];
     if prefix.is_empty() && !empty_handler_value_prefix_allowed(source, offset, line_prefix) {
@@ -717,7 +715,10 @@ fn handler_member_typed_prefix<'a>(
     if receiver.trim_end().is_empty() {
         return None;
     }
-    if !member_prefix.chars().all(is_identifier_char) {
+    if !member_prefix
+        .chars()
+        .all(crate::syntax::is_ascii_identifier_char)
+    {
         return None;
     }
     Some(member_prefix)
@@ -777,5 +778,5 @@ fn line_prefix_ends_with_keyword(line_prefix: &str, keyword: &str) -> bool {
     before_keyword
         .chars()
         .next_back()
-        .is_none_or(|ch| !is_identifier_char(ch))
+        .is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch))
 }

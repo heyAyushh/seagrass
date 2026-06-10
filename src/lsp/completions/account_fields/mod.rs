@@ -66,23 +66,35 @@ pub fn completions_with_workspace(
             current_field_name.as_deref(),
             semantic_inner_type,
         ),
-        FieldCompletionContext::FieldName { prefix } => anchor_types::field_completions()
-            .iter()
-            .filter(|completion| {
-                completion_field_name(completion)
-                    .is_some_and(|name| prefix.is_empty() || matches_prefix(name, prefix))
-            })
-            .map(|completion| completion_item(completion, &context))
-            .collect::<Vec<_>>(),
-        FieldCompletionContext::FieldType { prefix } => anchor_types::field_completions()
-            .iter()
-            .filter(|completion| {
-                prefix.is_empty()
-                    || (prefix_starts_like_rust_type(prefix)
-                        && matches_prefix(completion.label, prefix))
-            })
-            .map(|completion| completion_item(completion, &context))
-            .collect::<Vec<_>>(),
+        FieldCompletionContext::FieldName { prefix } => {
+            // Use the trie-backed index to avoid an O(n) linear scan of all
+            // ~60 field-completion entries on every keystroke.
+            let candidates = if prefix.is_empty() {
+                anchor_types::field_completions().iter().collect::<Vec<_>>()
+            } else {
+                super::prefix_index::field_name_index().completions_with_prefix(prefix)
+            };
+            candidates
+                .into_iter()
+                .map(|completion| completion_item(completion, &context))
+                .collect::<Vec<_>>()
+        }
+        FieldCompletionContext::FieldType { prefix } => {
+            // Use the trie-backed index for the same reason as FieldName above,
+            // but only when the prefix looks like a Rust type (starts with an
+            // uppercase letter) — the existing gate is preserved.
+            let candidates: Vec<&anchor_types::AnchorFieldCompletion> = if prefix.is_empty() {
+                anchor_types::field_completions().iter().collect()
+            } else if prefix_starts_like_rust_type(prefix) {
+                super::prefix_index::field_type_index().completions_with_prefix(prefix)
+            } else {
+                Vec::new()
+            };
+            candidates
+                .into_iter()
+                .map(|completion| completion_item(completion, &context))
+                .collect::<Vec<_>>()
+        }
     };
 
     if let FieldCompletionContext::FieldType { .. } = &context {

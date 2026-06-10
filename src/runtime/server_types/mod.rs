@@ -126,6 +126,9 @@ pub(crate) struct ServerSettings {
     pub(crate) agent_mode: bool,
     pub(crate) security_diagnostics: bool,
     pub(crate) experimental_diagnostics: bool,
+    /// Controls mtime-based artifact diagnostics (stale/missing SBPF ELF, IDL, TypeScript).
+    /// Off by default to avoid noise on every edit-before-rebuild cycle.
+    pub(crate) artifact_diagnostics: bool,
     pub(crate) security_levels: BTreeMap<String, diagnostics::DiagnosticLevel>,
     pub(crate) strict_native_security: bool,
     pub(crate) diagnostics_cold_path: DiagnosticsColdPath,
@@ -158,6 +161,7 @@ impl Default for ServerSettings {
             agent_mode: false,
             security_diagnostics: true,
             experimental_diagnostics: true,
+            artifact_diagnostics: false,
             security_levels: BTreeMap::new(),
             strict_native_security: true,
             diagnostics_cold_path: DiagnosticsColdPath::Idle,
@@ -182,6 +186,8 @@ impl ServerSettings {
             .unwrap_or(self.security_diagnostics);
         self.experimental_diagnostics = bool_setting(anchor, "diagnostics.experimental.enabled")
             .unwrap_or(self.experimental_diagnostics);
+        self.artifact_diagnostics = bool_setting(anchor, "diagnostics.artifacts.enabled")
+            .unwrap_or(self.artifact_diagnostics);
         self.strict_native_security = bool_setting(anchor, "security.strictNative.enabled")
             .or_else(|| bool_setting(anchor, "diagnostics.security.strictNative.enabled"))
             .unwrap_or(self.strict_native_security);

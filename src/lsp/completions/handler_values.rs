@@ -50,10 +50,10 @@ pub(super) fn completions(
     ));
     candidates.extend(global_value_candidates(document));
 
-    let replacement_range = prefix_replacement_range(position, prefix);
+    let replacement_range = super::prefix_replacement_range(position, prefix);
     let mut deduped = BTreeMap::<String, ValueCandidate>::new();
     for candidate in candidates {
-        if !matches_prefix(&candidate.label, prefix) {
+        if !super::matches_completion_prefix(&candidate.label, prefix) {
             continue;
         }
         deduped
@@ -269,7 +269,7 @@ fn text_account_field_candidate(context_name: &str, line: &str) -> Option<ValueC
         .or_else(|| trimmed.strip_prefix("pub(crate) "))?;
     let (name, ty) = field.split_once(':')?;
     let name = name.trim();
-    if !is_identifier(name) {
+    if !crate::syntax::is_ascii_identifier(name) {
         return None;
     }
     let type_display = ty
@@ -549,39 +549,13 @@ fn text_in_range(source: &str, range: Range) -> Option<&str> {
     source.get(start..end)
 }
 
-fn prefix_replacement_range(position: Position, prefix: &str) -> Range {
-    Range {
-        start: Position {
-            line: position.line,
-            character: position
-                .character
-                .saturating_sub(u32::try_from(prefix.chars().count()).unwrap_or_default()),
-        },
-        end: position,
-    }
-}
-
-fn matches_prefix(candidate: &str, prefix: &str) -> bool {
-    candidate
-        .to_ascii_lowercase()
-        .starts_with(&prefix.to_ascii_lowercase())
-}
-
 fn identifier_at_start(value: &str) -> Option<&str> {
     let end = value
         .char_indices()
-        .find_map(|(idx, ch)| (!cursor_context::is_identifier_char(ch)).then_some(idx))
+        .find_map(|(idx, ch)| (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx))
         .unwrap_or(value.len());
     let identifier = &value[..end];
-    is_identifier(identifier).then_some(identifier)
-}
-
-fn is_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(cursor_context::is_identifier_char)
+    crate::syntax::is_ascii_identifier(identifier).then_some(identifier)
 }
 
 fn contains_position(range: Range, position: Position) -> bool {

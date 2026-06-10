@@ -304,6 +304,7 @@ pub(super) fn diagnostic_settings(settings: &ServerSettings) -> diagnostics::Dia
     diagnostics::DiagnosticSettings {
         security_diagnostics: settings.security_diagnostics,
         experimental_diagnostics: settings.experimental_diagnostics,
+        artifact_diagnostics: settings.artifact_diagnostics,
         security_levels: settings.security_levels.clone(),
         strict_native_security: settings.strict_native_security,
         typing_suppression: None,

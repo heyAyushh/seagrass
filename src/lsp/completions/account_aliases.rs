@@ -18,12 +18,15 @@ pub(super) fn local_account_alias_path_at(
     let (receiver_expression, member_prefix) = expression.rsplit_once('.')?;
     let mut receiver_segments = receiver_expression.split('.');
     let alias = receiver_segments.next()?;
-    if !is_identifier(alias) {
+    if !crate::syntax::is_ascii_identifier(alias) {
         return None;
     }
     let account_field = account_field_alias_target(source, offset, alias)?;
     let member_chain = receiver_segments.map(str::to_string).collect::<Vec<_>>();
-    if !member_chain.iter().all(|segment| is_identifier(segment)) {
+    if !member_chain
+        .iter()
+        .all(|segment| crate::syntax::is_ascii_identifier(segment))
+    {
         return None;
     }
 
@@ -47,9 +50,18 @@ fn account_field_alias_target(source: &str, offset: usize, alias: &str) -> Optio
     let accounts_aliases = accounts_aliases_before_cursor(before_cursor);
     before_cursor.lines().rev().find_map(|line| {
         let (candidate, rhs) = local_assignment(line)?;
-        (candidate == alias)
-            .then(|| account_field_from_assignment_rhs(rhs, &accounts_aliases))
-            .flatten()
+        if candidate != alias {
+            return None;
+        }
+        // Accounts-container assignments (`let x = &mut ctx.accounts`) create aliases
+        // to the whole accounts struct, not to a specific account field. Treating such
+        // an assignment as an account-field alias produces bogus results — for example,
+        // when the alias name equals the receiver in the RHS (e.g. `let ctx = &mut
+        // ctx.accounts`), `strip_prefix` would extract "accounts" as the field name.
+        if is_accounts_container_assignment(rhs) {
+            return None;
+        }
+        account_field_from_assignment_rhs(rhs, &accounts_aliases)
     })
 }
 
@@ -69,7 +81,8 @@ fn local_assignment(line: &str) -> Option<(&str, &str)> {
     let (left, right) = rest.split_once('=')?;
     let left = left.trim().strip_prefix("mut ").unwrap_or(left.trim());
     let alias = left.split_once(':').map_or(left, |(name, _)| name).trim();
-    is_identifier(alias).then_some((alias, right.trim().trim_end_matches(';').trim()))
+    crate::syntax::is_ascii_identifier(alias)
+        .then_some((alias, right.trim().trim_end_matches(';').trim()))
 }
 
 fn account_field_from_assignment_rhs(rhs: &str, accounts_aliases: &[String]) -> Option<String> {
@@ -106,26 +119,14 @@ fn is_accounts_container_assignment(rhs: &str) -> bool {
 fn identifier_at_start(value: &str) -> Option<(&str, &str)> {
     let end = value
         .char_indices()
-        .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx))
+        .find_map(|(idx, ch)| (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx))
         .unwrap_or(value.len());
     let identifier = &value[..end];
-    is_identifier(identifier).then_some((identifier, &value[end..]))
+    crate::syntax::is_ascii_identifier(identifier).then_some((identifier, &value[end..]))
 }
 
 fn is_direct_account_alias_remainder(value: &str) -> bool {
     value.trim().is_empty()
-}
-
-fn is_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(is_identifier_char)
-}
-
-fn is_identifier_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
 }
 
 #[cfg(test)]

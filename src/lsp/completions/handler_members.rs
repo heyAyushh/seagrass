@@ -29,14 +29,28 @@ pub(super) fn completions(
     let access = syntax_handler_member_access(document, position, workspace_index)
         .or_else(|| text_handler_member_access(document.source(), position))?;
     if let Some(receiver) = access.receiver.as_deref() {
-        if let Some(context_type) = visible_receiver_context_type(document, position, receiver) {
-            if let Some(members) = context_members::resolved_context_chain_members(
-                document,
-                workspace_index,
-                &context_type,
-                &access.member_chain,
-            ) {
-                return completion_items(position, &access.member_prefix, members);
+        // A local let binding shadows the function-parameter context value. Only attempt
+        // context-type completion when the receiver resolves to a Context-typed value, not a
+        // non-context rebinding — otherwise `let ctx = some_data_value;` would incorrectly
+        // be treated as the `Context<T>` parameter and offer accounts/bumps completions.
+        let receiver_is_context_shadow = is_context_type_shadow(
+            document,
+            position,
+            workspace_index,
+            receiver,
+            &access.receiver_type,
+        );
+        if !receiver_is_context_shadow {
+            if let Some(context_type) = visible_receiver_context_type(document, position, receiver)
+            {
+                if let Some(members) = context_members::resolved_context_chain_members(
+                    document,
+                    workspace_index,
+                    &context_type,
+                    &access.member_chain,
+                ) {
+                    return completion_items(position, &access.member_prefix, members);
+                }
             }
         }
     }
@@ -68,11 +82,11 @@ fn completion_items(
     member_prefix: &str,
     members: account_members::ResolvedAccountMembers,
 ) -> Option<Vec<CompletionItem>> {
-    let replacement_range = prefix_replacement_range(position, member_prefix);
+    let replacement_range = super::prefix_replacement_range(position, member_prefix);
     let mut items = members
         .members
         .iter()
-        .filter(|member| matches_prefix(&member.name, member_prefix))
+        .filter(|member| super::matches_completion_prefix(&member.name, member_prefix))
         .map(|member| member_item(member, &members.owner_type, replacement_range))
         .collect::<Vec<_>>();
     items.sort_by(|left, right| left.label.cmp(&right.label));
@@ -110,6 +124,31 @@ fn visible_receiver_context_type(
         .rev()
         .find(|value| value.name == receiver)
         .map(|value| value.accounts_type_name)
+}
+
+/// Returns `true` when `receiver` has been rebound to a non-`Context` type by a local
+/// let binding, meaning the function-parameter context value has been shadowed. When the
+/// receiver's most-recently-visible typed binding is `Context` (the function param itself) or
+/// when an explicit receiver type is already known and it IS a context type, this returns
+/// `false` — the context-type completion path should proceed.
+fn is_context_type_shadow(
+    document: &ParsedDocument,
+    position: Position,
+    workspace_index: Option<&WorkspaceIndex>,
+    receiver: &str,
+    syntax_receiver_type: &Option<String>,
+) -> bool {
+    const CONTEXT_TYPE_NAME: &str = "Context";
+    // If the syntax visitor already resolved a type, check it directly.
+    if let Some(resolved_type) = syntax_receiver_type {
+        return resolved_type != CONTEXT_TYPE_NAME;
+    }
+    // Fall back to the typed-values lookup. The function parameter `ctx: Context<Run>`
+    // contributes `{ name: "ctx", type_name: "Context" }` to typed_values; a shadowing
+    // let binding like `let ctx = a;` contributes `{ name: "ctx", type_name: "Aa" }`.
+    // Use the most-recent (last-added) binding to detect the shadow.
+    visible_receiver_type(document, position, workspace_index, receiver)
+        .is_some_and(|t| t != CONTEXT_TYPE_NAME)
 }
 
 fn syntax_handler_member_access(
@@ -261,11 +300,14 @@ fn text_handler_member_access(source: &str, position: Position) -> Option<Handle
     }
     let mut segments = receiver_expression.split('.');
     let receiver = segments.next()?;
-    if !is_identifier(receiver) {
+    if !crate::syntax::is_ascii_identifier(receiver) {
         return None;
     }
     let member_chain = segments.map(str::to_string).collect::<Vec<_>>();
-    if !member_chain.iter().all(|segment| is_identifier(segment)) {
+    if !member_chain
+        .iter()
+        .all(|segment| crate::syntax::is_ascii_identifier(segment))
+    {
         return None;
     }
     Some(HandlerMemberAccess {
@@ -299,32 +341,6 @@ fn member_item(
     }
 }
 
-fn prefix_replacement_range(position: Position, prefix: &str) -> Range {
-    Range {
-        start: Position {
-            line: position.line,
-            character: position
-                .character
-                .saturating_sub(u32::try_from(prefix.chars().count()).unwrap_or_default()),
-        },
-        end: position,
-    }
-}
-
-fn matches_prefix(candidate: &str, prefix: &str) -> bool {
-    candidate
-        .to_ascii_lowercase()
-        .starts_with(&prefix.to_ascii_lowercase())
-}
-
-fn is_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(super::cursor_context::is_identifier_char)
-}
-
 fn is_identifier_prefix(value: &str) -> bool {
-    value.chars().all(super::cursor_context::is_identifier_char)
+    crate::syntax::is_ascii_identifier_prefix(value)
 }

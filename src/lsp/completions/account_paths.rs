@@ -9,7 +9,7 @@ use {
     },
     quote::ToTokens,
     tower_lsp::lsp_types::{
-        CompletionItem, CompletionItemKind, CompletionTextEdit, Position, Range, TextEdit,
+        CompletionItem, CompletionItemKind, CompletionTextEdit, Position, TextEdit,
     },
 };
 
@@ -80,13 +80,14 @@ pub fn completions(
         )
     })?;
     candidates.retain(|candidate| {
-        context.prefix.is_empty() || matches_prefix(&candidate.name, &context.prefix)
+        context.prefix.is_empty()
+            || super::matches_completion_prefix(&candidate.name, &context.prefix)
     });
     candidates.sort_by(|left, right| left.name.cmp(&right.name));
     candidates.dedup_by(|left, right| left.name == right.name);
 
     (!candidates.is_empty()).then(|| {
-        let replacement_range = prefix_replacement_range(position, &context.prefix);
+        let replacement_range = super::prefix_replacement_range(position, &context.prefix);
         candidates
             .into_iter()
             .map(|candidate| CompletionItem {
@@ -660,23 +661,6 @@ fn local_alias_completion_context(
         completed_segments,
         prefix: alias_path.member_prefix,
     })
-}
-
-fn matches_prefix(value: &str, prefix: &str) -> bool {
-    value
-        .to_ascii_lowercase()
-        .starts_with(&prefix.to_ascii_lowercase())
-}
-
-fn prefix_replacement_range(position: Position, prefix: &str) -> Range {
-    let prefix_len = u32::try_from(prefix.chars().count()).unwrap_or_default();
-    Range {
-        start: Position {
-            line: position.line,
-            character: position.character.saturating_sub(prefix_len),
-        },
-        end: position,
-    }
 }
 
 fn contains_position(range: tower_lsp::lsp_types::Range, position: Position) -> bool {
