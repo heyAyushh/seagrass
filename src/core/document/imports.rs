@@ -13,32 +13,65 @@ pub(super) fn collect_imported_names(
     tree: &UseTree,
     names: &mut Vec<NamedRange>,
     aliases: &mut HashMap<String, String>,
+    origins: &mut HashMap<String, String>,
+) {
+    collect_imported_names_with_root(tree, names, aliases, origins, None);
+}
+
+fn collect_imported_names_with_root(
+    tree: &UseTree,
+    names: &mut Vec<NamedRange>,
+    aliases: &mut HashMap<String, String>,
+    origins: &mut HashMap<String, String>,
+    root: Option<&syn::Ident>,
 ) {
     match tree {
-        UseTree::Name(name) => names.push(NamedRange {
-            name: name.ident.to_string(),
-            range: range_from_span(name.ident.span()),
-        }),
-        UseTree::Rename(rename) => {
+        UseTree::Name(name) => {
+            let imported_name = name.ident.to_string();
             names.push(NamedRange {
-                name: rename.rename.to_string(),
+                name: imported_name.clone(),
+                range: range_from_span(name.ident.span()),
+            });
+            record_import_origin(origins, &imported_name, root);
+        }
+        UseTree::Rename(rename) => {
+            let alias = rename.rename.to_string();
+            names.push(NamedRange {
+                name: alias.clone(),
                 range: range_from_span(rename.rename.span()),
             });
-            aliases.insert(rename.rename.to_string(), rename.ident.to_string());
+            aliases.insert(alias.clone(), rename.ident.to_string());
+            record_import_origin(origins, &alias, root);
         }
         UseTree::Path(path) => {
             names.push(NamedRange {
                 name: path.ident.to_string(),
                 range: range_from_span(path.ident.span()),
             });
-            collect_imported_names(&path.tree, names, aliases);
+            collect_imported_names_with_root(
+                &path.tree,
+                names,
+                aliases,
+                origins,
+                root.or(Some(&path.ident)),
+            );
         }
         UseTree::Group(group) => {
             for tree in &group.items {
-                collect_imported_names(tree, names, aliases);
+                collect_imported_names_with_root(tree, names, aliases, origins, root);
             }
         }
         UseTree::Glob(_) => {}
+    }
+}
+
+fn record_import_origin(
+    origins: &mut HashMap<String, String>,
+    imported_name: &str,
+    root: Option<&syn::Ident>,
+) {
+    if let Some(root) = root {
+        origins.insert(imported_name.to_string(), root.to_string());
     }
 }
 

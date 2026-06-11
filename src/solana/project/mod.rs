@@ -5,7 +5,7 @@ use {
     },
     cargo_toml::{DepsSet, Manifest},
     std::{
-        collections::HashSet,
+        collections::{HashMap, HashSet},
         fs,
         path::{Path, PathBuf},
     },
@@ -94,7 +94,44 @@ struct CargoManifest {
     name: Option<String>,
     lib_name: Option<String>,
     lib_crate_types: Vec<String>,
-    dependencies: HashSet<String>,
+    dependencies: CargoManifestDeps,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CargoManifestDeps {
+    names: HashSet<String>,
+    import_roots: HashMap<String, String>,
+}
+
+impl CargoManifestDeps {
+    pub fn contains_crate(&self, crate_name: &str) -> bool {
+        let expected = normalize_dependency_name(crate_name);
+        self.names
+            .iter()
+            .any(|name| normalize_dependency_name(name) == expected)
+    }
+
+    pub fn import_root_matches_crate(&self, import_root: &str, crate_name: &str) -> bool {
+        let normalized_root = normalize_dependency_name(import_root);
+        let expected_crate = normalize_dependency_name(crate_name);
+        self.import_roots
+            .get(&normalized_root)
+            .is_some_and(|dependency_package| dependency_package == &expected_crate)
+    }
+
+    fn insert_dependency(&mut self, import_root: String, package_name: Option<String>) {
+        let dependency_package = package_name.unwrap_or_else(|| import_root.clone());
+        self.names.insert(import_root.clone());
+        self.names.insert(dependency_package.clone());
+        self.import_roots.insert(
+            normalize_dependency_name(&import_root),
+            normalize_dependency_name(&dependency_package),
+        );
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &String> {
+        self.names.iter()
+    }
 }
 
 pub fn detect_for_document(uri: &Url, document: &ParsedDocument) -> Option<SolanaProgram> {
@@ -271,17 +308,20 @@ pub fn classify_manifest_text(manifest_text: &str, source_text: &str) -> Option<
     classify_program(&manifest, source_text)
 }
 
+pub fn parse_manifest_deps(manifest_text: &str) -> CargoManifestDeps {
+    Manifest::from_str(manifest_text)
+        .map(|manifest| {
+            let mut dependencies = CargoManifestDeps::default();
+            extend_all_dependency_names(&manifest, &mut dependencies);
+            dependencies
+        })
+        .unwrap_or_default()
+}
+
 fn parse_cargo_manifest(text: &str) -> Option<CargoManifest> {
     let manifest = Manifest::from_str(text).ok()?;
-    let mut dependencies = HashSet::new();
-    extend_dependency_names(&manifest.dependencies, &mut dependencies);
-    extend_dependency_names(&manifest.dev_dependencies, &mut dependencies);
-    extend_dependency_names(&manifest.build_dependencies, &mut dependencies);
-    for target in manifest.target.values() {
-        extend_dependency_names(&target.dependencies, &mut dependencies);
-        extend_dependency_names(&target.dev_dependencies, &mut dependencies);
-        extend_dependency_names(&target.build_dependencies, &mut dependencies);
-    }
+    let mut dependencies = CargoManifestDeps::default();
+    extend_all_dependency_names(&manifest, &mut dependencies);
 
     Some(CargoManifest {
         name: manifest
@@ -302,16 +342,29 @@ fn parse_cargo_manifest(text: &str) -> Option<CargoManifest> {
     })
 }
 
-fn extend_dependency_names(dependencies: &DepsSet, names: &mut HashSet<String>) {
+fn extend_all_dependency_names(manifest: &Manifest, dependencies: &mut CargoManifestDeps) {
+    extend_dependency_names(&manifest.dependencies, dependencies);
+    extend_dependency_names(&manifest.dev_dependencies, dependencies);
+    extend_dependency_names(&manifest.build_dependencies, dependencies);
+    for target in manifest.target.values() {
+        extend_dependency_names(&target.dependencies, dependencies);
+        extend_dependency_names(&target.dev_dependencies, dependencies);
+        extend_dependency_names(&target.build_dependencies, dependencies);
+    }
+}
+
+fn extend_dependency_names(dependencies: &DepsSet, names: &mut CargoManifestDeps) {
     for (name, dependency) in dependencies {
-        names.insert(name.clone());
-        if let Some(package) = dependency
+        let package = dependency
             .detail()
             .and_then(|detail| detail.package.as_ref())
-        {
-            names.insert(package.clone());
-        }
+            .cloned();
+        names.insert_dependency(name.clone(), package);
     }
+}
+
+fn normalize_dependency_name(name: &str) -> String {
+    name.replace('_', "-")
 }
 
 pub fn nearest_manifest(uri: &Url) -> Option<(Url, String)> {
@@ -588,6 +641,24 @@ fn process_instruction() {}
 
         assert_eq!(program.kind, SolanaProjectKind::NativeSolana);
         assert_eq!(program.name, "native_sbf");
+    }
+
+    #[test]
+    fn parse_manifest_deps_records_keys_and_package_renames() {
+        let deps = parse_manifest_deps(
+            r#"
+[dependencies]
+clock = { package = "solana-clock", version = "2" }
+solana-rent.workspace = true
+"#,
+        );
+
+        assert!(deps.contains_crate("clock"));
+        assert!(deps.contains_crate("solana-clock"));
+        assert!(deps.contains_crate("solana-rent"));
+        assert!(deps.import_root_matches_crate("clock", "solana-clock"));
+        assert!(deps.import_root_matches_crate("solana_rent", "solana-rent"));
+        assert!(!deps.import_root_matches_crate("clock", "solana-rent"));
     }
 
     #[test]

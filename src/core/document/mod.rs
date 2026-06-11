@@ -113,6 +113,9 @@ pub struct AnchorSymbols {
     pub account_data_structs: HashMap<String, SymbolRange>,
     pub constants: Vec<NamedRange>,
     pub imported_names: Vec<NamedRange>,
+    /// Maps an imported leaf name or alias to the root used path segment, e.g.
+    /// `Clock -> solana_clock` for `use solana_clock::Clock`.
+    pub import_origins: HashMap<String, String>,
     /// True when the file contains at least one glob `use` (`use foo::*;`),
     /// meaning names are in scope that seagrass cannot enumerate.
     /// Diagnostics that assert "name X does not exist" must suppress when this
@@ -213,6 +216,7 @@ impl AnchorSymbols {
                         &item_use.tree,
                         &mut symbols.imported_names,
                         &mut symbols.import_aliases,
+                        &mut symbols.import_origins,
                     );
                     if has_glob_in_use_tree(&item_use.tree) {
                         symbols.has_glob_import = true;

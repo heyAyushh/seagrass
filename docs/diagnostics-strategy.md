@@ -180,6 +180,33 @@ Deep analysis must not regress Part 1. Two rules:
 
 ---
 
+## Capability Registry (Plan 05)
+
+Runtime concepts are split into facts and naming. Facts stay in the generated runtime catalog:
+sysvar IDs, canonical type identifiers, and layout parity checks. Naming lives in the capability
+registry: which crate root can expose which catalog-backed concept under which Rust identifier.
+
+Resolution requires the full chain:
+
+```text
+source identifier
+  -> import origin from this file
+  -> declared Cargo dependency
+  -> capability registry crate mapping
+  -> runtime catalog fact
+```
+
+If any link is missing, seagrass makes no new claim. A local `Clock` type or an import from a crate
+not declared in `Cargo.toml` does not resolve as a runtime sysvar. Registry entries are never facts:
+adding support for a new crate or framework means adding a registry row and, when the crate is a
+reasonable dev-dependency, a compile-time parity canary beside the runtime catalog tests.
+
+For crates that are not direct dev-dependencies, entries are activated only by the source import plus
+manifest dependency chain. That keeps reviewed naming support additive without turning uncompiled
+third-party assumptions into standalone diagnostics.
+
+---
+
 ## Appendix A — full lint FP-risk inventory (defense)
 
 Audited across all ~30 diagnostic modules. Risk = likelihood of a *false* positive on idiomatic,

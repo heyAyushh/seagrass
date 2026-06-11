@@ -5,7 +5,9 @@ use {
         handler_scope, handler_struct_literals, initialization, instruction_attributes, pda,
         project_identity, security, spl_semantics,
     },
-    crate::{diagnostics::engine::DiagnosticInput, solana::frameworks::FrameworkSet},
+    crate::{
+        diagnostics::engine::DiagnosticInput, solana::frameworks::FrameworkSet, solana_project,
+    },
     tower_lsp::lsp_types::Diagnostic,
 };
 
@@ -147,7 +149,8 @@ static RULES: [DiagnosticRule; 19] = [
 ];
 
 fn collect_anchor_syn(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
-    anchor_syn::collect_with_workspace(input.document, input.workspace_index)
+    let manifest_deps = input_manifest_deps(input);
+    anchor_syn::collect_with_context(input.document, input.workspace_index, &manifest_deps)
 }
 
 fn collect_context_accounts(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
@@ -240,6 +243,13 @@ fn collect_ecosystem(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
         return Vec::new();
     };
     ecosystem::collect(input.document, uri, input.solana_program)
+}
+
+fn input_manifest_deps(input: &DiagnosticInput<'_>) -> solana_project::CargoManifestDeps {
+    input
+        .manifest
+        .map(|(_, manifest_text)| solana_project::parse_manifest_deps(manifest_text))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]

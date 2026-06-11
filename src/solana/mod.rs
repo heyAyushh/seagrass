@@ -1,4 +1,5 @@
 pub(crate) mod artifact_paths;
+pub mod capability_registry;
 pub(crate) mod ecosystem;
 pub mod frameworks;
 pub(crate) mod idl;

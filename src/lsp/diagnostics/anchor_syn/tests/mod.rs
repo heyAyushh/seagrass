@@ -1,5 +1,7 @@
 use super::*;
 
+mod capability_registry;
+
 #[test]
 fn reports_program_handler_missing_return_type_without_raw_parser_message() {
     let document = ParsedDocument::parse(

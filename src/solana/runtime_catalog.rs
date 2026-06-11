@@ -307,6 +307,73 @@ mod runtime_catalog_parity {
         let _ = (lamports_per_byte_year, exemption_threshold, burn_percent);
     }
 
+    #[test]
+    fn modular_crate_clock_matches_catalog() {
+        assert_eq!(
+            CLOCK_FIELDS,
+            [
+                "slot",
+                "epoch_start_timestamp",
+                "epoch",
+                "leader_schedule_epoch",
+                "unix_timestamp",
+            ]
+        );
+
+        #[allow(dead_code)]
+        fn clock_fields_compile_check(clock: solana_clock::Clock) {
+            let solana_clock::Clock {
+                slot,
+                epoch_start_timestamp,
+                epoch,
+                leader_schedule_epoch,
+                unix_timestamp,
+            } = clock;
+            let _ = (
+                slot,
+                epoch_start_timestamp,
+                epoch,
+                leader_schedule_epoch,
+                unix_timestamp,
+            );
+        }
+    }
+
+    #[test]
+    #[allow(deprecated)]
+    fn modular_crate_rent_matches_catalog() {
+        assert_eq!(
+            RENT_FIELDS,
+            [
+                "lamports_per_byte_year",
+                "exemption_threshold",
+                "burn_percent",
+            ]
+        );
+        assert_eq!(
+            solana_rent::DEFAULT_LAMPORTS_PER_BYTE_YEAR,
+            solana_program::rent::DEFAULT_LAMPORTS_PER_BYTE_YEAR
+        );
+        assert_eq!(
+            solana_rent::DEFAULT_EXEMPTION_THRESHOLD,
+            solana_program::rent::DEFAULT_EXEMPTION_THRESHOLD
+        );
+        assert_eq!(
+            solana_rent::DEFAULT_BURN_PERCENT,
+            solana_program::rent::DEFAULT_BURN_PERCENT
+        );
+
+        #[allow(dead_code)]
+        fn rent_fields_compile_check(rent: solana_rent::Rent) {
+            let solana_rent::Rent {
+                lamports_per_byte_year,
+                exemption_threshold,
+                burn_percent,
+            } = rent;
+            let _ = (lamports_per_byte_year, exemption_threshold, burn_percent);
+        }
+    }
+
     /// The deprecated set must be exactly {fees, recent_blockhashes}.
     ///
     /// If Solana deprecates another sysvar the test will start failing, prompting a catalog

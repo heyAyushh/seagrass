@@ -5,7 +5,8 @@ use {
         diagnostics::{diagnostic_from_range, diagnostic_from_syn_error},
         document::{derives_accounts, has_attr, ParsedDocument},
         range::range_from_span,
-        solana::runtime_catalog,
+        solana::{capability_registry, runtime_catalog},
+        solana_project::CargoManifestDeps,
         workspace::WorkspaceIndex,
     },
     std::collections::HashSet,
@@ -33,9 +34,18 @@ pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
     collect_with_workspace(document, None)
 }
 
+#[cfg(test)]
 pub fn collect_with_workspace(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<Diagnostic> {
+    collect_with_context(document, workspace_index, &CargoManifestDeps::default())
+}
+
+pub fn collect_with_context(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    manifest_deps: &CargoManifestDeps,
 ) -> Vec<Diagnostic> {
     document
         .syntax()
@@ -46,7 +56,7 @@ pub fn collect_with_workspace(
                 validate_program(item_mod)
             }
             Item::Struct(item_struct) if derives_accounts(&item_struct.attrs) => {
-                validate_accounts(document, item_struct, workspace_index)
+                validate_accounts(document, item_struct, workspace_index, manifest_deps)
             }
             _ => Vec::new(),
         })
@@ -57,6 +67,7 @@ fn validate_accounts(
     document: &ParsedDocument,
     item_struct: &ItemStruct,
     workspace_index: Option<&WorkspaceIndex>,
+    manifest_deps: &CargoManifestDeps,
 ) -> Vec<Diagnostic> {
     let mut semantic_diagnostics =
         unresolved_account_generic_diagnostics(document, item_struct, workspace_index);
@@ -68,7 +79,7 @@ fn validate_accounts(
         Ok(_) => Vec::new(),
         Err(err) => {
             if err.to_string().contains("invalid sysvar provided") {
-                match invalid_sysvar_diagnostic(document, item_struct, &err) {
+                match invalid_sysvar_diagnostic(document, item_struct, &err, manifest_deps) {
                     InvalidSysvarDiagnostic::Diagnostic(diagnostic) => vec![*diagnostic],
                     InvalidSysvarDiagnostic::Suppress => Vec::new(),
                     InvalidSysvarDiagnostic::Fallback => vec![diagnostic_from_syn_error(err)],
@@ -532,14 +543,20 @@ fn invalid_sysvar_diagnostic(
     document: &ParsedDocument,
     item_struct: &ItemStruct,
     err: &syn::Error,
+    manifest_deps: &CargoManifestDeps,
 ) -> InvalidSysvarDiagnostic {
     let err_range = range_from_span(err.span());
+    let mut resolved_imported_sysvar = false;
     let candidates = item_struct
         .fields
         .iter()
         .filter_map(|field| {
             let ident = field.ident.as_ref()?;
             let (current, current_range) = sysvar_generic_argument(&field.ty)?;
+            if imported_sysvar_generic_resolves(document, &current, manifest_deps) {
+                resolved_imported_sysvar = true;
+                return None;
+            }
             let replacement = anchor_types::sysvar_generic_for_field(&ident.to_string());
             if replacement.is_some_and(|replacement| current == replacement) {
                 return None;
@@ -553,6 +570,9 @@ fn invalid_sysvar_diagnostic(
         .find(|(_, _, _, range)| ranges_overlap(*range, err_range))
         .or_else(|| candidates.first())
     else {
+        if resolved_imported_sysvar {
+            return InvalidSysvarDiagnostic::Suppress;
+        }
         return InvalidSysvarDiagnostic::Fallback;
     };
     let replacement = *replacement;
@@ -594,6 +614,20 @@ fn invalid_sysvar_diagnostic(
             "generatedFrom": "lang/syn/src/parser/accounts/mod.rs",
         })),
     )))
+}
+
+fn imported_sysvar_generic_resolves(
+    document: &ParsedDocument,
+    current: &str,
+    manifest_deps: &CargoManifestDeps,
+) -> bool {
+    capability_registry::resolve_concept_with_aliases(
+        current,
+        &document.symbols().import_origins,
+        &document.symbols().import_aliases,
+        manifest_deps,
+    )
+    .is_some_and(capability_registry::Concept::is_sysvar)
 }
 
 fn sysvar_generic_candidates() -> Vec<&'static str> {
