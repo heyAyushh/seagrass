@@ -237,8 +237,8 @@ fn corpus_enabled() -> bool {
 // Committed-fixture tests — hard zero-ERROR gate
 // ---------------------------------------------------------------------------
 
-/// Hard zero-ERROR guard for the only committed corpus program (blueshift
-/// anchor escrow).  The sweep iterates every sub-directory of
+/// Hard zero-ERROR guard for the committed corpus programs. The sweep iterates
+/// every sub-directory of
 /// `fixtures/corpus/` automatically, so dropping a new program there is
 /// sufficient to include it — no test change is needed.
 #[test]
