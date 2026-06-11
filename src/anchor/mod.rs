@@ -8,5 +8,6 @@ pub mod errors;
 pub mod extractor;
 pub(crate) mod idioms;
 pub mod preflight;
+pub mod space;
 pub mod support;
 pub(crate) mod types;

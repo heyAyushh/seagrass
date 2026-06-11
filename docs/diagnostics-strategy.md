@@ -208,6 +208,23 @@ third-party assumptions into standalone diagnostics.
 
 ---
 
+## Space Engine (Plan 09)
+
+Seagrass now computes Anchor account-data space as an editor surface, not as a
+diagnostic. The byte table follows Borsh/Anchor `derive(InitSpace)` semantics
+verified against the pinned `anchor-derive-space` source: primitives, `Pubkey`,
+arrays, tuples, `Option`, `String`, `Vec`, nested structs, and enum max-variant
+payloads. Callers add the discriminator because Anchor code may use either the
+classic `8 + T::INIT_SPACE` idiom or a custom-discriminator-safe expression.
+
+Unknown stays silent. Zero-copy layout, recursive types, unsupported syntax, or
+unresolved types do not create a fabricated number. `String` and `Vec` without
+`#[max_len]` render as formulas or receive an explicit `max_len` quick fix stub.
+Mismatch diagnostics remain future work; the current product is hover, code
+lens, and quick fixes only.
+
+---
+
 ## Appendix A — full lint FP-risk inventory (defense)
 
 Audited across all ~30 diagnostic modules. Risk = likelihood of a *false* positive on idiomatic,

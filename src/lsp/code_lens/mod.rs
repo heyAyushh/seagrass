@@ -1,5 +1,9 @@
 use {
-    crate::{document::ParsedDocument, workspace::WorkspaceIndex},
+    crate::{
+        anchor::space::{self, SpaceEstimate},
+        document::ParsedDocument,
+        workspace::WorkspaceIndex,
+    },
     tower_lsp::lsp_types::{CodeLens, Command, Url},
 };
 
@@ -60,8 +64,44 @@ pub fn code_lenses(
                 })
             });
 
+    let account_space_lenses =
+        document
+            .symbols()
+            .account_data_structs
+            .values()
+            .filter_map(|account| {
+                let estimate =
+                    space::account_space_with_document(account, document, Some(workspace));
+                let title = account_space_title(&estimate)?;
+                let total_bytes = match estimate {
+                    SpaceEstimate::Exact(data_bytes) => Some(8u64.saturating_add(data_bytes)),
+                    SpaceEstimate::Formula { .. } | SpaceEstimate::Unknown(_) => None,
+                };
+                let mut data = serde_json::json!({
+                    "kind": "anchor.accountSpace",
+                    "accountType": account.name,
+                });
+                if let (serde_json::Value::Object(map), Some(bytes)) = (&mut data, total_bytes) {
+                    map.insert("bytes".to_string(), serde_json::json!(bytes));
+                }
+
+                Some(CodeLens {
+                    range: account.selection_range,
+                    command: Some(Command {
+                        title,
+                        command: ANALYZE_COMMAND.to_string(),
+                        arguments: Some(vec![serde_json::json!({
+                            "uri": uri,
+                            "accountType": account.name,
+                        })]),
+                    }),
+                    data: Some(data),
+                })
+            });
+
     account_context_lenses
         .chain(instruction_context_lenses)
+        .chain(account_space_lenses)
         .collect()
 }
 
@@ -100,6 +140,20 @@ fn instruction_count_title(count: usize) -> String {
 
 fn instruction_context_title(context: &str) -> String {
     format!("Context<{context}>")
+}
+
+fn account_space_title(estimate: &SpaceEstimate) -> Option<String> {
+    match estimate {
+        SpaceEstimate::Exact(data_bytes) => {
+            let total = 8u64.saturating_add(*data_bytes);
+            Some(format!("space: 8 + {data_bytes} = {total} bytes"))
+        }
+        SpaceEstimate::Formula { fixed, symbolic } => {
+            let data_expr = space::formula_expr(*fixed, symbolic);
+            Some(format!("space: 8 + {data_expr} bytes (set max_len)"))
+        }
+        SpaceEstimate::Unknown(_) => None,
+    }
 }
 
 #[cfg(test)]
@@ -260,5 +314,60 @@ pub mod demo {
             "initialize"
         );
         assert_eq!(lenses[0].data.as_ref().unwrap()["context"], "Create");
+    }
+
+    #[test]
+    fn account_space_lens_reports_exact_account_data_size() {
+        let uri = Url::parse("file:///tmp/lib.rs").unwrap();
+        let source = r#"
+#[account]
+pub struct Vault {
+    pub authority: Pubkey,
+    pub amount: u64,
+}
+"#;
+        let document = ParsedDocument::parse(source).unwrap();
+        let workspace = WorkspaceIndex::build(&[], [(uri.clone(), source.to_string())]);
+        let lenses = code_lenses(&document, &uri, &workspace);
+
+        assert_eq!(lenses.len(), 1);
+        let lens = &lenses[0];
+        assert_eq!(
+            lens.command.as_ref().map(|command| command.title.as_str()),
+            Some("space: 8 + 40 = 48 bytes")
+        );
+        assert_eq!(lens.data.as_ref().unwrap()["kind"], "anchor.accountSpace");
+        assert_eq!(lens.data.as_ref().unwrap()["accountType"], "Vault");
+        assert_eq!(lens.data.as_ref().unwrap()["bytes"], 48);
+    }
+
+    #[test]
+    fn account_space_lens_ignores_derive_accounts_contexts() {
+        let uri = Url::parse("file:///tmp/lib.rs").unwrap();
+        let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    pub payer: Signer<'info>,
+}
+"#;
+        let document = ParsedDocument::parse(source).unwrap();
+        let workspace = WorkspaceIndex::build(&[], [(uri.clone(), source.to_string())]);
+
+        assert!(code_lenses(&document, &uri, &workspace).is_empty());
+    }
+
+    #[test]
+    fn account_space_lens_stays_quiet_for_unknown_size() {
+        let uri = Url::parse("file:///tmp/lib.rs").unwrap();
+        let source = r#"
+#[account]
+pub struct Vault {
+    pub missing: Missing,
+}
+"#;
+        let document = ParsedDocument::parse(source).unwrap();
+        let workspace = WorkspaceIndex::build(&[], [(uri.clone(), source.to_string())]);
+
+        assert!(code_lenses(&document, &uri, &workspace).is_empty());
     }
 }

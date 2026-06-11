@@ -82,7 +82,7 @@ Details in [`docs/product-framing.md`](docs/product-framing.md).
 
 ## In your editor
 
-Seagrass runs next to rust-analyzer — rust-analyzer keeps doing generic Rust, Seagrass adds the Anchor/Solana layer (constraint-aware completion, quick fixes, hovers, account/CPI navigation).
+Seagrass runs next to rust-analyzer — rust-analyzer keeps doing generic Rust, Seagrass adds the Anchor/Solana layer (constraint-aware completion, account-space hovers/lenses, quick fixes, account/CPI navigation).
 
 - **VS Code** — local dev extension (not on the Marketplace yet): `cd editors/vscode && bun install && bun run check && code .`, then run **Run Seagrass Extension**. → [`editors/vscode/README.md`](editors/vscode/README.md)
 - **Zed** — `zed: extensions` → **Install Dev Extension** → pick `editors/zed`. It finds `seagrass` on your `PATH` (or builds it), pushes diagnostics live. → [`editors/zed/README.md`](editors/zed/README.md)

@@ -2,7 +2,7 @@ use {
     crate::{
         collections::Trie,
         definition_bridge::{self, BridgeSymbol},
-        document::{AccountConstraint, InstructionAttributeArgument, ParsedDocument},
+        document::{AccountConstraint, InstructionAttributeArgument, ParsedDocument, SymbolRange},
         file_text,
     },
     std::{
@@ -28,9 +28,10 @@ pub use associated_values::WorkspaceAssociatedValue;
 use {
     files::anchor_rust_files,
     indexing::{
-        document_indexed_references, document_indexed_symbols, indexed_accounts_structs,
-        indexed_functions, IndexedAccountsStruct, IndexedFunction, IndexedFunctionEntry,
-        IndexedReference, IndexedReferenceEntry, IndexedSymbol, IndexedSymbolEntry,
+        document_indexed_references, document_indexed_symbols, indexed_account_data_structs,
+        indexed_accounts_structs, indexed_functions, IndexedAccountDataStruct,
+        IndexedAccountsStruct, IndexedFunction, IndexedFunctionEntry, IndexedReference,
+        IndexedReferenceEntry, IndexedSymbol, IndexedSymbolEntry,
     },
     instruction_arguments::{
         instruction_argument_names_match, instruction_argument_ranges_in_constraint,
@@ -58,6 +59,7 @@ pub struct WorkspaceIndex {
     functions_by_name: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
     functions_by_context: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
     accounts_by_name: HashMap<SymbolName, Vec<IndexedAccountsStruct>>,
+    account_data_by_name: HashMap<SymbolName, Vec<IndexedAccountDataStruct>>,
     /// Maps `["crate", "module", …]` path segments to the file URI that
     /// implements that module.  Used by `symbol_exists_at_qualified_path` to
     /// resolve multi-segment `crate::module::Symbol` references without a
@@ -73,6 +75,7 @@ pub(crate) struct WorkspaceDocumentUpdate {
     references: Vec<IndexedReference>,
     functions: Vec<IndexedFunction>,
     accounts_structs: Vec<IndexedAccountsStruct>,
+    account_data_structs: Vec<IndexedAccountDataStruct>,
 }
 
 impl WorkspaceDocumentUpdate {
@@ -83,6 +86,7 @@ impl WorkspaceDocumentUpdate {
             references: document_indexed_references(document),
             functions: indexed_functions(document),
             accounts_structs: indexed_accounts_structs(document, &uri, true),
+            account_data_structs: indexed_account_data_structs(document, &uri, true),
             uri,
         }
     }
@@ -115,6 +119,13 @@ pub struct WorkspaceAccountsStruct {
     pub instruction_arguments: Vec<InstructionAttributeArgument>,
 }
 
+#[derive(Debug, Clone)]
+pub struct WorkspaceAccountDataStruct {
+    pub uri: Url,
+    pub is_open: bool,
+    pub symbol: SymbolRange,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceInstructionSummary {
     pub name: String,
@@ -126,6 +137,7 @@ pub struct WorkspaceInstructionSummary {
 pub struct WorkspaceAccountField {
     pub name: String,
     pub type_name: Option<String>,
+    pub type_signature: Option<String>,
     pub generic_type_names: Vec<String>,
     pub is_optional: bool,
     pub account_constraints: Vec<AccountConstraint>,
@@ -347,6 +359,10 @@ impl WorkspaceIndex {
             .get(name)?
             .first()
             .map(|entry| &entry.accounts)
+    }
+
+    pub fn account_data_struct(&self, name: &str) -> Option<&WorkspaceAccountDataStruct> {
+        self.account_data_by_name.get(name)?.first()
     }
 
     pub fn accounts_struct_names(&self) -> Vec<String> {
@@ -661,6 +677,7 @@ impl WorkspaceIndex {
 
     fn insert_parsed_document(&mut self, uri: Url, document: &ParsedDocument, is_open: bool) {
         let accounts_structs = indexed_accounts_structs(document, &uri, is_open);
+        let account_data_structs = indexed_account_data_structs(document, &uri, is_open);
         let functions = indexed_functions(document);
         let references = document_indexed_references(document);
         let symbols = document_indexed_symbols(document);
@@ -671,28 +688,14 @@ impl WorkspaceIndex {
             references,
             functions,
             accounts_structs,
+            account_data_structs,
         });
     }
 
     fn insert_indexed_document(&mut self, update: WorkspaceDocumentUpdate) {
-        let WorkspaceDocumentUpdate {
-            uri,
-            is_open,
-            symbols,
-            references,
-            functions,
-            accounts_structs,
-        } = update;
-
+        let uri = update.uri.clone();
         self.remove_index_entries_for_uri(&uri);
-        self.index_document_parts(
-            &uri,
-            is_open,
-            symbols,
-            references,
-            functions,
-            accounts_structs,
-        );
+        self.index_document_parts(update);
         self.documents.insert(uri);
     }
 
@@ -703,41 +706,45 @@ impl WorkspaceIndex {
         prune_uri_entries!(self, functions_by_name, direct, uri);
         prune_uri_entries!(self, functions_by_context, direct, uri);
         prune_uri_entries!(self, accounts_by_name, direct, uri);
+        prune_uri_entries!(self, account_data_by_name, direct, uri);
     }
 
-    fn index_document_parts(
-        &mut self,
-        uri: &Url,
-        is_open: bool,
-        symbols: Vec<IndexedSymbol>,
-        references: Vec<IndexedReference>,
-        functions: Vec<IndexedFunction>,
-        accounts_structs: Vec<IndexedAccountsStruct>,
-    ) {
+    fn index_document_parts(&mut self, update: WorkspaceDocumentUpdate) {
+        let WorkspaceDocumentUpdate {
+            uri,
+            is_open,
+            symbols,
+            references,
+            functions,
+            accounts_structs,
+            account_data_structs,
+        } = update;
         // Pre-allocate based on typical sizes for better performance (Pass 4)
         self.symbols_by_name.reserve(symbols.len());
         self.references_by_name.reserve(references.len());
         self.functions_by_name.reserve(functions.len());
         self.functions_by_context.reserve(functions.len());
         self.accounts_by_name.reserve(accounts_structs.len());
+        self.account_data_by_name
+            .reserve(account_data_structs.len());
 
         for symbol in &symbols {
             // Use Arc<str> key for zero-cost clones in hot lookup paths (Pass 4)
             self.symbols_by_name
                 .entry(Arc::from(symbol.name.as_str()))
                 .or_default()
-                .push(IndexedSymbolEntry::from_symbol(uri, is_open, symbol));
+                .push(IndexedSymbolEntry::from_symbol(&uri, is_open, symbol));
         }
         for reference in &references {
             self.references_by_name
                 .entry(Arc::from(reference.name.as_str()))
                 .or_default()
                 .push(IndexedReferenceEntry::from_reference(
-                    uri, is_open, reference,
+                    &uri, is_open, reference,
                 ));
         }
         for function in &functions {
-            let entry = IndexedFunctionEntry::from_function(uri, is_open, function);
+            let entry = IndexedFunctionEntry::from_function(&uri, is_open, function);
             self.functions_by_name
                 .entry(Arc::from(function.name.as_str()))
                 .or_default()
@@ -755,6 +762,12 @@ impl WorkspaceIndex {
                 .entry(Arc::from(accounts.accounts.name.as_str()))
                 .or_default()
                 .push(accounts.clone());
+        }
+        for account_data in &account_data_structs {
+            self.account_data_by_name
+                .entry(Arc::from(account_data.symbol.name.as_str()))
+                .or_default()
+                .push(account_data.clone());
         }
         self.sort_open_entries_first();
     }

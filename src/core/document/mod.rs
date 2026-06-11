@@ -6,8 +6,8 @@ use {
     quote::ToTokens,
     std::collections::{HashMap, HashSet},
     syn::{
-        spanned::Spanned, Attribute, FnArg, GenericArgument, Item, ItemFn, ItemStruct, PatType,
-        Path, PathArguments, Token, Type, Visibility,
+        spanned::Spanned, Attribute, Fields, FnArg, GenericArgument, Item, ItemEnum, ItemFn,
+        ItemStruct, PatType, Path, PathArguments, Token, Type, Visibility,
     },
     tower_lsp::lsp_types::{Position, Range},
 };
@@ -109,6 +109,7 @@ impl ParsedDocument {
 #[derive(Debug, Default)]
 pub struct AnchorSymbols {
     pub all_structs: HashMap<String, SymbolRange>,
+    pub enums: HashMap<String, SymbolRange>,
     pub accounts_structs: HashMap<String, SymbolRange>,
     pub account_data_structs: HashMap<String, SymbolRange>,
     pub constants: Vec<NamedRange>,
@@ -226,6 +227,10 @@ impl AnchorSymbols {
                     }
                 }
                 Item::Enum(item_enum) => {
+                    symbols.enums.insert(
+                        item_enum.ident.to_string(),
+                        SymbolRange::from_enum(item_enum),
+                    );
                     if let Some(error_code) = error_codes::error_code_enum(item_enum) {
                         symbols.error_codes.push(error_code);
                     }
@@ -296,15 +301,23 @@ pub struct SymbolRange {
     pub range: Range,
     pub selection_range: Range,
     pub fields: Vec<SymbolRange>,
+    pub variants: Vec<SymbolRange>,
     pub type_name: Option<String>,
     pub type_range: Option<Range>,
+    /// Whitespace-normalized full Rust type text, retained for layout-sensitive
+    /// users such as account-space estimation.
+    pub type_signature: Option<String>,
     pub generic_type_names: Vec<String>,
     pub generic_type_ranges: Vec<NamedRange>,
     pub is_optional: bool,
+    pub max_len_args: Vec<String>,
     pub account_constraints: Vec<AccountConstraint>,
     pub pda_constraint: Option<PdaConstraint>,
     pub instruction_arguments: Vec<InstructionAttributeArgument>,
+    pub derive_attribute_range: Option<Range>,
     pub derive_accounts_range: Option<Range>,
+    pub derive_init_space_range: Option<Range>,
+    pub is_zero_copy: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -321,15 +334,69 @@ impl SymbolRange {
             range: range_from_span(item_struct.span()),
             selection_range: range_from_span(item_struct.ident.span()),
             fields: field_symbols(item_struct),
+            variants: Vec::new(),
             type_name: None,
             type_range: None,
+            type_signature: None,
             generic_type_names: Vec::new(),
             generic_type_ranges: Vec::new(),
             is_optional: false,
+            max_len_args: Vec::new(),
             account_constraints: Vec::new(),
             pda_constraint: None,
             instruction_arguments: instruction_attribute_arguments(&item_struct.attrs),
+            derive_attribute_range: derive_attribute_range(&item_struct.attrs),
             derive_accounts_range: derive_accounts_range(&item_struct.attrs),
+            derive_init_space_range: derive_init_space_range(&item_struct.attrs),
+            is_zero_copy: is_zero_copy_struct(&item_struct.attrs),
+        }
+    }
+
+    fn from_enum(item_enum: &ItemEnum) -> Self {
+        Self {
+            name: item_enum.ident.to_string(),
+            range: range_from_span(item_enum.span()),
+            selection_range: range_from_span(item_enum.ident.span()),
+            fields: Vec::new(),
+            variants: item_enum
+                .variants
+                .iter()
+                .map(|variant| SymbolRange {
+                    name: variant.ident.to_string(),
+                    range: range_from_span(variant.span()),
+                    selection_range: range_from_span(variant.ident.span()),
+                    fields: symbols_from_fields(&variant.fields, &HashMap::new()),
+                    variants: Vec::new(),
+                    type_name: None,
+                    type_range: None,
+                    type_signature: None,
+                    generic_type_names: Vec::new(),
+                    generic_type_ranges: Vec::new(),
+                    is_optional: false,
+                    max_len_args: Vec::new(),
+                    account_constraints: Vec::new(),
+                    pda_constraint: None,
+                    instruction_arguments: Vec::new(),
+                    derive_attribute_range: None,
+                    derive_accounts_range: None,
+                    derive_init_space_range: None,
+                    is_zero_copy: false,
+                })
+                .collect(),
+            type_name: None,
+            type_range: None,
+            type_signature: None,
+            generic_type_names: Vec::new(),
+            generic_type_ranges: Vec::new(),
+            is_optional: false,
+            max_len_args: Vec::new(),
+            account_constraints: Vec::new(),
+            pda_constraint: None,
+            instruction_arguments: Vec::new(),
+            derive_attribute_range: derive_attribute_range(&item_enum.attrs),
+            derive_accounts_range: None,
+            derive_init_space_range: derive_init_space_range(&item_enum.attrs),
+            is_zero_copy: false,
         }
     }
 }
@@ -478,6 +545,14 @@ pub fn derives_accounts(attrs: &[Attribute]) -> bool {
 }
 
 fn derive_accounts_range(attrs: &[Attribute]) -> Option<Range> {
+    derive_path_range(attrs, "Accounts")
+}
+
+fn derive_init_space_range(attrs: &[Attribute]) -> Option<Range> {
+    derive_path_range(attrs, "InitSpace")
+}
+
+fn derive_path_range(attrs: &[Attribute], name: &str) -> Option<Range> {
     attrs
         .iter()
         .filter(|attr| attr.path().is_ident("derive"))
@@ -489,9 +564,16 @@ fn derive_accounts_range(attrs: &[Attribute]) -> Option<Range> {
                 .ok()?;
             paths
                 .iter()
-                .find(|path| path.is_ident("Accounts"))
+                .find(|path| path.is_ident(name))
                 .map(|path| range_from_span(path.span()))
         })
+}
+
+fn derive_attribute_range(attrs: &[Attribute]) -> Option<Range> {
+    attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("derive"))
+        .map(|attr| range_from_span(attr.span()))
 }
 
 fn instruction_symbol(item_fn: &ItemFn) -> InstructionSymbol {
@@ -520,44 +602,81 @@ fn is_anchor_helper_function(item_fn: &ItemFn) -> bool {
 }
 
 fn field_symbols(item_struct: &ItemStruct) -> Vec<SymbolRange> {
-    let syn::Fields::Named(fields) = &item_struct.fields else {
-        return Vec::new();
-    };
     let parser_pdas = parser_pda_constraints(item_struct);
+    symbols_from_fields(&item_struct.fields, &parser_pdas)
+}
 
-    fields
-        .named
-        .iter()
-        .filter_map(|field| {
-            let ident = field.ident.as_ref()?;
-            let (field_ty, is_optional) = account_field_type(&field.ty);
-            let generic_type_ranges = generic_type_ranges(field_ty);
-            let account_constraints = account_constraints(&field.attrs);
-            let pda_constraint = parser_pdas.get(&ident.to_string()).cloned().or_else(|| {
-                account_constraints
-                    .iter()
-                    .find_map(|constraint| constraint.pda.clone())
-            });
-            Some(SymbolRange {
-                name: ident.to_string(),
-                range: range_from_span(field.span()),
-                selection_range: range_from_span(ident.span()),
-                fields: Vec::new(),
-                type_name: type_name(field_ty),
-                type_range: type_range(field_ty),
-                generic_type_names: generic_type_ranges
-                    .iter()
-                    .map(|range| range.name.clone())
-                    .collect(),
-                generic_type_ranges,
-                is_optional,
-                account_constraints,
-                pda_constraint,
-                instruction_arguments: Vec::new(),
-                derive_accounts_range: None,
+fn symbols_from_fields(
+    fields: &Fields,
+    parser_pdas: &HashMap<String, PdaConstraint>,
+) -> Vec<SymbolRange> {
+    match fields {
+        Fields::Named(fields) => fields
+            .named
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let ident = field
+                    .ident
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| index.to_string());
+                field_symbol(&ident, field, parser_pdas)
             })
-        })
-        .collect()
+            .collect(),
+        Fields::Unnamed(fields) => fields
+            .unnamed
+            .iter()
+            .enumerate()
+            .map(|(index, field)| field_symbol(&index.to_string(), field, parser_pdas))
+            .collect(),
+        Fields::Unit => Vec::new(),
+    }
+}
+
+fn field_symbol(
+    field_name: &str,
+    field: &syn::Field,
+    parser_pdas: &HashMap<String, PdaConstraint>,
+) -> SymbolRange {
+    let (field_ty, is_optional) = account_field_type(&field.ty);
+    let generic_type_ranges = generic_type_ranges(field_ty);
+    let account_constraints = account_constraints(&field.attrs);
+    let pda_constraint = parser_pdas.get(field_name).cloned().or_else(|| {
+        account_constraints
+            .iter()
+            .find_map(|constraint| constraint.pda.clone())
+    });
+    SymbolRange {
+        name: field_name.to_string(),
+        range: range_from_span(field.span()),
+        selection_range: field
+            .ident
+            .as_ref()
+            .map(|ident| range_from_span(ident.span()))
+            .unwrap_or_else(|| range_from_span(field.span())),
+        fields: Vec::new(),
+        variants: Vec::new(),
+        type_name: type_name(field_ty),
+        type_range: type_range(field_ty),
+        type_signature: Some(normalize_token_text(
+            &field.ty.to_token_stream().to_string(),
+        )),
+        generic_type_names: generic_type_ranges
+            .iter()
+            .map(|range| range.name.clone())
+            .collect(),
+        generic_type_ranges,
+        is_optional,
+        max_len_args: max_len_args(&field.attrs),
+        account_constraints,
+        pda_constraint,
+        instruction_arguments: Vec::new(),
+        derive_attribute_range: None,
+        derive_accounts_range: None,
+        derive_init_space_range: None,
+        is_zero_copy: false,
+    }
 }
 
 fn parser_pda_constraints(item_struct: &ItemStruct) -> HashMap<String, PdaConstraint> {
@@ -622,6 +741,34 @@ fn account_constraints(attrs: &[Attribute]) -> Vec<AccountConstraint> {
             pda: pda_constraint(attr),
         })
         .collect()
+}
+
+fn max_len_args(attrs: &[Attribute]) -> Vec<String> {
+    attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("max_len"))
+        .and_then(|attr| {
+            attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Expr, Token![,]>::parse_terminated,
+            )
+            .ok()
+        })
+        .map(|args| {
+            args.into_iter()
+                .map(|expr| normalize_token_text(&expr.to_token_stream().to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_zero_copy_struct(attrs: &[Attribute]) -> bool {
+    has_attr(attrs, "zero_copy")
+        || attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("account"))
+            .any(|attr| {
+                normalize_token_text(&attr.meta.to_token_stream().to_string()).contains("zero_copy")
+            })
 }
 
 fn pda_constraint(attr: &Attribute) -> Option<PdaConstraint> {

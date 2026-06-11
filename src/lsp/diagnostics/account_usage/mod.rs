@@ -316,15 +316,21 @@ fn workspace_accounts_symbol(accounts: &WorkspaceAccountsStruct) -> SymbolRange 
             .iter()
             .map(workspace_account_field_symbol)
             .collect(),
+        variants: Vec::new(),
         type_name: None,
         type_range: None,
+        type_signature: None,
         generic_type_names: Vec::new(),
         generic_type_ranges: Vec::new(),
         is_optional: false,
+        max_len_args: Vec::new(),
         account_constraints: Vec::new(),
         pda_constraint: None,
         instruction_arguments: accounts.instruction_arguments.clone(),
+        derive_attribute_range: None,
         derive_accounts_range: None,
+        derive_init_space_range: None,
+        is_zero_copy: false,
     }
 }
 
@@ -334,15 +340,21 @@ fn workspace_account_field_symbol(field: &WorkspaceAccountField) -> SymbolRange 
         range: Range::default(),
         selection_range: Range::default(),
         fields: Vec::new(),
+        variants: Vec::new(),
         type_name: field.type_name.clone(),
         type_range: None,
+        type_signature: field.type_signature.clone(),
         generic_type_names: field.generic_type_names.clone(),
         generic_type_ranges: Vec::new(),
         is_optional: false,
+        max_len_args: Vec::new(),
         account_constraints: field.account_constraints.clone(),
         pda_constraint: None,
         instruction_arguments: Vec::new(),
+        derive_attribute_range: None,
         derive_accounts_range: None,
+        derive_init_space_range: None,
+        is_zero_copy: false,
     }
 }
 

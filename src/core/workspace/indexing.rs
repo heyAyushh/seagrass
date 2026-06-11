@@ -1,5 +1,5 @@
 use {
-    super::{WorkspaceAccountField, WorkspaceAccountsStruct},
+    super::{WorkspaceAccountDataStruct, WorkspaceAccountField, WorkspaceAccountsStruct},
     crate::{
         anchor::idioms,
         definition_bridge::BridgeSymbol,
@@ -39,6 +39,8 @@ pub(super) struct IndexedAccountsStruct {
     pub(super) is_open: bool,
     pub(super) accounts: WorkspaceAccountsStruct,
 }
+
+pub(super) type IndexedAccountDataStruct = WorkspaceAccountDataStruct;
 
 #[derive(Debug, Clone)]
 pub(super) struct IndexedSymbol {
@@ -277,6 +279,7 @@ pub(super) fn indexed_accounts_structs(
                     .map(|field| WorkspaceAccountField {
                         name: field.name.clone(),
                         type_name: field.type_name.clone(),
+                        type_signature: field.type_signature.clone(),
                         generic_type_names: field.generic_type_names.clone(),
                         is_optional: field.is_optional,
                         account_constraints: field.account_constraints.clone(),
@@ -284,6 +287,24 @@ pub(super) fn indexed_accounts_structs(
                     .collect(),
                 instruction_arguments: accounts.instruction_arguments.clone(),
             },
+        })
+        .collect()
+}
+
+pub(super) fn indexed_account_data_structs(
+    document: &ParsedDocument,
+    uri: &Url,
+    is_open: bool,
+) -> Vec<IndexedAccountDataStruct> {
+    document
+        .symbols()
+        .account_data_structs
+        .values()
+        .cloned()
+        .map(|symbol| WorkspaceAccountDataStruct {
+            uri: uri.clone(),
+            is_open,
+            symbol,
         })
         .collect()
 }

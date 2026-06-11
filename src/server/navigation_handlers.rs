@@ -22,13 +22,21 @@ impl Backend {
             return Ok(None);
         };
 
-        if let Some(local_hover) = hover::hover(&document, position) {
-            self.query_cache.insert(
-                cache_key,
-                version,
-                query_cache::CacheValue::Hover(Some(local_hover.clone())),
-            );
-            return Ok(Some(local_hover));
+        {
+            let workspace_index = self
+                .workspace_index
+                .read()
+                .unwrap_or_else(|err| err.into_inner());
+            if let Some(local_hover) =
+                hover::hover_with_workspace(&document, position, Some(&workspace_index))
+            {
+                self.query_cache.insert(
+                    cache_key,
+                    version,
+                    query_cache::CacheValue::Hover(Some(local_hover.clone())),
+                );
+                return Ok(Some(local_hover));
+            }
         }
 
         if let Some(path) = navigation::account_path_position(&document, position) {

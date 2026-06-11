@@ -2,31 +2,51 @@ mod account_constraints;
 
 use {
     crate::{
-        account_semantics, anchor_types,
+        account_semantics,
+        anchor::space::{self, SpaceEstimate},
+        anchor_types,
         completions::{CursorContext, CursorContextKind, ResolvedCursorContext},
+        constraint_text,
         document::{ParsedDocument, SymbolRange},
         navigation,
         range::{word_at_position, word_range_at_position},
-        workspace::WorkspaceContextField,
+        workspace::{WorkspaceContextField, WorkspaceIndex},
     },
     tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position},
 };
 
+#[cfg(test)]
 pub fn hover(document: &ParsedDocument, position: Position) -> Option<Hover> {
+    hover_with_workspace(document, position, None)
+}
+
+pub fn hover_with_workspace(
+    document: &ParsedDocument,
+    position: Position,
+    workspace: Option<&WorkspaceIndex>,
+) -> Option<Hover> {
     let cursor_context = CursorContext::classify_document(document, position);
-    hover_from_cursor_context(document, position, &cursor_context)
+    hover_from_cursor_context(document, position, &cursor_context, workspace)
         .or_else(|| anchor_account_type_hover(document, position))
-        .or_else(|| anchor_symbol_hover(document, position, cursor_context.context()))
+        .or_else(|| anchor_symbol_hover(document, position, cursor_context.context(), workspace))
 }
 
 fn hover_from_cursor_context(
     document: &ParsedDocument,
     position: Position,
     cursor_context: &CursorContext,
+    workspace: Option<&WorkspaceIndex>,
 ) -> Option<Hover> {
     match cursor_context.kind() {
-        CursorContextKind::AccountConstraintKey { .. }
-        | CursorContextKind::AccountConstraintValue { .. } => {
+        CursorContextKind::AccountConstraintValue { .. } => {
+            space_constraint_value_hover(document, position, cursor_context.context(), workspace)
+                .or_else(|| {
+                    account_constraints::hover(document, position).or_else(|| {
+                        instruction_argument_hover(document, position, cursor_context.context())
+                    })
+                })
+        }
+        CursorContextKind::AccountConstraintKey { .. } => {
             account_constraints::hover(document, position).or_else(|| {
                 instruction_argument_hover(document, position, cursor_context.context())
             })
@@ -181,6 +201,7 @@ fn anchor_symbol_hover(
     document: &ParsedDocument,
     position: Position,
     cursor_context: &ResolvedCursorContext,
+    workspace: Option<&WorkspaceIndex>,
 ) -> Option<Hover> {
     let word = word_at_position(document.source(), position)?;
 
@@ -323,18 +344,132 @@ fn anchor_symbol_hover(
     }
 
     if let Some(symbol) = document.symbols().account_data_structs.get(&word) {
-        return markdown_hover(
-            document,
-            position,
-            format!(
-                "`{}`\n\nAnchor account data struct.\n\nFields: {}",
-                symbol.name,
-                field_names(symbol)
-            ),
+        let mut value = format!(
+            "`{}`\n\nAnchor account data struct.\n\nFields: {}",
+            symbol.name,
+            field_names(symbol)
         );
+        if let Some(section) = account_space_section(symbol, document, workspace) {
+            value.push_str(&section);
+        }
+        return markdown_hover(document, position, value);
     }
 
     None
+}
+
+fn space_constraint_value_hover(
+    document: &ParsedDocument,
+    position: Position,
+    cursor_context: &ResolvedCursorContext,
+    workspace: Option<&WorkspaceIndex>,
+) -> Option<Hover> {
+    let cursor = document.account_attribute_cursor(position)?;
+    if cursor.constraint_key.as_deref() != Some("space") {
+        return None;
+    }
+    let account_field_name = cursor.field_name.as_ref()?;
+    let accounts_name = cursor_context.accounts_struct.as_ref()?.name.as_str();
+    let accounts = document.symbols().accounts_structs.get(accounts_name)?;
+    let field = accounts
+        .fields
+        .iter()
+        .find(|field| field.name == *account_field_name)?;
+    let account_data_type = account_data_type_for_space(accounts, field)?;
+    let account_data = account_data_symbol(document, workspace, account_data_type)?;
+    let report = space::account_space_report(&account_data, Some(document), workspace);
+    if !report.estimate.is_known() {
+        return None;
+    }
+
+    let mut value = format!(
+        "`space` for `{account_data_type}`\n\nComputed: `{}`.",
+        account_space_total_text(&report.estimate)
+    );
+    if let Some(declared) = declared_space_literal(field, cursor.range.start.line) {
+        if let SpaceEstimate::Exact(data_bytes) = report.estimate {
+            let computed = 8u64.saturating_add(data_bytes);
+            value.push_str(&format!(
+                "\n\nDeclared literal: `{declared} bytes`; computed requirement: `{computed} bytes`."
+            ));
+        }
+    }
+    markdown_hover(document, position, value)
+}
+
+fn account_data_type_for_space<'a>(
+    accounts: &'a SymbolRange,
+    field: &'a SymbolRange,
+) -> Option<&'a str> {
+    account_semantics::declared_or_expected_account_inner_type(accounts, field)
+        .or_else(|| field.generic_type_names.last().map(String::as_str))
+}
+
+fn account_data_symbol(
+    document: &ParsedDocument,
+    workspace: Option<&WorkspaceIndex>,
+    account_data_type: &str,
+) -> Option<SymbolRange> {
+    document
+        .symbols()
+        .account_data_structs
+        .get(account_data_type)
+        .cloned()
+        .or_else(|| {
+            workspace
+                .and_then(|workspace| workspace.account_data_struct(account_data_type))
+                .map(|entry| entry.symbol.clone())
+        })
+}
+
+fn declared_space_literal(field: &SymbolRange, line: u32) -> Option<u64> {
+    let constraint = field.account_constraints.iter().find(|constraint| {
+        constraint.range.start.line <= line && line <= constraint.range.end.line
+    })?;
+    let value = constraint_text::values_after_key(&constraint.text, "space")
+        .into_iter()
+        .next()?;
+    value.parse().ok()
+}
+
+fn account_space_section(
+    symbol: &SymbolRange,
+    document: &ParsedDocument,
+    workspace: Option<&WorkspaceIndex>,
+) -> Option<String> {
+    let report = space::account_space_report(symbol, Some(document), workspace);
+    if !report.estimate.is_known() {
+        return None;
+    }
+
+    let mut section = "\n\n### Space\n\n| field | type | bytes |\n|---|---|---|".to_string();
+    for field in &report.fields {
+        let bytes = space::estimate_expr(&field.estimate)?;
+        section.push_str(&format!(
+            "\n| `{}` | `{}` | `{bytes}` |",
+            field.field, field.type_display
+        ));
+    }
+    section.push_str(&format!(
+        "\n\n**{}** - `space = 8 + {}::INIT_SPACE`",
+        account_space_total_text(&report.estimate),
+        symbol.name
+    ));
+    Some(section)
+}
+
+fn account_space_total_text(estimate: &SpaceEstimate) -> String {
+    match estimate {
+        SpaceEstimate::Exact(data_bytes) => {
+            let total = 8u64.saturating_add(*data_bytes);
+            format!("8 (discriminator) + {data_bytes} = {total} bytes")
+        }
+        SpaceEstimate::Formula { fixed, symbolic } => {
+            let data_expr = space::formula_expr(*fixed, symbolic);
+            format!("8 (discriminator) + {data_expr} bytes")
+        }
+        SpaceEstimate::Unknown(reason) => format!("unknown: {reason}"),
+    }
 }
 
 fn is_context_generic_reference(source: &str, position: Position, name: &str) -> bool {

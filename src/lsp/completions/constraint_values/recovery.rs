@@ -102,6 +102,7 @@ fn field_symbol_from_document_symbol(symbol: DocumentSymbol) -> SymbolRange {
         range: symbol.range,
         selection_range: symbol.selection_range,
         type_name: field_type.type_name,
+        type_signature: symbol.detail,
         generic_type_names: field_type.generic_type_names,
         is_optional: field_type.is_optional,
         ..SymbolRangeParts::default()
@@ -300,6 +301,7 @@ struct SymbolRangeParts {
     selection_range: Range,
     type_name: Option<String>,
     type_range: Option<Range>,
+    type_signature: Option<String>,
     generic_type_names: Vec<String>,
     is_optional: bool,
     fields: Vec<SymbolRange>,
@@ -312,6 +314,7 @@ fn empty_symbol_range(parts: SymbolRangeParts) -> SymbolRange {
         selection_range,
         type_name,
         type_range,
+        type_signature,
         generic_type_names,
         is_optional,
         fields,
@@ -321,8 +324,10 @@ fn empty_symbol_range(parts: SymbolRangeParts) -> SymbolRange {
         range,
         selection_range,
         fields,
+        variants: Vec::new(),
         type_name,
         type_range,
+        type_signature,
         generic_type_ranges: generic_type_names
             .iter()
             .map(|name| NamedRange {
@@ -332,10 +337,14 @@ fn empty_symbol_range(parts: SymbolRangeParts) -> SymbolRange {
             .collect(),
         generic_type_names,
         is_optional,
+        max_len_args: Vec::new(),
         account_constraints: Vec::new(),
         pda_constraint: None,
         instruction_arguments: Vec::new(),
+        derive_attribute_range: None,
         derive_accounts_range: None,
+        derive_init_space_range: None,
+        is_zero_copy: false,
     }
 }
 
