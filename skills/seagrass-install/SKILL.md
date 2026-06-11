@@ -3,7 +3,7 @@ name: seagrass-install
 description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
 user-invocable: true
 license: MIT
-compatibility: Requires Rust 1.89.0, cargo, and one of VS Code, Zed, Helix, or a Neovim LSP client.
+compatibility: Uses a prebuilt Seagrass binary, or Rust 1.89.0 and cargo for source installs, plus one of VS Code, Zed, Helix, or a Neovim LSP client.
 metadata:
   author: Seagrass Maintainers
   version: 1.0.0
@@ -49,20 +49,27 @@ available unless the user has provided or configured that runtime data source.
 
 ### 1. Install the binary
 
-From a Seagrass checkout:
+Recommended prebuilt install, no Rust required:
 
 ```bash
-rustup toolchain install 1.89.0 --profile minimal --component clippy rustfmt
-cargo install --path crates/seagrass --locked
+curl -fsSL https://raw.githubusercontent.com/heyAyushh/seagrass/main/scripts/install.sh | sh
+# or manually download from https://github.com/heyAyushh/seagrass/releases
 ```
 
-From an already-published crates.io CLI package:
+From an already-published crates.io CLI package, requires Rust 1.89.0:
 
 ```bash
 cargo install seagrass-cli --locked
 ```
 
-Both commands install the user-facing binary as `seagrass`.
+From a Seagrass checkout, requires Rust 1.89.0:
+
+```bash
+rustup toolchain install 1.89.0 --profile minimal
+cargo install --path crates/seagrass --locked
+```
+
+All paths install the user-facing binary as `seagrass`.
 
 Confirm:
 
@@ -71,7 +78,7 @@ seagrass --version
 ```
 
 If crates.io install fails because the CLI package is not published yet, use the
-source-checkout install above.
+prebuilt binary or source-checkout install above.
 
 ### 2. Configure the editor
 
@@ -81,20 +88,31 @@ Pick the user's editor and apply the relevant block. Default to VSCode if unknow
 
 Install the extension. Two paths:
 
-- **Marketplace** (when published):
+- **Marketplace** (primary once published):
+  ```bash
+  # TODO: replace seagrass-local with confirmed publisher ID once Step 1 is unblocked
+  code --install-extension seagrass-local.seagrass-vscode
   ```
-  ext install seagrass-local.seagrass-vscode
+  The extension downloads the matching server binary automatically on first
+  activation; no manual server install is required when using the Marketplace
+  extension.
+
+- **VSIX from GitHub Release** (offline or pinned-version installs):
+  ```bash
+  # Download seagrass-vscode-<version>.vsix from the GitHub Release page
+  code --install-extension seagrass-vscode-<version>.vsix
   ```
+  The same automatic server download applies.
 
 - **Local development** (from a checkout of the seagrass repo):
   ```bash
-  cd editors/vscode
-  bun install
-  bun run build
+  cd editors/vscode && bun install && bun run build
   ```
-  Then point the server at the local binary. Release VSIX packaging is owned by
-  the root `scripts/package-release.ts --vscode` command; do not invent an
-  editor-local package script.
+  Then launch the VS Code extension host with F5. Set
+  `seagrass.serverCommand` to point at the local binary if the PATH binary is
+  stale. Release VSIX packaging is owned by the root
+  `scripts/package-release.ts --vscode` command; do not invent an editor-local
+  package script.
 
 Settings (`.vscode/settings.json`):
 
@@ -114,7 +132,9 @@ Settings (`.vscode/settings.json`):
 
 #### Zed
 
-`~/.config/zed/extensions.json` — add the seagrass extension. Or install via Zed's extensions panel ("Seagrass").
+Zed registry submission is not done yet. Install as a dev extension from a
+Seagrass checkout: run `zed: extensions`, choose `Install Dev Extension`, and
+select `editors/zed`.
 
 Project settings (`.zed/settings.json`):
 
