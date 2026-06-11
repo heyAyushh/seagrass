@@ -8,7 +8,8 @@
 /// exercised when `CORPUS_ENABLED=1` is set in the environment.
 use {
     crate::{
-        diagnostics::collect_with_workspace, document::ParsedDocument, workspace::WorkspaceIndex,
+        diagnostics::collect_with_workspace, document::ParsedDocument, file_text,
+        workspace::WorkspaceIndex,
     },
     std::{fs, path::Path, path::PathBuf},
     tower_lsp::lsp_types::{DiagnosticSeverity, Url},
@@ -95,16 +96,34 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) {
     }
 }
 
+#[derive(Debug, Default)]
+struct CorpusScanResult {
+    errors: Vec<(PathBuf, String)>,
+    skipped_oversized_files: Vec<PathBuf>,
+}
+
+impl CorpusScanResult {
+    fn error_count(&self) -> usize {
+        self.errors.len()
+    }
+
+    fn skipped_oversized_count(&self) -> usize {
+        self.skipped_oversized_files.len()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReadFailurePolicy {
+    Panic,
+    Skip,
+}
+
 /// Run the diagnostic engine over every `.rs` file in `program_src_dir` and
 /// hard-assert that none produce an ERROR-severity diagnostic.
 ///
 /// `program_src_dir` is passed to `WorkspaceIndex::build` — exactly what the
 /// CLI does when the user runs `seagrass diagnostics <dir>`.
 fn assert_no_errors_in_program(program_src_dir: &Path) {
-    let root_url = Url::from_directory_path(program_src_dir)
-        .expect("program src dir must be an absolute path");
-    let workspace_index = WorkspaceIndex::build(&[root_url], std::iter::empty::<(Url, String)>());
-
     let source_files = rust_files_in(program_src_dir);
     assert!(
         !source_files.is_empty(),
@@ -112,42 +131,25 @@ fn assert_no_errors_in_program(program_src_dir: &Path) {
         program_src_dir.display()
     );
 
-    let mut errors: Vec<(PathBuf, String)> = Vec::new();
-
-    for path in &source_files {
-        let source = fs::read_to_string(path)
-            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
-
-        let document = match ParsedDocument::parse(source) {
-            Ok(doc) => doc,
-            // Parse failures are not ERROR-severity false positives; the source
-            // itself is ill-formed, which seagrass is entitled to report.
-            Err(_) => continue,
-        };
-
-        let diagnostics = collect_with_workspace(&document, Some(&workspace_index));
-
-        for diagnostic in diagnostics {
-            if diagnostic.severity == Some(DiagnosticSeverity::ERROR) {
-                let location = format!(
-                    "{}:{}: {}",
-                    path.display(),
-                    // Report 1-based line numbers to match editor conventions.
-                    diagnostic.range.start.line + 1,
-                    diagnostic.message
-                );
-                errors.push((path.clone(), location));
-            }
-        }
-    }
+    let scan = scan_program(program_src_dir, ReadFailurePolicy::Panic);
 
     assert!(
-        errors.is_empty(),
+        scan.skipped_oversized_files.is_empty(),
+        "committed corpus program '{}' skipped {} oversized source file(s); hard \
+         corpus fixtures must fit the same {} byte source limit as the CLI:\n{}",
+        program_src_dir.display(),
+        scan.skipped_oversized_count(),
+        file_text::MAX_PROJECT_FILE_BYTES,
+        format_skipped_files(&scan.skipped_oversized_files)
+    );
+
+    assert!(
+        scan.errors.is_empty(),
         "corpus program '{}' produced {} unexpected ERROR-severity diagnostic(s) \
          (programs that compile cleanly must produce zero errors):\n{}",
         program_src_dir.display(),
-        errors.len(),
-        errors
+        scan.error_count(),
+        scan.errors
             .iter()
             .map(|(_, msg)| format!("  - {msg}"))
             .collect::<Vec<_>>()
@@ -155,20 +157,29 @@ fn assert_no_errors_in_program(program_src_dir: &Path) {
     );
 }
 
-/// Collect ERROR-severity diagnostics from a program without asserting zero —
-/// used by the external corpus in discovery mode.
-///
-/// Returns a list of `(file_path, formatted_location_message)` pairs.
-fn collect_errors_in_program(program_src_dir: &Path) -> Vec<(PathBuf, String)> {
+fn scan_program(
+    program_src_dir: &Path,
+    read_failure_policy: ReadFailurePolicy,
+) -> CorpusScanResult {
     let root_url = Url::from_directory_path(program_src_dir)
         .expect("program src dir must be an absolute path");
     let workspace_index = WorkspaceIndex::build(&[root_url], std::iter::empty::<(Url, String)>());
 
-    let mut errors = Vec::new();
+    let mut result = CorpusScanResult::default();
 
     for path in rust_files_in(program_src_dir) {
-        let Ok(source) = fs::read_to_string(&path) else {
-            continue;
+        let source = match file_text::read_limited_text(&path) {
+            Ok(Some(source)) => source,
+            Ok(None) => {
+                result.skipped_oversized_files.push(path);
+                continue;
+            }
+            Err(error) => match read_failure_policy {
+                ReadFailurePolicy::Panic => {
+                    panic!("failed to read {}: {error}", path.display());
+                }
+                ReadFailurePolicy::Skip => continue,
+            },
         };
         let Ok(document) = ParsedDocument::parse(source) else {
             continue;
@@ -184,12 +195,20 @@ fn collect_errors_in_program(program_src_dir: &Path) -> Vec<(PathBuf, String)> {
                     diagnostic.range.start.line + 1,
                     diagnostic.message
                 );
-                errors.push((path.clone(), location));
+                result.errors.push((path.clone(), location));
             }
         }
     }
 
-    errors
+    result
+}
+
+fn format_skipped_files(files: &[PathBuf]) -> String {
+    files
+        .iter()
+        .map(|path| format!("  - {}", path.display()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 // ---------------------------------------------------------------------------
@@ -286,6 +305,7 @@ fn external_corpus() {
 
     let mut total_programs = 0usize;
     let mut total_errors = 0usize;
+    let mut total_skipped_oversized_files = 0usize;
 
     for entry in immediate_subdirs(&programs_dir) {
         let program_name = entry
@@ -302,30 +322,80 @@ fn external_corpus() {
 
         for src_dir in &src_dirs {
             total_programs += 1;
-            let errors = collect_errors_in_program(src_dir);
-            let error_count = errors.len();
+            let scan = scan_program(src_dir, ReadFailurePolicy::Skip);
+            let error_count = scan.error_count();
+            let skipped_oversized_count = scan.skipped_oversized_count();
             total_errors += error_count;
+            total_skipped_oversized_files += skipped_oversized_count;
 
-            if error_count == 0 {
+            if error_count == 0 && skipped_oversized_count == 0 {
                 println!("  [{program_name}] clean corpus source root");
             } else {
-                println!(
-                    "  [{}] {} — {} ERROR(s):",
-                    program_name,
-                    src_dir.display(),
-                    error_count
-                );
-                for (_, msg) in &errors {
-                    println!("    {msg}");
+                if error_count == 0 {
+                    println!(
+                        "  [{}] {} — clean scanned files; skipped {} oversized source file(s):",
+                        program_name,
+                        src_dir.display(),
+                        skipped_oversized_count
+                    );
+                } else {
+                    println!(
+                        "  [{}] {} — {} ERROR(s):",
+                        program_name,
+                        src_dir.display(),
+                        error_count
+                    );
+                    for (_, msg) in &scan.errors {
+                        println!("    {msg}");
+                    }
+                    if skipped_oversized_count > 0 {
+                        println!(
+                            "    skipped {} oversized source file(s):",
+                            skipped_oversized_count
+                        );
+                    }
+                }
+                for path in &scan.skipped_oversized_files {
+                    println!("    - {}", path.display());
                 }
             }
         }
     }
 
     println!(
-        "external_corpus: scanned {} program(s), {} total ERROR-severity diagnostic(s) \
+        "external_corpus: scanned {} program(s), {} total ERROR-severity diagnostic(s), \
+         {} oversized source file(s) skipped \
          (discovery mode — not a hard gate yet; see TODO in corpus.rs)",
-        total_programs, total_errors
+        total_programs, total_errors, total_skipped_oversized_files
     );
     // Discovery mode: always pass.  Flip to assert_no_errors_in_program after triage.
+}
+
+#[test]
+fn external_corpus_scan_reports_oversized_source_files() {
+    let src_dir = unique_temp_dir("seagrass-corpus-oversized").join("src");
+    fs::create_dir_all(&src_dir).unwrap();
+    let oversized_file = src_dir.join("codegen.rs");
+    fs::write(
+        &oversized_file,
+        vec![b'a'; file_text::MAX_PROJECT_FILE_BYTES as usize + 1],
+    )
+    .unwrap();
+
+    let scan = scan_program(&src_dir, ReadFailurePolicy::Skip);
+
+    assert!(scan.errors.is_empty());
+    assert_eq!(scan.skipped_oversized_files, vec![oversized_file]);
+    fs::remove_dir_all(src_dir.parent().unwrap()).unwrap();
+}
+
+fn unique_temp_dir(prefix: &str) -> PathBuf {
+    std::env::temp_dir().join(format!(
+        "{}-{}",
+        prefix,
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos()
+    ))
 }
