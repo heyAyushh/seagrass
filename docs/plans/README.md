@@ -4,7 +4,7 @@ Self-contained plans for zero-context executors. Each plan carries its own conte
 doctrine, file paths (verified at write time), steps, and acceptance criteria — read
 nothing else to execute one, except this index for ordering.
 
-## Execution order (numerical = execution; run 01 → 07)
+## Execution order (numerical = execution; run 01 → 10)
 
 | # | Plan | Depends on | Why this position |
 |---|---|---|---|
@@ -15,6 +15,9 @@ nothing else to execute one, except this index for ordering.
 | 05 | [plan-05-capability-registry](plan-05-capability-registry.md) | plan-04 (manifest plumbing) | Crate-agnostic recognition: solves the solana-program crate split, Pinocchio, and future frameworks in one mechanism |
 | 06 | [plan-06-semantic-graph](plan-06-semantic-graph.md) | 01–05 recommended | Staged migration to the framework-agnostic semantic model; consumes 05's registry; long-running |
 | 07 | [plan-07-distribution](plan-07-distribution.md) | **hard gate: 01 and 03 merged** | Widening install base before FP fixes multiplies exposure to known FPs |
+| 08 | [plan-08-corpus-promotion](plan-08-corpus-promotion.md) | 01–06 merged | Triage the 18-program external corpus, fix the FP families it surfaces, flip discovery mode → hard gate; the backstop every later plan leans on |
+| 09 | [plan-09-space-calculator](plan-09-space-calculator.md) | — (parallel-safe with 08/10; touches hover/lens/actions only) | `space =` size engine + hover/lens + checked-arithmetic and InitSpace quick fixes — daily-use wins while the big rocks land |
+| 10 | [plan-10-call-graph](plan-10-call-graph.md) | plan-06 (model); **plan-08 strongly recommended first** (its gate is the FP backstop) | Rung (c): name-keyed call graph, defense check-propagation through reachable helpers, one offense POC (CPI-in-reachable-helper); unblocks the moat tier |
 
 [debt-inventory.md](debt-inventory.md) is the findings register behind plan-02;
 it also assigns P1 items to plans 03/05/06 — those plans absorb them at
@@ -29,6 +32,10 @@ execution time.
   and mark plan-01's steps 1–2 verify-only instead. Never apply both.
 - **plan-06 Stage 3** re-ports the family-B fix as a model query. That is intentional
   (proof-of-concept port of an already-correct rule), not a duplicate fix.
+- **plan-10 Step 5 modifies a test that plan-08 may also touch**
+  (`ignores_unchecked_cpi_program_in_unreachable_split_helper`): plan-10 splits it
+  into reachable/unreachable variants. If plan-08's triage renames or moves it,
+  plan-10 follows the new name — the scenario, not the identifier, is binding.
 
 ## Invariants for every plan
 
