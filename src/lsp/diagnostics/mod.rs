@@ -767,6 +767,9 @@ fn diagnostic_data(
     object
         .entry("topic".to_string())
         .or_insert_with(|| serde_json::Value::String(kind.topic().to_string()));
+    object
+        .entry("truthSource".to_string())
+        .or_insert_with(|| serde_json::Value::String(kind.truth_source().as_str().to_string()));
     let anchor_errors = crate::anchor_errors::diagnostic_error_data(kind.anchor_error_names());
     if !anchor_errors.is_empty() {
         object.insert(

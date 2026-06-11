@@ -3,9 +3,8 @@ use {
     crate::{
         anchor_types::{self, AnchorFieldCompletionKind},
         diagnostics::registry::{
-            ANCHOR_SECURITY_CPI_PROGRAM_CODE, ANCHOR_SECURITY_DUPLICATE_ACCOUNT_CODE,
-            ANCHOR_SECURITY_OWNER_CHECK_CODE, ANCHOR_SECURITY_SIGNER_CODE,
-            ANCHOR_SECURITY_SYSVAR_CODE, ANCHOR_SECURITY_TOKEN_ACCOUNT_CODE,
+            ANCHOR_SECURITY_CPI_PROGRAM_CODE, ANCHOR_SECURITY_OWNER_CHECK_CODE,
+            ANCHOR_SECURITY_SIGNER_CODE, ANCHOR_SECURITY_SYSVAR_CODE,
             ANCHOR_SECURITY_TYPE_COSPLAY_CODE,
         },
         document::ParsedDocument,
@@ -15,7 +14,6 @@ use {
 };
 
 mod core_tests;
-mod duplicate_tests;
 mod raw_account_tests;
 
 fn security_diagnostics(source: &str) -> Vec<Diagnostic> {

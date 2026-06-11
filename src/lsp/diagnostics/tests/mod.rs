@@ -85,10 +85,8 @@ fn every_diagnostic_kind_carries_metadata_axes() {
         AnchorDiagnosticKind::SolanaSurfpoolWorkspace,
         AnchorDiagnosticKind::AnchorSplTokenInterface,
         AnchorDiagnosticKind::SecuritySigner,
-        AnchorDiagnosticKind::SecurityTokenAccount,
         AnchorDiagnosticKind::SecurityCpiProgram,
         AnchorDiagnosticKind::SecuritySysvar,
-        AnchorDiagnosticKind::SecurityDuplicateAccount,
         AnchorDiagnosticKind::SecurityUncheckedAccount,
         AnchorDiagnosticKind::SecurityStaticPda,
         AnchorDiagnosticKind::SecurityOwnerCheck,
@@ -139,7 +137,7 @@ fn suppression_comment_filters_next_line_diagnostic_by_topic_suffix() {
 use pinocchio::program_error::ProgramError;
 
 fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    Ok(amount - fee) // seagrass-allow: unchecked-arithmetic
+    Err(ProgramError::InvalidArgument).expect("invalid argument") // seagrass-allow: unsafe-unwrap
 }
 "#;
 
@@ -148,8 +146,8 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
     assert!(
         diagnostics
             .iter()
-            .all(|diagnostic| !is_unchecked_arithmetic(diagnostic)),
-        "line suppression should remove unchecked arithmetic diagnostic: {diagnostics:#?}"
+            .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
+        "line suppression should remove unsafe unwrap diagnostic: {diagnostics:#?}"
     );
 }
 
@@ -180,15 +178,15 @@ use pinocchio::program_error::ProgramError;
 
 fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
     let _marker = "// seagrass-ignore";
-    Ok(amount - fee)
+    Err(ProgramError::InvalidArgument).expect("invalid argument")
 }
 "#;
 
     let diagnostics = collect(&ParsedDocument::parse(source).unwrap());
 
     assert!(
-        diagnostics.iter().any(is_unchecked_arithmetic),
-        "string contents must not suppress unchecked arithmetic diagnostic: {diagnostics:#?}"
+        diagnostics.iter().any(is_unsafe_unwrap),
+        "string contents must not suppress unsafe unwrap diagnostic: {diagnostics:#?}"
     );
 }
 
@@ -199,7 +197,7 @@ fn file_suppression_filters_diagnostic_by_code() {
 use pinocchio::program_error::ProgramError;
 
 fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    Ok(amount - fee)
+    Err(ProgramError::InvalidArgument).expect("invalid argument")
 }
 "#;
 
@@ -208,8 +206,8 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
     assert!(
         diagnostics
             .iter()
-            .all(|diagnostic| !is_unchecked_arithmetic(diagnostic)),
-        "file suppression should remove unchecked arithmetic diagnostic: {diagnostics:#?}"
+            .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
+        "file suppression should remove unsafe unwrap diagnostic: {diagnostics:#?}"
     );
 }
 
@@ -218,9 +216,9 @@ fn seagrass_allow_attribute_filters_item_diagnostic() {
     let source = r#"
 use pinocchio::program_error::ProgramError;
 
-#[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]
+#[seagrass(allow("seagrass/solana.code-quality.unsafe-unwrap"))]
 fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    Ok(amount - fee)
+    Err(ProgramError::InvalidArgument).expect("invalid argument")
 }
 "#;
 
@@ -229,8 +227,8 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
     assert!(
         diagnostics
             .iter()
-            .all(|diagnostic| !is_unchecked_arithmetic(diagnostic)),
-        "attribute suppression should remove unchecked arithmetic diagnostic: {diagnostics:#?}"
+            .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
+        "attribute suppression should remove unsafe unwrap diagnostic: {diagnostics:#?}"
     );
 }
 
@@ -242,9 +240,9 @@ use pinocchio::program_error::ProgramError;
 mod handlers {
     use super::*;
 
-    #[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]
+    #[seagrass(allow("seagrass/solana.code-quality.unsafe-unwrap"))]
     fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-        Ok(amount - fee)
+        Err(ProgramError::InvalidArgument).expect("invalid argument")
     }
 }
 "#;
@@ -254,8 +252,8 @@ mod handlers {
     assert!(
         diagnostics
             .iter()
-            .all(|diagnostic| !is_unchecked_arithmetic(diagnostic)),
-        "nested item suppression should remove unchecked arithmetic diagnostic: {diagnostics:#?}"
+            .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
+        "nested item suppression should remove unsafe unwrap diagnostic: {diagnostics:#?}"
     );
 }
 
@@ -265,9 +263,9 @@ fn seagrass_allow_attribute_filters_block_diagnostic() {
 use pinocchio::program_error::ProgramError;
 
 fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    #[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]
+    #[seagrass(allow("seagrass/solana.code-quality.unsafe-unwrap"))]
     {
-        Ok(amount - fee)
+        Err(ProgramError::InvalidArgument).expect("invalid argument")
     }
 }
 "#;
@@ -277,8 +275,8 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
     assert!(
         diagnostics
             .iter()
-            .all(|diagnostic| !is_unchecked_arithmetic(diagnostic)),
-        "block suppression should remove unchecked arithmetic diagnostic: {diagnostics:#?}"
+            .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
+        "block suppression should remove unsafe unwrap diagnostic: {diagnostics:#?}"
     );
 }
 
@@ -288,7 +286,7 @@ fn workspace_config_filters_diagnostic_by_lints_allow() {
 use pinocchio::program_error::ProgramError;
 
 fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    Ok(amount - fee)
+    Err(ProgramError::InvalidArgument).expect("invalid argument")
 }
 "#;
     let document = ParsedDocument::parse(source).unwrap();
@@ -296,7 +294,7 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
     let seagrass_toml_uri = Url::parse("file:///workspace/Seagrass.toml").unwrap();
     let seagrass_toml = r#"
 [lints]
-allow = ["solana-code-quality.unchecked-arithmetic"]
+allow = ["solana-code-quality.unsafe-unwrap"]
 "#;
 
     let diagnostics = collect_with_input(DiagnosticInput {
@@ -314,8 +312,8 @@ allow = ["solana-code-quality.unchecked-arithmetic"]
     assert!(
         diagnostics
             .iter()
-            .all(|diagnostic| !is_unchecked_arithmetic(diagnostic)),
-        "workspace lint config should remove unchecked arithmetic diagnostic: {diagnostics:#?}"
+            .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
+        "workspace lint config should remove unsafe unwrap diagnostic: {diagnostics:#?}"
     );
 }
 
@@ -689,11 +687,11 @@ fn code_text(code: &NumberOrString) -> Option<&str> {
     }
 }
 
-fn is_unchecked_arithmetic(diagnostic: &Diagnostic) -> bool {
+fn is_unsafe_unwrap(diagnostic: &Diagnostic) -> bool {
     diagnostic
         .data
         .as_ref()
         .and_then(|data| data.get("topic"))
         .and_then(|value| value.as_str())
-        == Some("seagrass/solana.code-quality.unchecked-arithmetic")
+        == Some("seagrass/solana.code-quality.unsafe-unwrap")
 }

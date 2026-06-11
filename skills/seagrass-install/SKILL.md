@@ -189,12 +189,16 @@ pub struct Debit<'info> {
 
 #[account]
 pub struct BalanceAccount { pub value: u64 }
+
+fn must_have_value(value: Option<u64>) -> u64 {
+    value.unwrap()
+}
 EOF
 
 seagrass diagnostics /tmp/seagrass-smoke.rs --json | jq '.[] | {topic, severity, message}'
 ```
 
-Expected: at least one diagnostic with `topic: "seagrass/solana.code-quality.unchecked-arithmetic"`.
+Expected: at least one diagnostic with `topic: "seagrass/solana.code-quality.unsafe-unwrap"`.
 
 If empty:
 

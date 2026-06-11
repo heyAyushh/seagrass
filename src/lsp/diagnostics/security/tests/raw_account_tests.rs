@@ -218,7 +218,6 @@ pub mod demo {
     );
 
     assert_no_code(&diagnostics, ANCHOR_SECURITY_SIGNER_CODE);
-    assert_no_code(&diagnostics, ANCHOR_SECURITY_TOKEN_ACCOUNT_CODE);
     assert_no_code(&diagnostics, ANCHOR_SECURITY_CPI_PROGRAM_CODE);
     assert_no_code(&diagnostics, ANCHOR_SECURITY_OWNER_CHECK_CODE);
     assert_no_code(&diagnostics, ANCHOR_SECURITY_TYPE_COSPLAY_CODE);

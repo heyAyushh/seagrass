@@ -4,8 +4,8 @@ Findings from a three-way repo scan for "memory of the ecosystem" debt: hardcode
 names, structural assumptions, and duplicated truths that rot as Solana/Anchor/SPL
 evolve. Each item maps to the plan that fixes it, or is marked UNCOVERED.
 
-Already-tracked debt (BALANCE_TERMS, token_program_kind inline list, the
-solana-program pin, lint.rs twins) is listed only where the scan added new precision.
+Already-tracked debt (token_program_kind inline list, the solana-program pin,
+lint.rs twins) is listed only where the scan added new precision.
 
 ---
 

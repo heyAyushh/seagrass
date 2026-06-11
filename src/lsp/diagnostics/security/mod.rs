@@ -14,10 +14,8 @@ use {
     tower_lsp::lsp_types::Diagnostic,
 };
 
-mod duplicates;
 mod raw_account;
 
-use duplicates::duplicate_account_checks;
 use raw_account::raw_account_risk;
 
 #[cfg(test)]
@@ -32,11 +30,9 @@ pub fn collect_with_workspace(
     let mut diagnostics = Vec::new();
     diagnostics.extend(signer_authorization_diagnostics(document, workspace_index));
     diagnostics.extend(sysvar_address_diagnostics(document));
-    diagnostics.extend(token_account_unpacking_diagnostics(document));
     diagnostics.extend(raw_owner_checking_diagnostics(document));
     diagnostics.extend(raw_type_cosplay_diagnostics(document));
     diagnostics.extend(arbitrary_cpi_program_diagnostics(document, workspace_index));
-    diagnostics.extend(duplicate_account_checks(document, workspace_index));
     diagnostics
 }
 
@@ -177,78 +173,6 @@ fn sysvar_address_checking(field: &SymbolRange) -> Option<Diagnostic> {
                 "account": field.name,
                 "expected": expected,
                 "reason": "typed-sysvar",
-            })
-        }),
-    ))
-}
-
-fn token_account_unpacking_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
-    run_lint_visitor(
-        document,
-        TokenAccountUnpackingVisitor {
-            document,
-            diagnostics: Vec::new(),
-        },
-    )
-}
-
-struct TokenAccountUnpackingVisitor<'a> {
-    document: &'a ParsedDocument,
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl<'ast> LintVisitor<'ast> for TokenAccountUnpackingVisitor<'_> {
-    const SCOPE: &'static [Region] = &[Region::AccountsStructField];
-    const CONFIDENCE: Confidence = Confidence::Heuristic;
-    const APPLICABILITY: Applicability = Applicability::Unspecified;
-    const TOPIC: &'static str = "seagrass/security.token-account";
-
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
-    }
-}
-
-impl<'ast> Visit<'ast> for TokenAccountUnpackingVisitor<'_> {
-    fn visit_attribute(&mut self, _node: &'ast syn::Attribute) {}
-
-    fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
-        if let Some(accounts) = accounts_for_item(self.document, node) {
-            self.diagnostics.extend(
-                accounts
-                    .fields
-                    .iter()
-                    .filter_map(|field| token_account_unpacking(self.document, accounts, field)),
-            );
-        }
-        visit::visit_item_struct(self, node);
-    }
-}
-
-fn token_account_unpacking(
-    document: &ParsedDocument,
-    accounts: &SymbolRange,
-    field: &SymbolRange,
-) -> Option<Diagnostic> {
-    if !is_unchecked_account(field)
-        || has_owner_constraint(field)
-        || !account_used_in_manual_token_unpack(document, accounts, field)
-    {
-        return None;
-    }
-
-    Some(diagnostic_from_range(
-        unsafe_account_range(field),
-        AnchorDiagnosticKind::SecurityTokenAccount,
-        format!(
-            "`{}` is manually unpacked as a token account; prefer `Account<'info, TokenAccount>` or add explicit owner/data checks.",
-            field.name
-        ),
-        anchor_types::spl_account_type("TokenAccount").map(|expected| {
-            serde_json::json!({
-                "quickfix": "replace-account-type",
-                "account": field.name,
-                "expected": expected,
-                "reason": "typed-token-account",
             })
         }),
     ))
@@ -550,23 +474,6 @@ fn constraint_key_boundary(text: &str, idx: usize, key_len: usize) -> bool {
         && next
             .map(|ch| !(ch.is_ascii_alphanumeric() || ch == '_' || ch == ':'))
             .unwrap_or(true)
-}
-
-fn account_used_in_manual_token_unpack(
-    document: &ParsedDocument,
-    accounts: &SymbolRange,
-    field: &SymbolRange,
-) -> bool {
-    document.symbols().callable_functions().any(|instruction| {
-        instruction
-            .context
-            .as_ref()
-            .is_some_and(|context| context.name == accounts.name)
-            && instruction
-                .token_account_unpack_usages
-                .iter()
-                .any(|usage| usage.name == field.name)
-    })
 }
 
 fn account_used_as_cpi_program(

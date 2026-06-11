@@ -7,7 +7,6 @@ use {
         constraint_catalog,
         diagnostics::{self, ANCHOR_MISSING_INIT_CONSTRAINT_CODE},
         document::ParsedDocument,
-        workspace::WorkspaceIndex,
     },
     tower_lsp::lsp_types::{
         CodeAction, Diagnostic, NumberOrString, Position, Range, TextEdit, Url,

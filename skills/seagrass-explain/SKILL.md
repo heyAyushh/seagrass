@@ -1,6 +1,6 @@
 ---
 name: seagrass-explain
-description: Explain a Seagrass diagnostic topic — what it catches, what it doesn't, false-positive matrix, and suppression syntax. Use when the user says "what does this seagrass topic mean", "explain seagrass/<...>", "why is seagrass flagging this", "what's the topic for unchecked arithmetic", or pastes a Seagrass error message. Pulls authoritative content from `docs/lints/<topic>.md`.
+description: Explain a Seagrass diagnostic topic — what it catches, what it doesn't, false-positive matrix, and suppression syntax. Use when the user says "what does this seagrass topic mean", "explain seagrass/<...>", "why is seagrass flagging this", "what's the topic for unsafe unwrap", or pastes a Seagrass error message. Pulls authoritative content from `docs/lints/<topic>.md`.
 user-invocable: true
 license: MIT
 compatibility: Requires access to the seagrass repo's `docs/lints/` directory, or the installed seagrass package's documentation.
@@ -28,9 +28,9 @@ Accept any of:
 
 - A full topic: `seagrass/security.cpi.program`
 - A topic suffix: `security.cpi.program` or `cpi.program`
-- A diagnostic code: `solana-code-quality.unchecked-arithmetic`
-- A natural-language ask: "the one about unchecked arithmetic"
-- A raw error message pasted in: `"Use checked arithmetic for balance ..."`
+- A diagnostic code: `solana-code-quality.unsafe-unwrap`
+- A natural-language ask: "the one about unsafe unwrap"
+- A raw error message pasted in: `"Avoid .unwrap() in Solana program code"`
 
 ## Resolution
 
@@ -53,7 +53,7 @@ grep -l -i "<phrase>" docs/lints/*.md
 Lint doc filename convention: replace `seagrass/` prefix and dots with dashes.
 
 - `seagrass/security.cpi.program` → `docs/lints/seagrass-security-cpi-program.md`
-- `seagrass/solana.code-quality.unchecked-arithmetic` → `docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md`
+- `seagrass/solana.code-quality.unsafe-unwrap` → `docs/lints/seagrass-solana-code-quality-unsafe-unwrap.md`
 
 The mapping is 1:1: every topic in `docs/topics.json` should have one matching
 lint doc in `docs/lints/`. If a topic does not have a matching doc, run
@@ -109,7 +109,7 @@ In VS Code, the editor commands mirror this workflow:
 `seagrass/<framework>.<rest>` — depth varies.
 
 - Some topics are two segments: `seagrass/anchor.syntax`, `seagrass/solana.code-quality`, `seagrass/security.owner-check`.
-- Some are three segments: `seagrass/anchor.constraint.shape`, `seagrass/security.account.unchecked`, `seagrass/solana.code-quality.unchecked-arithmetic`.
+- Some are three segments: `seagrass/anchor.constraint.shape`, `seagrass/security.account.unchecked`, `seagrass/solana.code-quality.unsafe-unwrap`.
 
 Top-level frameworks: `anchor`, `solana`, `security` (security cuts across the others).
 

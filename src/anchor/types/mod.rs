@@ -66,17 +66,6 @@ pub fn sysvar_generic_for_field(field_name: &str) -> Option<&'static str> {
         .and_then(|completion| last_generic_argument(completion.label))
 }
 
-pub fn spl_account_type(account_type: &str) -> Option<&'static str> {
-    let label = format!("Account<'info, {account_type}>");
-    FIELD_COMPLETIONS
-        .iter()
-        .find(|completion| {
-            completion.kind == AnchorFieldCompletionKind::SplAccount
-                && completion.label == label.as_str()
-        })
-        .map(|completion| completion.insert_text)
-}
-
 pub fn field_type_completion(
     type_name: &str,
     generic_type_names: &[String],
@@ -140,10 +129,6 @@ mod tests {
         assert_eq!(
             sysvar_generic_for_field("recent_blockhashes"),
             Some("RecentBlockhashes")
-        );
-        assert_eq!(
-            spl_account_type("TokenAccount"),
-            Some("Account<'info, TokenAccount>")
         );
         assert!(field_type_completion("Sysvar", &["Rent".to_string()]).is_some());
     }

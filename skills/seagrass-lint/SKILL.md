@@ -53,12 +53,12 @@ The CLI emits a JSON array (not an object wrapper):
     "file": "/path/to/file.rs",
     "range": { "start": { "line": 12, "character": 4 }, "end": { "line": 12, "character": 28 } },
     "severity": "WARNING",
-    "code": "solana-code-quality.unchecked-arithmetic",
-    "message": "Use checked arithmetic for balance, lamport, token, or amount math in Solana program code.",
-    "topic": "seagrass/solana.code-quality.unchecked-arithmetic",
+    "code": "solana-code-quality.unsafe-unwrap",
+    "message": "Avoid `.unwrap()` in Solana program code; return a typed error instead of panicking.",
+    "topic": "seagrass/solana.code-quality.unsafe-unwrap",
     "confidence": "heuristic",
     "applicability": "Unspecified",
-    "docsUrl": "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md"
+    "docsUrl": "https://github.com/heyAyushh/seagrass/blob/main/docs/lints/seagrass-solana-code-quality-unsafe-unwrap.md"
   }
 ]
 ```
@@ -92,7 +92,7 @@ ERRORS
     src/lib.rs:118  — CPI to a Pubkey not validated against a known program ID
 
 WARNINGS
-  seagrass/solana.code-quality.unchecked-arithmetic  (3)
+  seagrass/solana.code-quality.unsafe-unwrap  (3)
     src/state.rs:42, 47, 53
   seagrass/anchor.constraint.shape              (1)
     src/lib.rs:201  — has_one target field type mismatch

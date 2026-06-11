@@ -63,15 +63,14 @@ pub enum Applicability {
 
 Implemented entry point: `src/lsp/diagnostics/lint.rs`. The shared module owns
 `Region`, `RegionMap`, `Confidence`, `Applicability`, `LintVisitor`, and
-`run_lint_visitor`. The unchecked-arithmetic exemplar is wired through this
+`run_lint_visitor`. The unsafe-unwrap exemplar is wired through this
 contract; remaining rule ports should migrate incrementally instead of creating
 rule-local metadata enums.
 
 Rules that do not lint attributes must override `visit_attribute` and avoid
-recursing into attribute token streams. Exemplar ports now include unchecked
-arithmetic, manual close/reinit, native raw account invariants, native account
-validation, stale CPI, unsafe unwrap, non-canonical PDA bump, and instruction
-data bounds.
+recursing into attribute token streams. Exemplar ports now include unsafe
+unwrap, manual close/reinit, native raw account invariants, native account
+validation, stale CPI, non-canonical PDA bump, and instruction data bounds.
 
 ## Framework Applicability
 
@@ -140,22 +139,22 @@ non-diagnostic.
 
 Active user syntax:
 
-- line: `// seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic`
+- line: `// seagrass-allow: seagrass/solana.code-quality.unsafe-unwrap`
 - line, all Seagrass diagnostics: `// seagrass-ignore`
-- file: `// seagrass-allow-file: seagrass/solana.code-quality.unchecked-arithmetic`
-- item or block: `#[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]`
+- file: `// seagrass-allow-file: seagrass/solana.code-quality.unsafe-unwrap`
+- item or block: `#[seagrass(allow("seagrass/solana.code-quality.unsafe-unwrap"))]`
   on top-level items, nested items, impl/trait/foreign items, local bindings, or
   block expressions
 - workspace: `Seagrass.toml`
 
   ```toml
   [lints]
-  allow = ["seagrass/solana.code-quality.unchecked-arithmetic"]
+  allow = ["seagrass/solana.code-quality.unsafe-unwrap"]
   ```
 
 Suppression matches full topics, topic suffixes, diagnostic codes, or rule ids.
 For code-scoped rules, `code.rule` patterns such as
-`solana-code-quality.unchecked-arithmetic` are accepted too.
+`solana-code-quality.unsafe-unwrap` are accepted too.
 
 Line comments apply to the current line and the next source line so users can
 place a suppression above an attribute or expression without appending a trailing

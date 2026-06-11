@@ -3,15 +3,15 @@ import { describe, expect, test } from "bun:test";
 import { lintPage, pageContentFailures } from "./check-lint-catalog.ts";
 
 const topic = {
-  name: "seagrass/solana.code-quality.unchecked-arithmetic",
-  description: "Unchecked balance and lamports arithmetic diagnostics.",
+  name: "seagrass/solana.code-quality.unsafe-unwrap",
+  description: "Unsafe unwrap and expect diagnostics.",
 };
 
 describe("lint catalog checker", () => {
   test("rejects generic generated boilerplate pages", () => {
     const failures = pageContentFailures(
       topic,
-      "docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md",
+      "docs/lints/seagrass-solana-code-quality-unsafe-unwrap.md",
       `
 # Unchecked Arithmetic
 
@@ -47,7 +47,7 @@ This page documents the user-facing diagnostic topic.
     const page = lintPage(topic);
     const failures = pageContentFailures(
       topic,
-      "docs/lints/seagrass-solana-code-quality-unchecked-arithmetic.md",
+      "docs/lints/seagrass-solana-code-quality-unsafe-unwrap.md",
       page,
     );
 

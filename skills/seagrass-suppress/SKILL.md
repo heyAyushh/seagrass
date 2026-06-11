@@ -29,14 +29,14 @@ Seagrass supports exactly these. No others.
 ### 1. Line / next-line
 
 ```rust
-let x = a - b; // seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic
+let x = maybe_value().unwrap(); // seagrass-allow: seagrass/solana.code-quality.unsafe-unwrap
 ```
 
 Or on the preceding line:
 
 ```rust
-// seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic
-let x = a - b;
+// seagrass-allow: seagrass/solana.code-quality.unsafe-unwrap
+let x = maybe_value().unwrap();
 ```
 
 **Use when:** one specific expression triggers the FP. Narrowest scope.
@@ -53,8 +53,8 @@ let x = a - b;
 ### 3. Item / block attribute
 
 ```rust
-#[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]
-fn debit(amount: u64, fee: u64) -> u64 { amount - fee }
+#[seagrass(allow("seagrass/solana.code-quality.unsafe-unwrap"))]
+fn required_value(input: Option<u64>) -> u64 { input.unwrap() }
 ```
 
 ```rust
@@ -85,7 +85,7 @@ Place at the top of the file (before the first item).
 ```toml
 [lints]
 allow = [
-  "unchecked-arithmetic",
+  "unsafe-unwrap",
   "security.account.unchecked",
 ]
 ```
@@ -128,9 +128,9 @@ Ask: "Apply?"
 Add a `WHY` comment line if it isn't obvious from context:
 
 ```rust
-// seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic
-// reason: bounded by upstream `validate_amount` invariant
-let x = a - b;
+// seagrass-allow: seagrass/solana.code-quality.unsafe-unwrap
+// reason: initialization guarantees this option is present
+let x = maybe_value().unwrap();
 ```
 
 This is for the next reader. Seagrass itself only needs the directive.

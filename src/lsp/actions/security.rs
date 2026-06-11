@@ -530,7 +530,6 @@ fn replace_account_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Cod
                 diagnostic_code(diagnostic),
                 Some("anchor-security-signer")
                     | Some("anchor-security-sysvar")
-                    | Some("anchor-security-token-account")
                     | Some("anchor-security-cpi-program")
                     | Some("anchor-constraint-shape")
                     | Some("anchor-syn")

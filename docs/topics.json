@@ -79,10 +79,6 @@
       "description": "Anchor parser syntax diagnostics."
     },
     {
-      "name": "seagrass/security.account.duplicate-mutable",
-      "description": "Duplicate mutable account security diagnostics."
-    },
-    {
       "name": "seagrass/security.account.unchecked",
       "description": "Unchecked account security diagnostics."
     },
@@ -96,7 +92,7 @@
     },
     {
       "name": "seagrass/security.pda.static-seed",
-      "description": "Static PDA seed security diagnostics."
+      "description": "Static PDA seed design-review hints."
     },
     {
       "name": "seagrass/security.signer.authorization",
@@ -105,10 +101,6 @@
     {
       "name": "seagrass/security.sysvar.address",
       "description": "Sysvar address validation diagnostics."
-    },
-    {
-      "name": "seagrass/security.token-account",
-      "description": "Token account validation security diagnostics."
     },
     {
       "name": "seagrass/security.type-cosplay",
@@ -149,10 +141,6 @@
     {
       "name": "seagrass/solana.code-quality.stale-account-after-cpi",
       "description": "Stale account reads after CPI diagnostics."
-    },
-    {
-      "name": "seagrass/solana.code-quality.unchecked-arithmetic",
-      "description": "Unchecked balance and lamports arithmetic diagnostics."
     },
     {
       "name": "seagrass/solana.code-quality.unsafe-unwrap",

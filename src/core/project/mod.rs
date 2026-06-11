@@ -494,13 +494,13 @@ basic_1 = "Devnet11111111111111111111111111111111111"
         let program_src = root.join("programs/demo/src");
         std::fs::create_dir_all(&program_src).unwrap();
         let config = root.join(SEAGRASS_TOML_FILE);
-        std::fs::write(&config, "[lints]\nallow = [\"unchecked-arithmetic\"]\n").unwrap();
+        std::fs::write(&config, "[lints]\nallow = [\"unsafe-unwrap\"]\n").unwrap();
 
         let uri = Url::from_file_path(program_src.join("lib.rs")).unwrap();
         let (found_uri, text) = nearest_seagrass_toml(&uri).expect("expected Seagrass.toml");
 
         assert_eq!(found_uri, Url::from_file_path(config).unwrap());
-        assert!(text.contains("unchecked-arithmetic"));
+        assert!(text.contains("unsafe-unwrap"));
     }
 
     fn range_text(source: &str, range: Range) -> String {

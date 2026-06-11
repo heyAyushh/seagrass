@@ -12,7 +12,6 @@ use {
         solana::frameworks::{FrameworkContext, FrameworkId},
         syntax::{expr_path_last_ident, member_is_named},
     },
-    quote::ToTokens,
     seagrass_framework::diagnostics::FrameworkDocument,
     syn::{
         spanned::Spanned,
@@ -23,11 +22,6 @@ use {
 
 mod manual_close;
 mod stale_cpi;
-
-const BALANCE_TERMS: &[&str] = &[
-    "amount", "balance", "deposit", "fee", "lamport", "reward", "stake", "supply", "total",
-    "value", "withdraw",
-];
 
 #[cfg(test)]
 pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
@@ -45,10 +39,6 @@ pub fn collect_with_framework(
 
     let mut diagnostics = Vec::new();
     diagnostics.extend(unsafe_unwrap_diagnostics(document, program_kind));
-    diagnostics.extend(unchecked_balance_arithmetic_diagnostics(
-        document,
-        program_kind,
-    ));
     diagnostics.extend(non_canonical_pda_bump_diagnostics(document, program_kind));
     diagnostics.extend(framework_crate_diagnostics(document, framework));
     diagnostics.extend(manual_close::diagnostics(document));
@@ -191,121 +181,6 @@ fn is_infallible_try_into_source(expr: &syn::Expr) -> bool {
         syn::Expr::Reference(reference) => is_infallible_try_into_source(&reference.expr),
         _ => false,
     }
-}
-
-fn unchecked_balance_arithmetic_diagnostics(
-    document: &ParsedDocument,
-    program_kind: ProgramKind,
-) -> Vec<Diagnostic> {
-    run_lint_visitor(
-        document,
-        UncheckedArithmeticVisitor {
-            program_kind,
-            diagnostics: Vec::new(),
-        },
-    )
-}
-
-struct UncheckedArithmeticVisitor {
-    program_kind: ProgramKind,
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl<'ast> LintVisitor<'ast> for UncheckedArithmeticVisitor {
-    const SCOPE: &'static [Region] = &[Region::InstructionBody, Region::HelperFnBody];
-    const CONFIDENCE: Confidence = Confidence::Heuristic;
-    const APPLICABILITY: Applicability = Applicability::Unspecified;
-    const TOPIC: &'static str = "seagrass/solana.code-quality.unchecked-arithmetic";
-
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
-    }
-}
-
-impl<'ast> Visit<'ast> for UncheckedArithmeticVisitor {
-    fn visit_attribute(&mut self, _node: &'ast syn::Attribute) {}
-
-    fn visit_expr_binary(&mut self, node: &'ast syn::ExprBinary) {
-        if is_unchecked_balance_arithmetic(node) {
-            self.diagnostics.push(unchecked_arithmetic_diagnostic(
-                self.program_kind,
-                node.op.span(),
-            ));
-        }
-        visit::visit_expr_binary(self, node);
-    }
-}
-
-#[cfg(test)]
-fn unchecked_arithmetic_scope() -> &'static [Region] {
-    UncheckedArithmeticVisitor::SCOPE
-}
-
-fn unchecked_arithmetic_confidence() -> Confidence {
-    UncheckedArithmeticVisitor::CONFIDENCE
-}
-
-fn unchecked_arithmetic_applicability() -> Applicability {
-    UncheckedArithmeticVisitor::APPLICABILITY
-}
-
-fn unchecked_arithmetic_topic() -> &'static str {
-    UncheckedArithmeticVisitor::TOPIC
-}
-
-fn unchecked_arithmetic_diagnostic(
-    program_kind: ProgramKind,
-    span: proc_macro2::Span,
-) -> Diagnostic {
-    diagnostic_from_span(
-        span,
-        AnchorDiagnosticKind::SolanaCodeQuality,
-        "Use checked arithmetic for balance, lamport, token, or amount math in Solana program code."
-            .to_string(),
-        Some(serde_json::json!({
-            "rule": "unchecked-arithmetic",
-            "confidence": unchecked_arithmetic_confidence().as_str(),
-            "topic": unchecked_arithmetic_topic(),
-            "applicability": unchecked_arithmetic_applicability().as_str(),
-            "programKind": program_kind.as_str(),
-            "suggestion": "Use `checked_add`, `checked_sub`, or `checked_mul` and convert overflow to a program error.",
-            "absorbedFrom": "solana-mcp-official/programAutofixer",
-        })),
-    )
-}
-
-fn is_unchecked_balance_arithmetic(node: &syn::ExprBinary) -> bool {
-    is_unchecked_arithmetic_operator(&node.op)
-        && (expr_contains_balance_term(&node.left) || expr_contains_balance_term(&node.right))
-}
-
-fn is_unchecked_arithmetic_operator(op: &syn::BinOp) -> bool {
-    matches!(
-        op,
-        syn::BinOp::Add(_)
-            | syn::BinOp::Sub(_)
-            | syn::BinOp::Mul(_)
-            | syn::BinOp::AddAssign(_)
-            | syn::BinOp::SubAssign(_)
-            | syn::BinOp::MulAssign(_)
-    )
-}
-
-fn expr_contains_balance_term(expr: &syn::Expr) -> bool {
-    let tokens = expr.to_token_stream().to_string();
-    tokens
-        .split(|ch: char| !crate::syntax::is_ascii_identifier_char(ch))
-        .any(identifier_has_balance_term)
-}
-
-fn identifier_has_balance_term(identifier: &str) -> bool {
-    identifier
-        .split('_')
-        .filter(|part| !part.is_empty())
-        .any(|part| {
-            let part = part.to_ascii_lowercase();
-            BALANCE_TERMS.iter().any(|term| part == *term)
-        })
 }
 
 fn non_canonical_pda_bump_diagnostics(

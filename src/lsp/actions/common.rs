@@ -12,8 +12,7 @@ use {
         sync::{Mutex, OnceLock},
     },
     tower_lsp::lsp_types::{
-        CodeAction, CodeActionKind, Diagnostic, NumberOrString, Position, Range, TextEdit, Url,
-        WorkspaceEdit,
+        Diagnostic, NumberOrString, Position, Range, TextEdit, Url, WorkspaceEdit,
     },
 };
 
@@ -330,32 +329,6 @@ pub fn add_constraint_to_field_edit(
         },
         &format!("{indent}#[account({addition})]\n"),
     ))
-}
-
-pub fn constraint_action(
-    uri: &Url,
-    diagnostic: &Diagnostic,
-    title: String,
-    edit: TextEdit,
-    is_preferred: bool,
-    data: serde_json::Value,
-) -> CodeAction {
-    let mut changes = HashMap::with_capacity(1);
-    changes.insert(uri.clone(), vec![edit]);
-    CodeAction {
-        title,
-        kind: Some(CodeActionKind::QUICKFIX),
-        diagnostics: Some(vec![diagnostic.clone()]),
-        edit: Some(WorkspaceEdit {
-            changes: Some(changes),
-            document_changes: None,
-            change_annotations: None,
-        }),
-        command: None,
-        is_preferred: Some(is_preferred),
-        disabled: None,
-        data: Some(data),
-    }
 }
 
 pub fn edit_distance(left: &str, right: &str) -> usize {

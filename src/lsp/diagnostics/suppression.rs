@@ -362,8 +362,8 @@ mod tests {
             r#"
 [lints]
 allow = [
-  "seagrass/solana.code-quality.unchecked-arithmetic",
-  "unchecked-arithmetic",
+  "seagrass/solana.code-quality.unsafe-unwrap",
+  "unsafe-unwrap",
 ]
 "#,
         ));
@@ -371,8 +371,8 @@ allow = [
         assert_eq!(
             patterns,
             vec![
-                "seagrass/solana.code-quality.unchecked-arithmetic".to_string(),
-                "unchecked-arithmetic".to_string()
+                "seagrass/solana.code-quality.unsafe-unwrap".to_string(),
+                "unsafe-unwrap".to_string()
             ]
         );
     }
@@ -385,9 +385,9 @@ allow = [
     #[test]
     fn suppression_matches_code_rule_pattern() {
         assert!(suppression_matches(
-            "solana-code-quality.unchecked-arithmetic",
-            Some("seagrass/solana.code-quality.unchecked-arithmetic"),
-            Some("unchecked-arithmetic"),
+            "solana-code-quality.unsafe-unwrap",
+            Some("seagrass/solana.code-quality.unsafe-unwrap"),
+            Some("unsafe-unwrap"),
             Some("solana-code-quality"),
         ));
     }
@@ -397,7 +397,7 @@ allow = [
         let source = r#"
 fn handler() {
     // seagrass-ignore
-    let amount = 1 - 2;
+    let value = maybe_value().unwrap();
 }
 "#;
         let document = ParsedDocument::parse(source).unwrap();
@@ -417,12 +417,12 @@ fn handler() {
             code: Some(NumberOrString::String("solana-code-quality".to_string())),
             code_description: None,
             source: None,
-            message: "unchecked arithmetic".to_string(),
+            message: "unsafe unwrap".to_string(),
             related_information: None,
             tags: None,
             data: Some(serde_json::json!({
-                "topic": "seagrass/solana.code-quality.unchecked-arithmetic",
-                "rule": "unchecked-arithmetic",
+                "topic": "seagrass/solana.code-quality.unsafe-unwrap",
+                "rule": "unsafe-unwrap",
             })),
         };
 
@@ -434,7 +434,7 @@ fn handler() {
         let source = r#"
 fn handler() {
     let marker = "// seagrass-ignore";
-    let amount = 1 - 2;
+    let value = maybe_value().unwrap();
 }
 "#;
         let document = ParsedDocument::parse(source).unwrap();
@@ -454,12 +454,12 @@ fn handler() {
             code: Some(NumberOrString::String("solana-code-quality".to_string())),
             code_description: None,
             source: None,
-            message: "unchecked arithmetic".to_string(),
+            message: "unsafe unwrap".to_string(),
             related_information: None,
             tags: None,
             data: Some(serde_json::json!({
-                "topic": "seagrass/solana.code-quality.unchecked-arithmetic",
-                "rule": "unchecked-arithmetic",
+                "topic": "seagrass/solana.code-quality.unsafe-unwrap",
+                "rule": "unsafe-unwrap",
             })),
         };
 

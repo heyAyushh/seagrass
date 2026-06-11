@@ -196,9 +196,7 @@ compiling Anchor code.
 | HIGH | ecosystem / TestHarness MissingTests | WARNING | absence | scan workspace `tests/`; same-crate dev-deps only |
 | HIGH | security.owner-check (raw_account) | WARNING | absence | `visit_impl_item_fn` on `RawAccountFileVisitor` (Inv. A) |
 | HIGH | security.type-cosplay (raw_account) | WARNING | absence | same as owner-check (Inv. A) |
-| HIGH | security.account.duplicate-mutable | WARNING | heuristic | suppress when both have `seeds`/`address` |
 | HIGH | code_quality.stale-account-after-cpi | WARNING | heuristic | use real ctx param name, not `"ctx"` (Inv. A) |
-| HIGH | code_quality.unchecked-arithmetic | WARNING | heuristic | balance-term as identifier suffix; narrow signals |
 | HIGH | code_quality.initialization (reinit) | WARNING | heuristic | require co-absence of init guard; or INFO (Inv. C) |
 | HIGH | code_quality.pda-seed-collision | WARNING | heuristic | threshold ≥3 dynamic seeds; or real collision only |
 | MED | account_references / missing-account-reference | ERROR | absence | EvidenceGraph w/ reachable fns + workspace (Inv. B) |

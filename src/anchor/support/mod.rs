@@ -261,8 +261,8 @@ fn security_pattern_coverage() -> Vec<serde_json::Value> {
         ),
         (
             "account-data-matching",
-            "covered",
-            "anchor-security-token-account",
+            "not-covered",
+            "no truth-source-backed static diagnostic",
         ),
         (
             "owner-checks",
@@ -286,8 +286,8 @@ fn security_pattern_coverage() -> Vec<serde_json::Value> {
         ),
         (
             "duplicate-mutable-accounts",
-            "covered",
-            "anchor-security-duplicate-account",
+            "not-covered",
+            "no truth-source-backed static diagnostic",
         ),
         (
             "bump-seed-canonicalization",

@@ -576,7 +576,7 @@ Procedure:
    - Status bar shows "$(sync~spin) Seagrass" then "$(check) Seagrass" (not "stopped").
    - At least one diagnostic appears in a file with a known violation.
 4. Run the smoke-check fixture from `skills/seagrass-install/SKILL.md` Step 3.
-   Confirm output contains `"topic": "seagrass/solana.code-quality.unchecked-arithmetic"`.
+   Confirm output contains `"topic": "seagrass/solana.code-quality.unsafe-unwrap"`.
 5. If any step above fails: DO NOT publish to Marketplace. Debug first.
 
 ---

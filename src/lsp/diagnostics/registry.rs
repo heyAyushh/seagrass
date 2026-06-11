@@ -25,10 +25,8 @@ pub const SOLANA_SURFPOOL_WORKSPACE_CODE: &str = "solana-surfpool-workspace";
 pub const ANCHOR_SPL_TOKEN_INTERFACE_CODE: &str = "anchor-spl-token-interface";
 pub const ANCHOR_SYN_CODE: &str = "anchor-syn";
 pub const ANCHOR_SECURITY_SIGNER_CODE: &str = "anchor-security-signer";
-pub const ANCHOR_SECURITY_TOKEN_ACCOUNT_CODE: &str = "anchor-security-token-account";
 pub const ANCHOR_SECURITY_CPI_PROGRAM_CODE: &str = "anchor-security-cpi-program";
 pub const ANCHOR_SECURITY_SYSVAR_CODE: &str = "anchor-security-sysvar";
-pub const ANCHOR_SECURITY_DUPLICATE_ACCOUNT_CODE: &str = "anchor-security-duplicate-account";
 pub const ANCHOR_SECURITY_UNCHECKED_ACCOUNT_CODE: &str = "anchor-security-unchecked-account";
 pub const ANCHOR_SECURITY_STATIC_PDA_CODE: &str = "anchor-security-static-pda";
 pub const ANCHOR_SECURITY_OWNER_CHECK_CODE: &str = "anchor-security-owner-check";
@@ -56,6 +54,30 @@ pub enum Provability {
     /// Pattern-based guesses with no formal proof.
     /// At most WARNING or HINT; never ERROR.
     Heuristic,
+    /// Context-dependent design-review prompts. The observed syntax is real, but the claim is
+    /// intentionally advisory and must default to HINT.
+    Speculative,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TruthSource {
+    SingleFileSyntax,
+    PinnedCatalog,
+    Compound,
+    ToolchainOracle,
+    None,
+}
+
+impl TruthSource {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SingleFileSyntax => "single-file-syntax",
+            Self::PinnedCatalog => "pinned-catalog",
+            Self::Compound => "compound",
+            Self::ToolchainOracle => "toolchain-oracle",
+            Self::None => "none",
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -81,11 +103,11 @@ pub enum AnchorDiagnosticKind {
     SolanaSurfpoolWorkspace,
     AnchorSplTokenInterface,
     SecuritySigner,
-    SecurityTokenAccount,
     SecurityCpiProgram,
     SecuritySysvar,
-    SecurityDuplicateAccount,
     SecurityUncheckedAccount,
+    /// Speculative: static seeds are valid; this surfaces a design-review prompt, not a
+    /// definite bug.
     SecurityStaticPda,
     SecurityOwnerCheck,
     SecurityTypeCosplay,
@@ -99,7 +121,7 @@ impl AnchorDiagnosticKind {
     /// `all_variants_are_covered_by_all()`.
     // No non-test callers yet; future evidence-upgrade paths will iterate all kinds.
     #[allow(dead_code)]
-    pub fn all() -> [Self; 31] {
+    pub fn all() -> [Self; 29] {
         [
             Self::AnchorSyn,
             Self::AnchorInitConstraints,
@@ -122,10 +144,8 @@ impl AnchorDiagnosticKind {
             Self::SolanaSurfpoolWorkspace,
             Self::AnchorSplTokenInterface,
             Self::SecuritySigner,
-            Self::SecurityTokenAccount,
             Self::SecurityCpiProgram,
             Self::SecuritySysvar,
-            Self::SecurityDuplicateAccount,
             Self::SecurityUncheckedAccount,
             Self::SecurityStaticPda,
             Self::SecurityOwnerCheck,
@@ -167,16 +187,48 @@ impl AnchorDiagnosticKind {
             | Self::SolanaSurfpoolWorkspace
             | Self::AnchorSplTokenInterface
             | Self::SecuritySigner
-            | Self::SecurityTokenAccount
             | Self::SecurityCpiProgram
             | Self::SecuritySysvar
-            | Self::SecurityDuplicateAccount
             | Self::SecurityUncheckedAccount
-            | Self::SecurityStaticPda
             | Self::SecurityOwnerCheck
             | Self::SecurityTypeCosplay
             | Self::SolanaCodeQuality
             | Self::PdaSeedResolution => Provability::Heuristic,
+
+            Self::SecurityStaticPda => Provability::Speculative,
+        }
+    }
+
+    pub fn truth_source(self) -> TruthSource {
+        match self {
+            Self::AnchorSyn
+            | Self::AnchorConstraintShape
+            | Self::AnchorInitConstraints
+            | Self::AnchorContextAccounts
+            | Self::AnchorMissingAccountReference
+            | Self::AnchorMissingInstructionArgument
+            | Self::AnchorConstraintExpression
+            | Self::AnchorAccountUsage
+            | Self::SecuritySigner
+            | Self::SecurityCpiProgram
+            | Self::SecurityUncheckedAccount
+            | Self::SecurityOwnerCheck
+            | Self::SecurityTypeCosplay
+            | Self::SolanaCodeQuality
+            | Self::PdaSeedResolution => TruthSource::SingleFileSyntax,
+            Self::AnchorSplTokenInterface | Self::SecuritySysvar => TruthSource::PinnedCatalog,
+            Self::AnchorMissingInitConstraint => TruthSource::Compound,
+            Self::AnchorCheckCfg
+            | Self::AnchorSbfArtifact
+            | Self::AnchorProgramKeypair
+            | Self::AnchorIdlArtifact
+            | Self::AnchorTypesArtifact
+            | Self::SolanaIdlArtifact
+            | Self::SolanaProgramMetadata
+            | Self::SolanaTestHarness
+            | Self::SolanaSurfpoolWorkspace
+            | Self::AnchorProjectId => TruthSource::ToolchainOracle,
+            Self::SecurityStaticPda => TruthSource::None,
         }
     }
 
@@ -203,10 +255,8 @@ impl AnchorDiagnosticKind {
             Self::SolanaSurfpoolWorkspace => SOLANA_SURFPOOL_WORKSPACE_CODE,
             Self::AnchorSplTokenInterface => ANCHOR_SPL_TOKEN_INTERFACE_CODE,
             Self::SecuritySigner => ANCHOR_SECURITY_SIGNER_CODE,
-            Self::SecurityTokenAccount => ANCHOR_SECURITY_TOKEN_ACCOUNT_CODE,
             Self::SecurityCpiProgram => ANCHOR_SECURITY_CPI_PROGRAM_CODE,
             Self::SecuritySysvar => ANCHOR_SECURITY_SYSVAR_CODE,
-            Self::SecurityDuplicateAccount => ANCHOR_SECURITY_DUPLICATE_ACCOUNT_CODE,
             Self::SecurityUncheckedAccount => ANCHOR_SECURITY_UNCHECKED_ACCOUNT_CODE,
             Self::SecurityStaticPda => ANCHOR_SECURITY_STATIC_PDA_CODE,
             Self::SecurityOwnerCheck => ANCHOR_SECURITY_OWNER_CHECK_CODE,
@@ -224,6 +274,7 @@ impl AnchorDiagnosticKind {
         match self.provability() {
             Provability::Syntactic => DiagnosticSeverity::ERROR,
             Provability::WholeProgram | Provability::Heuristic => DiagnosticSeverity::WARNING,
+            Provability::Speculative => DiagnosticSeverity::HINT,
         }
     }
 
@@ -289,17 +340,11 @@ impl AnchorDiagnosticKind {
             Self::SecuritySigner => {
                 "https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/0-signer-authorization"
             }
-            Self::SecurityTokenAccount => {
-                "https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/1-account-data-matching"
-            }
             Self::SecurityCpiProgram => {
                 "https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/5-arbitrary-cpi"
             }
             Self::SecuritySysvar => {
                 "https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/10-sysvar-address-checking"
-            }
-            Self::SecurityDuplicateAccount => {
-                "https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/6-duplicate-mutable-accounts"
             }
             Self::SecurityOwnerCheck => {
                 "https://github.com/coral-xyz/sealevel-attacks/tree/master/programs/2-owner-checks"
@@ -344,10 +389,8 @@ impl AnchorDiagnosticKind {
             Self::SolanaSurfpoolWorkspace => Some("surfpool/localnet-workspace"),
             Self::AnchorSplTokenInterface => Some("anchor/spl-token-interface"),
             Self::SecuritySigner => Some("sealevel-attacks/signer-authorization"),
-            Self::SecurityTokenAccount => Some("sealevel-attacks/account-data-matching"),
             Self::SecurityCpiProgram => Some("sealevel-attacks/arbitrary-cpi"),
             Self::SecuritySysvar => Some("sealevel-attacks/sysvar-address-checking"),
-            Self::SecurityDuplicateAccount => Some("sealevel-attacks/duplicate-mutable-accounts"),
             Self::SecurityOwnerCheck => Some("sealevel-attacks/owner-checks"),
             Self::SecurityTypeCosplay => Some("sealevel-attacks/type-cosplay"),
             Self::SecurityUncheckedAccount => Some("anchor/unchecked-account-validation"),
@@ -382,10 +425,8 @@ impl AnchorDiagnosticKind {
             Self::SecuritySigner | Self::SecuritySysvar | Self::SecurityCpiProgram => {
                 "authoritative"
             }
-            Self::SecurityTokenAccount
-            | Self::SecurityOwnerCheck
+            Self::SecurityOwnerCheck
             | Self::SecurityTypeCosplay
-            | Self::SecurityDuplicateAccount
             | Self::SecurityUncheckedAccount
             | Self::SecurityStaticPda
             | Self::SolanaCodeQuality => "heuristic",
@@ -416,10 +457,8 @@ impl AnchorDiagnosticKind {
             Self::SolanaSurfpoolWorkspace => "seagrass/solana.surfpool-workspace",
             Self::AnchorSplTokenInterface => "seagrass/anchor.spl-token-interface",
             Self::SecuritySigner => "seagrass/security.signer.authorization",
-            Self::SecurityTokenAccount => "seagrass/security.token-account",
             Self::SecurityCpiProgram => "seagrass/security.cpi.program",
             Self::SecuritySysvar => "seagrass/security.sysvar.address",
-            Self::SecurityDuplicateAccount => "seagrass/security.account.duplicate-mutable",
             Self::SecurityUncheckedAccount => "seagrass/security.account.unchecked",
             Self::SecurityStaticPda => "seagrass/security.pda.static-seed",
             Self::SecurityOwnerCheck => "seagrass/security.owner-check",
@@ -464,11 +503,7 @@ impl AnchorDiagnosticKind {
                 &["InvalidProgramExecutable"]
             }
             Self::SecurityOwnerCheck => &["AccountOwnedByWrongProgram"],
-            Self::SecurityDuplicateAccount => &["ConstraintDuplicateMutableAccount"],
             Self::SecuritySigner => &["AccountNotSigner"],
-            Self::SecurityTokenAccount => {
-                &["AccountOwnedByWrongProgram", "AccountDidNotDeserialize"]
-            }
             Self::SecurityTypeCosplay => {
                 &["AccountDiscriminatorMismatch", "AccountDidNotDeserialize"]
             }
@@ -563,6 +598,39 @@ mod tests {
                         kind.code()
                     );
                 }
+                Provability::Speculative => {
+                    assert_eq!(
+                        severity,
+                        DiagnosticSeverity::HINT,
+                        "Speculative diagnostic `{}` must default to HINT",
+                        kind.code()
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn truth_source_declared_for_all_variants() {
+        for kind in AnchorDiagnosticKind::all() {
+            let _ = kind.truth_source();
+        }
+    }
+
+    #[test]
+    fn none_backed_variants_are_not_syntactic_or_whole_program() {
+        for kind in AnchorDiagnosticKind::all() {
+            if kind.truth_source() == TruthSource::None {
+                assert!(
+                    matches!(
+                        kind.provability(),
+                        Provability::Heuristic | Provability::Speculative
+                    ),
+                    "Diagnostic `{}` has TruthSource::None but provability {:?}; \
+                     only Heuristic/Speculative diagnostics may lack a truth source.",
+                    kind.code(),
+                    kind.provability()
+                );
             }
         }
     }
@@ -581,6 +649,7 @@ mod tests {
             // surface before this assertion if a variant were missing.
             let _ = kind.code();
             let _ = kind.provability();
+            let _ = kind.truth_source();
         }
         // Verify `all()` has no duplicates by checking that all codes are distinct.
         let codes: Vec<&str> = AnchorDiagnosticKind::all()
