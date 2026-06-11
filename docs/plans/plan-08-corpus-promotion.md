@@ -1,5 +1,15 @@
 # Plan 08 — Corpus Promotion: Triage the External Corpus and Flip Discovery → Hard Gate
 
+> **BASELINE RESULT (2026-06-11, local run):** `scripts/fetch-corpus.sh` +
+> `CORPUS_ENABLED=1 cargo test external_corpus -- --nocapture` → **267 program
+> source roots scanned, 0 ERROR-severity diagnostics, 2 oversized files skipped**
+> (`light-protocol/sdk-libs/photon-api/src/codegen.rs`,
+> `orca-whirlpools/programs/whirlpool/src/manager/swap_manager.rs`).
+> Consequence: Step 1 is done, Steps 2–3 are no-ops (empty triage table — record
+> it as such), and Step 5's exclusion table starts empty. Proceed directly to
+> Step 4 (vendoring) and Step 5 (the flip). Re-run the scan after Step 4 and
+> before declaring Step 5 done.
+
 ## Context
 
 The corpus mechanism has two tiers, both already built:
@@ -132,7 +142,15 @@ For each FP-family row, in its own commit:
 The committed corpus is what runs on *every* `cargo test`, not just nightly. Grow it
 from 3 to 6–8 programs, chosen for idiom coverage rather than size:
 
-- From `program-examples` (MIT): one CPI-heavy program and one PDA/realloc program.
+- From `program-examples` (MIT, pinned 2026-05-30, Anchor 1.0.0/1.0.0-rc.5 —
+  the *newest* idioms in the corpus): one CPI-heavy program and one PDA/realloc
+  program. It also contains a Pinocchio repository-layout example — check whether
+  it satisfies the Pinocchio bullet below before hunting elsewhere.
+- **Sample the Anchor version spread deliberately.** The external corpus spans
+  Anchor 0.29 → 1.0 (mainnet protocols sit at 0.29–0.32; program-examples at 1.0).
+  The committed set should include at least one 0.29–0.31-era program and one
+  1.0-era program so the gate covers idioms from both eras on every `cargo test`,
+  not just nightly. Record the Anchor version per program in the corpus README.
 - One Apache-2.0/MIT SPL program small enough to commit (check `license` in manifest;
   `mpl-token-metadata` is large — prefer a smaller one or a single-crate subpath).
 - One Pinocchio or native program **only if** a permissively-licensed one exists
