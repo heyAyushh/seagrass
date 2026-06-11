@@ -26,6 +26,9 @@ const expectedZedSlashCommands = new Map([
 const packageJson = JSON.parse(read("vscode/package.json"));
 const vscodeSource = read("vscode/src/extension.ts");
 const zedToml = read("zed/extension.toml");
+const vimPlugin = read("vim/plugin/seagrass.vim");
+const vimReadme = read("vim/README.md");
+const vimCocSettings = JSON.parse(read("vim/coc-settings.json"));
 const feedbackManifest = read("feedback.toml");
 const contract = read("UI_CONTRACT.md");
 const vscodeSettings = packageJson.contributes.configuration.properties;
@@ -92,6 +95,33 @@ for (const family of securityFamilies) {
   assert(contract.includes(`\`diagnostics.security.${family}\``), `UI contract is missing ${family}`);
 }
 assert(contract.includes("`feedback.url`"), "UI contract is missing feedback.url");
+
+assert(vimReadme.includes("vim-lsp"), "Vim README should document vim-lsp as the transport");
+assert(vimReadme.includes("coc-settings.json"), "Vim README should document the CoC template");
+assert(vimPlugin.includes("'name': s:server_name"), "Vim package should register the shared server name");
+assert(vimPlugin.includes("'allowlist': ['rust']"), "Vim package should allow Rust buffers");
+assert(vimPlugin.includes("'whitelist': ['rust']"), "Vim package should keep old vim-lsp Rust allowlist compatibility");
+assert(vimPlugin.includes("'Anchor.toml'"), "Vim package should use Anchor.toml as a root marker");
+assert(vimPlugin.includes("'Seagrass.toml'"), "Vim package should use Seagrass.toml as a root marker");
+assert(vimPlugin.includes("'Cargo.toml'"), "Vim package should use Cargo.toml as a root marker");
+assert(vimPlugin.includes("'editor.client': 'vim'"), "Vim package should identify the editor client");
+assert(vimPlugin.includes("'diagnostics.transport': 'push'"), "Vim package should default diagnostics transport to push");
+assert(contract.includes("client as `vim`"), "UI contract should document the Vim client id");
+
+const cocServer = vimCocSettings.languageserver.seagrass;
+assert(cocServer.command === "seagrass", "CoC template should start the seagrass binary");
+assert(cocServer.filetypes.includes("rust"), "CoC template should attach to Rust buffers");
+assert(cocServer.rootPatterns.includes("Anchor.toml"), "CoC template is missing Anchor.toml root marker");
+assert(cocServer.rootPatterns.includes("Seagrass.toml"), "CoC template is missing Seagrass.toml root marker");
+assert(cocServer.rootPatterns.includes("Cargo.toml"), "CoC template is missing Cargo.toml root marker");
+assert(
+  cocServer.initializationOptions.seagrass.editor.client === "vim",
+  "CoC template should send editor.client=vim",
+);
+assert(
+  cocServer.settings.seagrass["diagnostics.transport"] === "push",
+  "CoC template should keep push diagnostics",
+);
 
 function read(relativePath) {
   return readFileSync(join(editorsDir, relativePath), "utf8");

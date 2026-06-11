@@ -1,9 +1,9 @@
 ---
 name: seagrass-install
-description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
+description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/vim/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
 user-invocable: true
 license: MIT
-compatibility: Uses a prebuilt Seagrass binary, or Rust 1.89.0 and cargo for source installs, plus one of VS Code, Zed, Helix, or a Neovim LSP client.
+compatibility: Uses a prebuilt Seagrass binary, or Rust 1.89.0 and cargo for source installs, plus one of VS Code, Zed, Vim with vim-lsp or CoC, Helix, or a Neovim LSP client.
 metadata:
   author: Seagrass Maintainers
   version: 1.0.0
@@ -165,6 +165,25 @@ command = "seagrass"
 name = "rust"
 language-servers = [{ name = "seagrass" }, { name = "rust-analyzer" }]
 ```
+
+#### Vim
+
+Vim does not ship a built-in LSP client. Use the repo package with `vim-lsp`:
+
+```bash
+mkdir -p ~/.vim/pack/seagrass/start
+ln -sfn /path/to/seagrass/editors/vim ~/.vim/pack/seagrass/start/seagrass
+```
+
+Then install `vim-lsp` with the user's Vim plugin manager. The package registers
+`seagrass` for Rust buffers on vim-lsp's setup event. For a custom binary:
+
+```vim
+let g:seagrass_command = '/path/to/seagrass'
+```
+
+For CoC users, copy `editors/vim/coc-settings.json` into the user's CoC settings
+and do not load the vim-lsp package at the same time.
 
 #### Neovim (nvim-lspconfig)
 

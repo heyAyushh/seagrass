@@ -1,0 +1,22 @@
+*seagrass-vim* Seagrass for Vim
+
+Seagrass registers the `seagrass` language server with vim-lsp for Rust buffers.
+It expects the `seagrass` binary to be installed or configured with:
+>
+  let g:seagrass_command = '/path/to/seagrass'
+<
+
+Options:
+>
+  g:seagrass_command       Server command. Default: "seagrass"
+  g:seagrass_args          Extra server args. Default: []
+  g:seagrass_root_markers  Root markers. Default: Anchor.toml, Seagrass.toml, Cargo.toml
+  g:seagrass_settings      Server settings sent through vim-lsp workspace_config
+<
+
+Commands:
+>
+  :SeagrassInfo            Show the command, root markers, and transport.
+<
+
+vim:tw=78:ts=2:sw=2:et:ft=help:norl:

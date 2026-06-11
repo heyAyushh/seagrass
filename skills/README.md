@@ -23,7 +23,7 @@ directories directly. Keep this catalog aligned with
 
 | Skill | Trigger | Purpose |
 |---|---|---|
-| [`seagrass-install`](./seagrass-install/SKILL.md) | "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim" | Install binary + per-editor config + smoke check |
+| [`seagrass-install`](./seagrass-install/SKILL.md) | "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/vim/helix/neovim" | Install binary + per-editor config + smoke check |
 | [`seagrass-lint`](./seagrass-lint/SKILL.md) | "lint my program", "run seagrass", "show seagrass issues" | Run CLI, parse JSON, triage by severity/topic |
 | [`seagrass-explain`](./seagrass-explain/SKILL.md) | "what does this seagrass topic mean", "explain seagrass/...", paste of error message | Look up the lint's authoritative doc |
 | [`seagrass-suppress`](./seagrass-suppress/SKILL.md) | "suppress this seagrass warning", "ignore this finding" | Pick narrowest correct suppression scope |

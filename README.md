@@ -86,7 +86,8 @@ Seagrass runs next to rust-analyzer — rust-analyzer keeps doing generic Rust, 
 
 - **VS Code** — local dev extension (not on the Marketplace yet): `cd editors/vscode && bun install && bun run check && code .`, then run **Run Seagrass Extension**. → [`editors/vscode/README.md`](editors/vscode/README.md)
 - **Zed** — `zed: extensions` → **Install Dev Extension** → pick `editors/zed`. It finds `seagrass` on your `PATH` (or builds it), pushes diagnostics live. → [`editors/zed/README.md`](editors/zed/README.md)
-- **Anything else** — command `seagrass`, language `rust`, root markers `Anchor.toml` / `Cargo.toml`.
+- **Vim** — install `vim-lsp`, then load the repo package at `editors/vim`; it registers `seagrass` for Rust buffers. → [`editors/vim/README.md`](editors/vim/README.md)
+- **Anything else** — command `seagrass`, language `rust`, root markers `Anchor.toml` / `Seagrass.toml` / `Cargo.toml`.
 
 ## For agents
 

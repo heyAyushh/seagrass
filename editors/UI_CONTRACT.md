@@ -84,6 +84,8 @@ features: <short comma-separated feature list>
 ```
 
 Each adapter should pick the default diagnostics transport that gives the best native editor UX without duplicating Problems entries. VS Code defaults to `push` because VS Code can duplicate pull and publish diagnostics. Zed also defaults to `push` so each Seagrass diagnostic has one native Problems transport.
+The Vim package defaults to `push` through vim-lsp or CoC and identifies the
+client as `vim`.
 
 Completion should wake on the first typed identifier character and on space in Anchor-aware contexts. The server advertises those trigger characters and then applies its own semantic gate, so normal Rust stays quiet while Anchor prefixes and delimiter-space flows do not wait for editor minimum-word heuristics.
 
