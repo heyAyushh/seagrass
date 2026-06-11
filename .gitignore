@@ -1,4 +1,5 @@
 /target/
+/artifacts/
 /.sisyphus/
 
 # External corpus source trees are fetched on demand; never committed.

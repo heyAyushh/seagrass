@@ -1,0 +1,58 @@
+name: Publish VS Code Extension
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to publish, e.g. v0.1.2"
+        required: true
+        type: string
+
+jobs:
+  publish:
+    name: Publish VSIX to VS Code Marketplace
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.tag }}
+
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: "24"
+          package-manager-cache: false
+
+      - name: Install Bun
+        run: node scripts/install-bun-ci.mjs
+
+      - name: Extract version from tag
+        id: meta
+        run: |
+          tag="${{ inputs.tag }}"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Download VSIX from GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release download "$TAG" \
+            --pattern "seagrass-vscode-${VERSION}.vsix" \
+            --pattern "seagrass-vscode-${VERSION}.vsix.sha256" \
+            --dir artifacts/
+          (cd artifacts && sha256sum -c "seagrass-vscode-${VERSION}.vsix.sha256")
+
+      - name: Publish to VS Code Marketplace
+        # Requires repository secret VSCE_PAT from the Marketplace publisher account.
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          npm exec --yes "@vscode/vsce@3.9.1" -- \
+            publish \
+            --packagePath "artifacts/seagrass-vscode-${VERSION}.vsix" \
+            --pat "$VSCE_PAT"
