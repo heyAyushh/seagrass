@@ -9,6 +9,7 @@ import {
   parseDiagnosticMetadata,
   suppressionSnippet,
 } from "./diagnosticActions";
+import { SERVER_VERSION, resolveServerBinary } from "./serverInstall";
 import { registerTridentCoverage, refreshTridentCoverageForEditor } from "./tridentCoverage";
 import { type InitializeParams } from "vscode-languageserver-protocol";
 import { LanguageClient, type LanguageClientOptions, type ServerOptions } from "vscode-languageclient/node";
@@ -154,7 +155,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand("seagrass.openLintDoc", openLintDoc),
     vscode.commands.registerCommand("seagrass.copySuppression", copySuppression),
     vscode.commands.registerCommand("seagrass.reportFalsePositive", reportFalsePositive),
-    vscode.commands.registerCommand("seagrass.scanWorkspace", scanWorkspace),
+    vscode.commands.registerCommand("seagrass.scanWorkspace", () => scanWorkspace(context)),
     vscode.window.onDidChangeActiveTextEditor((editor) => {
       updateStatusBar(client ? "ready" : "stopped");
       refreshTridentCoverageForEditor(editor);
@@ -208,7 +209,7 @@ async function startClient(
     return;
   }
 
-  const launch = readServerLaunchConfig(context);
+  const launch = await readServerLaunchConfig(context);
   const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
   logStartup(launch, workspaceFolders);
 
@@ -446,14 +447,14 @@ function diagnosticSourceLine(document: vscode.TextDocument, line: number): stri
   return document.lineAt(line).text;
 }
 
-async function scanWorkspace(): Promise<void> {
+async function scanWorkspace(context: vscode.ExtensionContext): Promise<void> {
   const folder = vscode.workspace.workspaceFolders?.[0];
   if (!folder) {
     void vscode.window.showInformationMessage("Open a workspace folder before scanning.");
     return;
   }
 
-  const launch = readServerLaunchConfigFromWorkspace();
+  const launch = await readServerLaunchConfigFromWorkspace(context);
   const command = launch.useCargo ? "cargo" : launch.command;
   const args = launch.useCargo
     ? [...launch.args, "--", "diagnostics", folder.uri.fsPath, "--json"]
@@ -714,22 +715,22 @@ function clientOptions(
   return options;
 }
 
-function readServerLaunchConfig(context: vscode.ExtensionContext): ServerLaunchConfig {
+async function readServerLaunchConfig(context: vscode.ExtensionContext): Promise<ServerLaunchConfig> {
   return readServerLaunchConfigFromWorkspace(context);
 }
 
-function readServerLaunchConfigFromWorkspace(
-  context?: vscode.ExtensionContext,
-): ServerLaunchConfig {
+async function readServerLaunchConfigFromWorkspace(
+  context: vscode.ExtensionContext,
+): Promise<ServerLaunchConfig> {
   const config = vscode.workspace.getConfiguration("seagrass");
   const useCargo = config.get<boolean>("dev.useCargoFromCheckout", false);
-  const command = useCargo ? "cargo" : config.get<string>("serverCommand") || "seagrass";
+  const command = await resolveServerBinary(context, SERVER_VERSION);
   const configuredArgs = config.get<string[]>("serverArgs") ?? [];
   const args = useCargo && configuredArgs.length === 0 ? DEFAULT_CARGO_SERVER_ARGS : configuredArgs;
   const configuredCwd = config.get<string>("serverCwd")?.trim();
   const cwd =
     configuredCwd ||
-    (context ? path.resolve(context.extensionPath, "../../..") : process.cwd());
+    path.resolve(context.extensionPath, "../../..");
   const serverEnv = config.get<Record<string, string>>("serverEnv") ?? {};
 
   return {

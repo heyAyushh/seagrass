@@ -437,8 +437,8 @@
     }
   },
   "scripts": {
-    "build": "bun build ./src/extension.ts --target=node --format=cjs --external=vscode --outdir ./dist",
-    "check": "bun run typecheck && bun run build && node --check ./dist/extension.js && bun ../check-ui-contract.ts",
+    "build": "VERSION=$(cat ../../VERSION | tr -d '[:space:]') && bun build ./src/extension.ts --target=node --format=cjs --external=vscode --outdir ./dist --define \"SEAGRASS_VERSION=\\\"$VERSION\\\"\"",
+    "check": "bun run typecheck && bun test *.test.ts && bun run build && node --check ./dist/extension.js && bun ../check-ui-contract.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
