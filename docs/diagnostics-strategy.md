@@ -60,12 +60,13 @@ prevent them mostly *already exists* in seagrass (`Confidence`, `Region`/`SCOPE`
 | **D** | Analyzer config matches the real-world feature superset: build `anchor-syn` with `init-if-needed`; parse `Cargo.toml` via `cargo_toml::Manifest` incl. `workspace=true` inheritance; never surface anchor-syn feature-gated parse errors as user verdicts | `Cargo.toml`, `check_cfg` | manifest/feature FPs |
 | **E** | **Filesystem/mtime staleness is opt-in (off by default).** A source diagnostic must not depend on whether the user rebuilt. Prefer content-hash over mtime if enabled | `artifacts.rs`, settings | the artifact noise from the incident |
 
-**Durable guard — golden corpus + compile-truth.** Vendor real, *compiling* Anchor programs into
-`fixtures/corpus/` (blueshift escrow, official `anchor/examples/*`, a few mainnet programs). One CI
-test runs the full engine and asserts **zero ERROR-severity diagnostics** — *if `anchor build`
-succeeds, nothing is genuinely absent.* This single test would have caught all three ERROR-level
-false positives, and gives an objective definition of "false positive" that doesn't depend on us
-imagining edge cases.
+**Durable guard — golden corpus + compile-truth.** Real, compiling Solana programs are committed in
+`fixtures/corpus/`, including Anchor 0.29/0.31/0.32 programs, Anchor 1.0 examples, a native SPL
+program, and a Pinocchio example. The external corpus pinned in `corpus/manifest.toml` is also a hard
+zero-ERROR gate when `CORPUS_ENABLED=1` is set. As of 2026-06-11, the external baseline scanned 267
+source roots with 0 ERROR-severity diagnostics, so Plan 08 fixed 0 FP families and started with an
+empty exclusion table. This guard gives an objective definition of "false positive" that doesn't
+depend on us imagining edge cases.
 
 ### Decisions taken
 - **Absence policy:** suppress entirely without whole-program evidence (zero FPs; genuine typos still

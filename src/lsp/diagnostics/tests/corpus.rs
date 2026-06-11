@@ -1,11 +1,5 @@
-/// Golden-corpus regression tests: committed fixtures must produce zero
-/// ERROR-severity diagnostics from seagrass.
-///
-/// The single committed program (`blueshift_anchor_escrow`) acts as the primary
-/// false-positive regression guard.  External programs (pinned in
-/// `corpus/manifest.toml` and fetched by `scripts/fetch-corpus.sh`) are tested
-/// separately in `external_corpus` below; those trees are gitignored and only
-/// exercised when `CORPUS_ENABLED=1` is set in the environment.
+/// Golden-corpus regression tests: committed and external fixtures must produce
+/// zero unexcluded ERROR-severity diagnostics from seagrass.
 use {
     crate::{
         diagnostics::collect_with_workspace, document::ParsedDocument, file_text,
@@ -14,6 +8,15 @@ use {
     std::{fs, path::Path, path::PathBuf},
     tower_lsp::lsp_types::{DiagnosticSeverity, Url},
 };
+
+const CORPUS_ENABLED_ENV: &str = "CORPUS_ENABLED";
+const CORPUS_ENABLED_VALUE: &str = "1";
+
+/// Fetched trees that are not the compiling artifact (sparse checkout,
+/// cfg-gated, or generated code). Every entry needs a reason; an empty reason
+/// is a test failure. Exclusions are path prefixes relative to
+/// `corpus/programs/`.
+const EXTERNAL_CORPUS_EXCLUSIONS: &[(&str, &str)] = &[];
 
 /// Locate `fixtures/corpus/` relative to the seagrass library crate manifest.
 fn committed_corpus_root() -> PathBuf {
@@ -211,6 +214,25 @@ fn format_skipped_files(files: &[PathBuf]) -> String {
         .join("\n")
 }
 
+fn format_error_messages(messages: &[String]) -> String {
+    messages
+        .iter()
+        .map(|message| format!("  - {message}"))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn external_corpus_error_is_excluded(error_path: &Path, programs_dir: &Path) -> bool {
+    let relative_path = error_path.strip_prefix(programs_dir).unwrap_or(error_path);
+    EXTERNAL_CORPUS_EXCLUSIONS
+        .iter()
+        .any(|(prefix, _)| relative_path.starts_with(prefix))
+}
+
+fn corpus_enabled() -> bool {
+    std::env::var(CORPUS_ENABLED_ENV).as_deref() == Ok(CORPUS_ENABLED_VALUE)
+}
+
 // ---------------------------------------------------------------------------
 // Committed-fixture tests — hard zero-ERROR gate
 // ---------------------------------------------------------------------------
@@ -251,13 +273,11 @@ fn blueshift_anchor_escrow_has_no_error_diagnostics() {
 }
 
 // ---------------------------------------------------------------------------
-// External corpus test — discovery mode, graceful skip when not fetched
+// External corpus test — hard zero-ERROR gate, graceful skip when not fetched
 // ---------------------------------------------------------------------------
 
 /// Exercise the programs pinned in `corpus/manifest.toml` against the full
 /// diagnostic engine.
-///
-/// # Activation
 ///
 /// This test is skipped silently unless **both** conditions are met:
 ///
@@ -267,20 +287,8 @@ fn blueshift_anchor_escrow_has_no_error_diagnostics() {
 ///
 /// In CI, the corpus workflow (`corpus.yml`) sets the variable and runs the
 /// fetch step before invoking this test with `--nocapture`.
-///
-/// # Mode
-///
-/// The test runs in **baseline/report** mode: it collects ERROR-severity
-/// diagnostics and prints them, but does **not** hard-assert zero errors.
-/// Real programs may surface real false positives that require triage before
-/// the gate can flip.
-///
-/// TODO: after triage is complete, change this test to call
-/// `assert_no_errors_in_program` instead of `collect_errors_in_program` and
-/// remove the discovery-mode note above.
 #[test]
 fn external_corpus() {
-    let corpus_enabled = std::env::var("CORPUS_ENABLED").as_deref() == Ok("1");
     let programs_dir = external_programs_dir();
     let programs_present = programs_dir.is_dir()
         && programs_dir
@@ -288,11 +296,11 @@ fn external_corpus() {
             .map(|mut d| d.next().is_some())
             .unwrap_or(false);
 
-    if !corpus_enabled || !programs_present {
+    if !corpus_enabled() || !programs_present {
         println!(
             "external_corpus: skipped (CORPUS_ENABLED={:?}, corpus/programs/ exists={}). \
              Set CORPUS_ENABLED=1 and run scripts/fetch-corpus.sh to enable.",
-            std::env::var("CORPUS_ENABLED").ok(),
+            std::env::var(CORPUS_ENABLED_ENV).ok(),
             programs_present
         );
         return;
@@ -304,8 +312,10 @@ fn external_corpus() {
     );
 
     let mut total_programs = 0usize;
-    let mut total_errors = 0usize;
+    let mut total_unexpected_errors = 0usize;
+    let mut total_excluded_errors = 0usize;
     let mut total_skipped_oversized_files = 0usize;
+    let mut unexpected_errors = Vec::new();
 
     for entry in immediate_subdirs(&programs_dir) {
         let program_name = entry
@@ -323,15 +333,27 @@ fn external_corpus() {
         for src_dir in &src_dirs {
             total_programs += 1;
             let scan = scan_program(src_dir, ReadFailurePolicy::Skip);
-            let error_count = scan.error_count();
             let skipped_oversized_count = scan.skipped_oversized_count();
-            total_errors += error_count;
             total_skipped_oversized_files += skipped_oversized_count;
 
-            if error_count == 0 && skipped_oversized_count == 0 {
+            let mut source_unexpected_errors = Vec::new();
+            let mut source_excluded_error_count = 0usize;
+            for (path, message) in &scan.errors {
+                if external_corpus_error_is_excluded(path, &programs_dir) {
+                    source_excluded_error_count += 1;
+                } else {
+                    source_unexpected_errors.push(message.clone());
+                }
+            }
+
+            total_unexpected_errors += source_unexpected_errors.len();
+            total_excluded_errors += source_excluded_error_count;
+            unexpected_errors.extend(source_unexpected_errors.iter().cloned());
+
+            if source_unexpected_errors.is_empty() && skipped_oversized_count == 0 {
                 println!("  [{program_name}] clean corpus source root");
             } else {
-                if error_count == 0 {
+                if source_unexpected_errors.is_empty() {
                     println!(
                         "  [{}] {} — clean scanned files; skipped {} oversized source file(s):",
                         program_name,
@@ -343,10 +365,10 @@ fn external_corpus() {
                         "  [{}] {} — {} ERROR(s):",
                         program_name,
                         src_dir.display(),
-                        error_count
+                        source_unexpected_errors.len()
                     );
-                    for (_, msg) in &scan.errors {
-                        println!("    {msg}");
+                    for message in &source_unexpected_errors {
+                        println!("    {message}");
                     }
                     if skipped_oversized_count > 0 {
                         println!(
@@ -358,17 +380,58 @@ fn external_corpus() {
                 for path in &scan.skipped_oversized_files {
                     println!("    - {}", path.display());
                 }
+                if source_excluded_error_count > 0 {
+                    println!("    {source_excluded_error_count} excluded ERROR(s)");
+                }
             }
         }
     }
 
     println!(
-        "external_corpus: scanned {} program(s), {} total ERROR-severity diagnostic(s), \
-         {} oversized source file(s) skipped \
-         (discovery mode — not a hard gate yet; see TODO in corpus.rs)",
-        total_programs, total_errors, total_skipped_oversized_files
+        "external_corpus: scanned {} program(s), {} unexpected ERROR-severity diagnostic(s), \
+         {} excluded ERROR-severity diagnostic(s), {} oversized source file(s) skipped \
+         (hard gate)",
+        total_programs,
+        total_unexpected_errors,
+        total_excluded_errors,
+        total_skipped_oversized_files
     );
-    // Discovery mode: always pass.  Flip to assert_no_errors_in_program after triage.
+
+    assert!(
+        unexpected_errors.is_empty(),
+        "external corpus produced {} unexpected ERROR-severity diagnostic(s):\n{}",
+        unexpected_errors.len(),
+        format_error_messages(&unexpected_errors)
+    );
+}
+
+#[test]
+fn external_corpus_exclusions_have_reasons() {
+    for (prefix, reason) in EXTERNAL_CORPUS_EXCLUSIONS {
+        assert!(
+            !prefix.trim().is_empty(),
+            "external corpus exclusion prefix must not be empty"
+        );
+        assert!(
+            !reason.trim().is_empty(),
+            "external corpus exclusion '{prefix}' must include a reason"
+        );
+    }
+
+    let programs_dir = external_programs_dir();
+    if !corpus_enabled() || !programs_dir.is_dir() {
+        return;
+    }
+
+    for (prefix, _) in EXTERNAL_CORPUS_EXCLUSIONS {
+        let excluded_path = programs_dir.join(prefix);
+        assert!(
+            excluded_path.exists(),
+            "external corpus exclusion '{}' is stale; {} does not exist",
+            prefix,
+            excluded_path.display()
+        );
+    }
 }
 
 #[test]
