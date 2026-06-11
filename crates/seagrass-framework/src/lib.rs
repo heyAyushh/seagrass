@@ -1,7 +1,9 @@
 pub mod diagnostics;
+pub mod extractor;
 pub mod lint;
 pub mod native_rules;
 pub mod range;
+pub mod semantic;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FrameworkKind {

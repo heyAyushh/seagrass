@@ -8,7 +8,7 @@ pub mod solana;
 mod testing;
 
 pub use app::cli;
-pub use core::{collections, document, project, syntax};
+pub use core::{collections, document, project, semantic, syntax};
 pub use runtime::range;
 pub use testing::fuzz_harness;
 

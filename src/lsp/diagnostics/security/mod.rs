@@ -15,6 +15,8 @@ use {
 };
 
 mod raw_account;
+#[cfg(test)]
+mod signer_query;
 
 use raw_account::raw_account_risk;
 

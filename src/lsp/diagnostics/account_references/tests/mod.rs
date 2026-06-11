@@ -90,6 +90,37 @@ pub struct Update<'info> {
 }
 
 #[test]
+fn no_false_positive_for_composite_struct_payer() {
+    let diagnostics = collect(
+        &ParsedDocument::parse(
+            r#"
+#[derive(Accounts)]
+pub struct Trade<'info> {
+    #[account(mut)]
+    pub taker: Signer<'info>,
+    pub escrow: Account<'info, Escrow>,
+}
+
+#[derive(Accounts)]
+pub struct CloseEscrow<'info> {
+    pub trade: Trade<'info>,
+    #[account(init, payer = trade.taker, space = 8)]
+    pub new_acc: Account<'info, State>,
+}
+"#,
+        )
+        .unwrap(),
+    );
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !has_missing_reference_code(diagnostic)),
+        "got unexpected diagnostics: {diagnostics:?}"
+    );
+}
+
+#[test]
 fn missing_reference_related_information_lists_candidate_fields() {
     let diagnostics = diagnostics_for(
         r#"

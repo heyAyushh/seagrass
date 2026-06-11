@@ -1,7 +1,9 @@
 use {
     super::common::{
-        called_ident, compact_token_text as normalized_token_text, ident_matches_any,
-        local_ident_name, member_is_named, pat_ident_name, unsigned_literal,
+        account_iterator_collection, called_ident, compact_token_text as normalized_token_text,
+        ident_matches_any, local_ident_name, member_is_named, next_account_info_iterator_name,
+        pat_ident_name, unsigned_literal, AccountIteratorOrigin,
+        INITIAL_ITERATOR_ACCOUNT_INDEX, TRANSPARENT_ACCOUNT_ACCESS_METHODS,
     },
     crate::{
         diagnostics::{solana_code_quality_from_span, FrameworkDocument},
@@ -48,17 +50,6 @@ const TYPE_VALIDATION_HELPERS: &[&str] = &[
     "check_discriminator",
     "validate_discriminator",
 ];
-const ACCOUNT_ITERATOR_METHODS: &[&str] = &["iter", "iter_mut"];
-const TRANSPARENT_ACCOUNT_ACCESS_METHODS: &[&str] = &[
-    "ok_or",
-    "ok_or_else",
-    "unwrap",
-    "expect",
-    "as_ref",
-    "as_mut",
-];
-const INITIAL_ITERATOR_ACCOUNT_INDEX: usize = 0;
-
 pub(super) fn diagnostics(
     document: FrameworkDocument<'_>,
     framework_kind: FrameworkKind,
@@ -572,11 +563,6 @@ struct AccountOrigin {
     account_index: Option<usize>,
 }
 
-#[derive(Debug, Clone)]
-struct AccountIteratorOrigin {
-    next_index: usize,
-}
-
 #[derive(Debug)]
 struct AccountCollectionAccess {
     collection: String,
@@ -680,43 +666,6 @@ fn account_collection_access(expr: &syn::Expr) -> Option<AccountCollectionAccess
         syn::Expr::Group(group) => account_collection_access(&group.expr),
         syn::Expr::Paren(paren) => account_collection_access(&paren.expr),
         syn::Expr::Reference(reference) => account_collection_access(&reference.expr),
-        _ => None,
-    }
-}
-
-fn account_iterator_collection(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::MethodCall(method_call)
-            if ACCOUNT_ITERATOR_METHODS.contains(&method_call.method.to_string().as_str()) =>
-        {
-            path_ident_name(&method_call.receiver)
-        }
-        syn::Expr::Reference(reference) => account_iterator_collection(&reference.expr),
-        syn::Expr::Paren(paren) => account_iterator_collection(&paren.expr),
-        syn::Expr::Group(group) => account_iterator_collection(&group.expr),
-        _ => None,
-    }
-}
-
-fn next_account_info_iterator_name(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::Call(call) if called_ident(&call.func)? == "next_account_info" => {
-            call.args.first().and_then(account_iterator_name)
-        }
-        syn::Expr::Try(expr_try) => next_account_info_iterator_name(&expr_try.expr),
-        syn::Expr::Reference(reference) => next_account_info_iterator_name(&reference.expr),
-        syn::Expr::Paren(paren) => next_account_info_iterator_name(&paren.expr),
-        syn::Expr::Group(group) => next_account_info_iterator_name(&group.expr),
-        _ => None,
-    }
-}
-
-fn account_iterator_name(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::Path(_) => path_ident_name(expr),
-        syn::Expr::Reference(reference) => account_iterator_name(&reference.expr),
-        syn::Expr::Paren(paren) => account_iterator_name(&paren.expr),
-        syn::Expr::Group(group) => account_iterator_name(&group.expr),
         _ => None,
     }
 }

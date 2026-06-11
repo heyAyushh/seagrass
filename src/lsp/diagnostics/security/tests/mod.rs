@@ -15,6 +15,7 @@ use {
 
 mod core_tests;
 mod raw_account_tests;
+mod signer_query_tests;
 
 fn security_diagnostics(source: &str) -> Vec<Diagnostic> {
     let document = ParsedDocument::parse(source).unwrap();

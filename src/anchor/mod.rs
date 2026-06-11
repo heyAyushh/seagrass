@@ -5,6 +5,7 @@ pub(crate) mod constraint_ranges;
 pub(crate) mod constraint_text;
 pub(crate) mod context_members;
 pub mod errors;
+pub mod extractor;
 pub(crate) mod idioms;
 pub mod preflight;
 pub mod support;

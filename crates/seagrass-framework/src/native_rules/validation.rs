@@ -1,7 +1,9 @@
 use {
     super::common::{
+        account_alias_from_expr, account_index_from_expr, account_iterator_collection,
         called_ident, compact_token_text as expr_text, ident_matches_any, local_ident_name,
-        member_is_named, unsigned_literal,
+        member_is_named, next_account_info_iterator_name, AccountIteratorOrigin,
+        INITIAL_ITERATOR_ACCOUNT_INDEX,
     },
     crate::{
         diagnostics::{solana_code_quality_from_span, FrameworkDocument},
@@ -42,17 +44,6 @@ const SIGNER_ACCOUNT_META_CONSTRUCTORS: &[&str] = &["new", "new_readonly"];
 const SIGNER_INSTRUCTION_ACCOUNT_CONSTRUCTORS: &[&str] = &["readonly_signer", "writable_signer"];
 const WRITABLE_ACCOUNT_META_CONSTRUCTORS: &[&str] = &["new"];
 const WRITABLE_INSTRUCTION_ACCOUNT_CONSTRUCTORS: &[&str] = &["writable", "writable_signer"];
-const ACCOUNT_ITERATOR_METHODS: &[&str] = &["iter", "iter_mut"];
-const TRANSPARENT_ACCOUNT_ACCESS_METHODS: &[&str] = &[
-    "ok_or",
-    "ok_or_else",
-    "unwrap",
-    "expect",
-    "as_ref",
-    "as_mut",
-];
-const INITIAL_ITERATOR_ACCOUNT_INDEX: usize = 0;
-
 pub(super) fn diagnostics(
     document: FrameworkDocument<'_>,
     framework_kind: FrameworkKind,
@@ -232,11 +223,6 @@ struct ProgramIdEvidence {
     span: proc_macro2::Span,
     expression: Option<String>,
     dynamic: bool,
-}
-
-#[derive(Clone, Debug)]
-struct AccountIteratorOrigin {
-    next_index: usize,
 }
 
 #[derive(Default)]
@@ -713,79 +699,6 @@ impl<'ast> Visit<'ast> for IdentSearch<'_> {
             }
         }
         visit::visit_member(self, node);
-    }
-}
-
-fn account_index_from_expr(expr: &syn::Expr) -> Option<usize> {
-    match expr {
-        syn::Expr::Index(index) => unsigned_literal(&index.index),
-        syn::Expr::MethodCall(method_call) if method_call.method == "get" => {
-            method_call.args.first().and_then(unsigned_literal)
-        }
-        syn::Expr::MethodCall(method_call)
-            if TRANSPARENT_ACCOUNT_ACCESS_METHODS
-                .contains(&method_call.method.to_string().as_str()) =>
-        {
-            account_index_from_expr(&method_call.receiver)
-        }
-        syn::Expr::Field(field) => account_index_from_expr(&field.base),
-        syn::Expr::MethodCall(method_call) => account_index_from_expr(&method_call.receiver),
-        syn::Expr::Unary(unary) => account_index_from_expr(&unary.expr),
-        syn::Expr::Reference(reference) => account_index_from_expr(&reference.expr),
-        syn::Expr::Paren(paren) => account_index_from_expr(&paren.expr),
-        syn::Expr::Group(group) => account_index_from_expr(&group.expr),
-        syn::Expr::Try(expr_try) => account_index_from_expr(&expr_try.expr),
-        _ => None,
-    }
-}
-
-fn account_alias_from_expr(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::Path(expr_path) => expr_path.path.get_ident().map(ToString::to_string),
-        syn::Expr::Field(field) => account_alias_from_expr(&field.base),
-        syn::Expr::MethodCall(method_call) => account_alias_from_expr(&method_call.receiver),
-        syn::Expr::Unary(unary) => account_alias_from_expr(&unary.expr),
-        syn::Expr::Reference(reference) => account_alias_from_expr(&reference.expr),
-        syn::Expr::Paren(paren) => account_alias_from_expr(&paren.expr),
-        syn::Expr::Group(group) => account_alias_from_expr(&group.expr),
-        _ => None,
-    }
-}
-
-fn account_iterator_collection(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::MethodCall(method_call)
-            if ACCOUNT_ITERATOR_METHODS.contains(&method_call.method.to_string().as_str()) =>
-        {
-            account_alias_from_expr(&method_call.receiver)
-        }
-        syn::Expr::Reference(reference) => account_iterator_collection(&reference.expr),
-        syn::Expr::Paren(paren) => account_iterator_collection(&paren.expr),
-        syn::Expr::Group(group) => account_iterator_collection(&group.expr),
-        _ => None,
-    }
-}
-
-fn next_account_info_iterator_name(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::Call(call) if called_ident(&call.func)? == "next_account_info" => {
-            call.args.first().and_then(account_iterator_name)
-        }
-        syn::Expr::Try(expr_try) => next_account_info_iterator_name(&expr_try.expr),
-        syn::Expr::Reference(reference) => next_account_info_iterator_name(&reference.expr),
-        syn::Expr::Paren(paren) => next_account_info_iterator_name(&paren.expr),
-        syn::Expr::Group(group) => next_account_info_iterator_name(&group.expr),
-        _ => None,
-    }
-}
-
-fn account_iterator_name(expr: &syn::Expr) -> Option<String> {
-    match expr {
-        syn::Expr::Path(_) => account_alias_from_expr(expr),
-        syn::Expr::Reference(reference) => account_iterator_name(&reference.expr),
-        syn::Expr::Paren(paren) => account_iterator_name(&paren.expr),
-        syn::Expr::Group(group) => account_iterator_name(&group.expr),
-        _ => None,
     }
 }
 

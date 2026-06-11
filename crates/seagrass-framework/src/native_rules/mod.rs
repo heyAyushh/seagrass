@@ -3,7 +3,7 @@ use {
     tower_lsp::lsp_types::Diagnostic,
 };
 
-mod common;
+pub(crate) mod common;
 mod raw_account;
 mod validation;
 
@@ -18,8 +18,10 @@ pub fn diagnostics(
         return Vec::new();
     }
 
+    let model = crate::extractor::extract_native(document, framework_kind);
     let mut diagnostics = raw_account::diagnostics(document, framework_kind);
     diagnostics.extend(validation::diagnostics(document, framework_kind));
+    diagnostics.extend(crate::semantic::queries::missing_signer_diagnostics(&model));
     diagnostics
 }
 
