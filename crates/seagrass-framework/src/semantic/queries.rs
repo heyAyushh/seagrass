@@ -2,7 +2,7 @@ use {
     super::{
         AccountField, AccountType, CheckKind, ConstraintValue, PopulatedFields, SemanticModel,
     },
-    std::collections::HashSet,
+    std::collections::{HashMap, HashSet},
     tower_lsp::lsp_types::{Diagnostic, DiagnosticSeverity, NumberOrString},
 };
 
@@ -10,11 +10,19 @@ const SECURITY_SIGNER_CODE: &str = "anchor-security-signer";
 const DIAGNOSTIC_SOURCE: &str = "seagrass";
 
 pub fn missing_signer_diagnostics(model: &SemanticModel) -> Vec<Diagnostic> {
+    missing_signer_diagnostics_with_reachability(model, &HashMap::new())
+}
+
+pub fn missing_signer_diagnostics_with_reachability(
+    model: &SemanticModel,
+    reachable_checks: &HashMap<String, HashSet<String>>,
+) -> Vec<Diagnostic> {
     model
         .accounts_structs
         .iter()
         .flat_map(|accounts| {
-            let Some(runtime_checks) = signer_checks_for_context(model, &accounts.inner.name)
+            let Some(runtime_checks) =
+                signer_checks_for_context(model, &accounts.inner.name, reachable_checks)
             else {
                 return Vec::new();
             };
@@ -24,17 +32,18 @@ pub fn missing_signer_diagnostics(model: &SemanticModel) -> Vec<Diagnostic> {
                 .iter()
                 .filter(|field| signer_authorization_required(field, &accounts.inner.fields))
                 .filter(|field| !field_has_signer_constraint(field))
-                .filter(|field| !runtime_checks.contains(field.name.as_str()))
+                .filter(|field| !runtime_checks.contains(&field.name))
                 .map(signer_diagnostic)
                 .collect::<Vec<_>>()
         })
         .collect()
 }
 
-fn signer_checks_for_context<'a>(
-    model: &'a SemanticModel,
+fn signer_checks_for_context(
+    model: &SemanticModel,
     accounts_name: &str,
-) -> Option<HashSet<&'a str>> {
+    reachable_checks: &HashMap<String, HashSet<String>>,
+) -> Option<HashSet<String>> {
     let instructions = model
         .instructions
         .iter()
@@ -49,14 +58,21 @@ fn signer_checks_for_context<'a>(
     {
         return None;
     }
-    Some(
-        instructions
-            .into_iter()
-            .flat_map(|instruction| &instruction.inner.signer_checks)
-            .filter(|check| check.kind == CheckKind::Signer)
-            .filter_map(|check| check.subject_ref.as_deref())
-            .collect(),
-    )
+    let mut checks = HashSet::new();
+    for instruction in instructions {
+        checks.extend(
+            instruction
+                .inner
+                .signer_checks
+                .iter()
+                .filter(|check| check.kind == CheckKind::Signer)
+                .filter_map(|check| check.subject_ref.clone()),
+        );
+        if let Some(reachable) = reachable_checks.get(&instruction.inner.name) {
+            checks.extend(reachable.iter().cloned());
+        }
+    }
+    Some(checks)
 }
 
 fn signer_authorization_required(field: &AccountField, fields: &[AccountField]) -> bool {

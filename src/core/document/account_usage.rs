@@ -221,6 +221,20 @@ impl AccountUsageVisitor {
         }
     }
 
+    fn record_method_call(&mut self, method: &syn::Ident) {
+        let call = FunctionCall {
+            name: method.to_string(),
+            range: range_from_span(method.span()),
+        };
+        if !self
+            .function_calls
+            .iter()
+            .any(|existing| existing.name == call.name && existing.range == call.range)
+        {
+            self.function_calls.push(call);
+        }
+    }
+
     fn record_accounts_alias(&mut self, local: &syn::Local) {
         let syn::Pat::Ident(pat_ident) = &local.pat else {
             return;
@@ -324,6 +338,7 @@ impl<'ast> Visit<'ast> for AccountUsageVisitor {
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        self.record_method_call(&node.method);
         if is_mutating_account_method(&node.method.to_string()) {
             self.with_mutable_context(|visitor| visitor.visit_expr(&node.receiver));
             for arg in &node.args {

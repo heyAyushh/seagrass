@@ -1,8 +1,10 @@
 use {
     super::diagnostics::CliDiagnostic,
     crate::{
-        diagnostics as diagnostic_engine, document::ParsedDocument, evidence, file_text,
-        program_artifacts, solana_project, workspace::WorkspaceIndex,
+        diagnostics as diagnostic_engine,
+        document::ParsedDocument,
+        evidence, file_text, program_artifacts, solana_project,
+        workspace::{WorkspaceIndex, MAX_REACHABILITY_DEPTH},
     },
     clap::Args,
     serde::Serialize,
@@ -365,10 +367,11 @@ fn reachable_account_usages_for_instruction(
         .function_calls
         .iter()
         .map(|call| call.name.clone())
+        .map(|name| (name, 1_usize))
         .collect::<Vec<_>>();
     let mut visited = BTreeSet::new();
 
-    while let Some(function_name) = pending.pop() {
+    while let Some((function_name, depth)) = pending.pop() {
         if !visited.insert(function_name.clone()) {
             continue;
         }
@@ -381,7 +384,15 @@ fn reachable_account_usages_for_instruction(
             continue;
         };
         reachable_usages.extend(usages(function).iter().cloned());
-        pending.extend(function.function_calls.iter().map(|call| call.name.clone()));
+        if depth >= MAX_REACHABILITY_DEPTH {
+            continue;
+        }
+        pending.extend(
+            function
+                .function_calls
+                .iter()
+                .map(|call| (call.name.clone(), depth + 1)),
+        );
     }
 
     reachable_usages

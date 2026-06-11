@@ -13,6 +13,7 @@ use {
 };
 
 mod associated_values;
+mod call_graph;
 mod file_updates;
 mod files;
 mod function_returns;
@@ -24,14 +25,17 @@ mod sorting;
 mod type_names;
 
 pub use associated_values::WorkspaceAssociatedValue;
+pub(crate) use call_graph::MAX_REACHABILITY_DEPTH;
+pub(crate) use indexing::IndexedFunctionEntry;
 
 use {
+    call_graph::CallGraph,
     files::anchor_rust_files,
     indexing::{
         document_indexed_references, document_indexed_symbols, indexed_account_data_structs,
         indexed_accounts_structs, indexed_functions, IndexedAccountDataStruct,
-        IndexedAccountsStruct, IndexedFunction, IndexedFunctionEntry, IndexedReference,
-        IndexedReferenceEntry, IndexedSymbol, IndexedSymbolEntry,
+        IndexedAccountsStruct, IndexedFunction, IndexedReference, IndexedReferenceEntry,
+        IndexedSymbol, IndexedSymbolEntry,
     },
     instruction_arguments::{
         instruction_argument_names_match, instruction_argument_ranges_in_constraint,
@@ -58,6 +62,7 @@ pub struct WorkspaceIndex {
     references_by_name: HashMap<SymbolName, Vec<IndexedReferenceEntry>>,
     functions_by_name: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
     functions_by_context: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
+    call_graph: CallGraph,
     accounts_by_name: HashMap<SymbolName, Vec<IndexedAccountsStruct>>,
     account_data_by_name: HashMap<SymbolName, Vec<IndexedAccountDataStruct>>,
     /// Maps `["crate", "module", …]` path segments to the file URI that
@@ -65,6 +70,12 @@ pub struct WorkspaceIndex {
     /// resolve multi-segment `crate::module::Symbol` references without a
     /// false-positive absence claim when the symbol lives in another file.
     module_path_trie: Trie<String, Url>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspaceReachabilityPolicy {
+    AllowAmbiguous,
+    RequireUnambiguous,
 }
 
 #[derive(Debug, Clone)]
@@ -484,26 +495,107 @@ impl WorkspaceIndex {
             return None;
         }
 
-        let mut changed = true;
-        while changed {
-            changed = false;
-            let called_names = functions
-                .iter()
-                .filter(|function| reachable.contains(&function.name))
-                .flat_map(|function| function.calls.iter())
-                .cloned()
-                .collect::<HashSet<_>>();
-            for function in functions {
-                if !function.is_program_instruction
-                    && called_names.contains(&function.name)
-                    && reachable.insert(function.name.clone())
-                {
-                    changed = true;
+        for instruction in functions
+            .iter()
+            .filter(|function| function.is_program_instruction)
+        {
+            reachable.extend(self.call_graph.reachable_from(&instruction.name).names);
+        }
+
+        Some(reachable)
+    }
+
+    pub(crate) fn reachable_function_entries(
+        &self,
+        from: &str,
+    ) -> (Vec<&IndexedFunctionEntry>, bool) {
+        let reachability = self.call_graph.reachable_from(from);
+        (
+            self.function_entries_for_reachable_names(&reachability.names),
+            reachability.truncated,
+        )
+    }
+
+    pub(crate) fn unambiguous_reachable_function_entries(
+        &self,
+        from: &str,
+    ) -> (Vec<&IndexedFunctionEntry>, bool) {
+        let reachability = self.call_graph.unambiguous_reachable_from(from);
+        (
+            self.function_entries_for_reachable_names(&reachability.names),
+            reachability.truncated,
+        )
+    }
+
+    pub(crate) fn reachable_function_entries_for_context(
+        &self,
+        context_name: &str,
+    ) -> Option<(Vec<&IndexedFunctionEntry>, bool)> {
+        self.reachable_function_entries_for_context_with_filter(
+            context_name,
+            WorkspaceReachabilityPolicy::AllowAmbiguous,
+            |entry| entry.context_name.as_deref() == Some(context_name),
+        )
+    }
+
+    pub(crate) fn reachable_function_entries_for_context_matching(
+        &self,
+        context_name: &str,
+        include_reachable_entry: impl Fn(&IndexedFunctionEntry) -> bool,
+    ) -> Option<(Vec<&IndexedFunctionEntry>, bool)> {
+        self.reachable_function_entries_for_context_with_filter(
+            context_name,
+            WorkspaceReachabilityPolicy::AllowAmbiguous,
+            include_reachable_entry,
+        )
+    }
+
+    pub(crate) fn unambiguous_reachable_function_entries_for_context(
+        &self,
+        context_name: &str,
+    ) -> Option<(Vec<&IndexedFunctionEntry>, bool)> {
+        self.reachable_function_entries_for_context_with_filter(
+            context_name,
+            WorkspaceReachabilityPolicy::RequireUnambiguous,
+            |entry| entry.context_name.as_deref() == Some(context_name),
+        )
+    }
+
+    fn reachable_function_entries_for_context_with_filter(
+        &self,
+        context_name: &str,
+        reachability_policy: WorkspaceReachabilityPolicy,
+        include_reachable_entry: impl Fn(&IndexedFunctionEntry) -> bool,
+    ) -> Option<(Vec<&IndexedFunctionEntry>, bool)> {
+        let functions = self.functions_by_context.get(context_name)?;
+        let instructions = functions
+            .iter()
+            .filter(|function| function.is_program_instruction)
+            .collect::<Vec<_>>();
+        if instructions.is_empty() {
+            return None;
+        }
+
+        let mut entries = instructions.clone();
+        let mut truncated = false;
+        for instruction in instructions {
+            let (reachable_entries, was_truncated) = match reachability_policy {
+                WorkspaceReachabilityPolicy::AllowAmbiguous => {
+                    self.reachable_function_entries(&instruction.name)
+                }
+                WorkspaceReachabilityPolicy::RequireUnambiguous => {
+                    self.unambiguous_reachable_function_entries(&instruction.name)
+                }
+            };
+            truncated |= was_truncated;
+            for entry in reachable_entries {
+                if include_reachable_entry(entry) {
+                    push_unique_function_entry(&mut entries, entry);
                 }
             }
         }
 
-        Some(reachable)
+        Some((entries, truncated))
     }
 
     pub fn reachable_cpi_program_usage_names_for_context(
@@ -707,6 +799,7 @@ impl WorkspaceIndex {
         prune_uri_entries!(self, functions_by_context, direct, uri);
         prune_uri_entries!(self, accounts_by_name, direct, uri);
         prune_uri_entries!(self, account_data_by_name, direct, uri);
+        self.rebuild_call_graph();
     }
 
     fn index_document_parts(&mut self, update: WorkspaceDocumentUpdate) {
@@ -770,6 +863,7 @@ impl WorkspaceIndex {
                 .push(account_data.clone());
         }
         self.sort_open_entries_first();
+        self.rebuild_call_graph();
     }
 
     fn insert_bridge_symbols(&mut self, symbols: Vec<BridgeSymbol>) {
@@ -798,6 +892,59 @@ impl WorkspaceIndex {
                     && entry.container_name.as_deref() == Some(container_name)
             })
     }
+
+    fn function_entries_for_reachable_names(
+        &self,
+        names: &HashSet<String>,
+    ) -> Vec<&IndexedFunctionEntry> {
+        let mut entries = names
+            .iter()
+            .flat_map(|name| self.functions_by_name.get(name.as_str()))
+            .flat_map(|entries| entries.iter())
+            .collect::<Vec<_>>();
+        entries.sort_by(|left, right| {
+            left.name
+                .cmp(&right.name)
+                .then_with(|| left.uri.as_str().cmp(right.uri.as_str()))
+                .then_with(|| {
+                    left.location
+                        .range
+                        .start
+                        .line
+                        .cmp(&right.location.range.start.line)
+                })
+                .then_with(|| {
+                    left.location
+                        .range
+                        .start
+                        .character
+                        .cmp(&right.location.range.start.character)
+                })
+        });
+        entries
+    }
+
+    fn rebuild_call_graph(&mut self) {
+        self.call_graph = CallGraph::build(
+            self.functions_by_name
+                .values()
+                .flat_map(|entries| entries.iter()),
+        );
+    }
+}
+
+fn push_unique_function_entry<'a>(
+    entries: &mut Vec<&'a IndexedFunctionEntry>,
+    entry: &'a IndexedFunctionEntry,
+) {
+    if entries.iter().any(|existing| {
+        existing.name == entry.name
+            && existing.uri == entry.uri
+            && existing.location.range == entry.location.range
+    }) {
+        return;
+    }
+    entries.push(entry);
 }
 
 #[cfg(test)]

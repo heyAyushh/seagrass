@@ -19,7 +19,7 @@ There is one ladder underneath both, the **analysis foundation**:
 |---|---|---|---|---|
 | **a** | Single-file AST | ✅ today | (the floor) | Tier A: signer/owner/discriminator/CPI/arith pattern checks |
 | **b** | Workspace symbol + type resolution | partial (`WorkspaceIndex`) | kills cross-module "absent" FPs (Family 2) | Tier B: PDA/discriminator collision, IDL drift, upgrade authority |
-| **c** | Inter-procedural call graph | ✗ | sound cross-fn account/usage reasoning | **Moat**: stale-after-CPI, oracle staleness, authority reachability, signer propagation |
+| **c** | Inter-procedural call graph | partial (`CallGraph`) | sound cross-fn account/usage reasoning | **Moat**: stale-after-CPI, oracle staleness, authority reachability, signer propagation |
 | **d** | Dataflow / taint (Anchor-sanitizer-aware) | ✗ | suppresses "missing check" FPs via sanitizer recognition | **Moat**: cross-instruction state machine, economic-invariant/rounding bugs |
 
 Every rung you climb *simultaneously* removes a class of false positive **and** unlocks a tier of
@@ -169,10 +169,11 @@ Deep analysis must not regress Part 1. Two rules:
 2. **Foundation rung (a→b) — structural (days):** Invariants A + B (shared scope visitor, absence
    gate, glob fix). *Same work unlocks Tier B offense* (collision/drift/authority-centralization).
 3. **Durable guard:** golden corpus + compile-truth CI. Ship early — it locks in every later change.
-4. **Foundation rung (b→c) — the call graph (weeks):** the highest-leverage infrastructure. Unlocks
-   moat diagnostics #1–#7 region (stale-after-CPI, oracle staleness, authority reachability, signer
-   propagation) *and* makes cross-file account/usage reasoning sound (retiring the remaining Family 2
-   ERROR-level lints).
+4. **Foundation rung (b→c) — the call graph:** landed for bounded name-keyed reachability, defensive
+   signer-check propagation, and one offense proof (`security.cpi.program` through reachable helpers).
+   This substrate unlocks moat diagnostics #1–#7 region (stale-after-CPI, oracle staleness,
+   authority reachability, signer propagation) *and* makes cross-file account/usage reasoning sound
+   (retiring the remaining Family 2 ERROR-level lints).
 5. **Foundation rung (c→d) — dataflow/taint (research horizon):** cross-instruction state machines and
    economic-invariant checks — the long-term identity of the tool.
 
@@ -222,6 +223,28 @@ unresolved types do not create a fabricated number. `String` and `Vec` without
 `#[max_len]` render as formulas or receive an explicit `max_len` quick fix stub.
 Mismatch diagnostics remain future work; the current product is hover, code
 lens, and quick fixes only.
+
+## Call Graph (Plan 10)
+
+Seagrass now builds a bounded, name-keyed workspace `CallGraph` from indexed
+functions. The graph intentionally avoids type-driven Rust resolution: defense
+may consume any syntactic edge to suppress false positives, while offense may
+claim a finding only through unambiguous reachable callees. Reachability is
+depth-capped by `MAX_REACHABILITY_DEPTH`, with truncation treated as silence for
+offense and as "might be checked" for defensive signer-check propagation.
+
+Landed consumers:
+
+- `security.signer.authorization` suppresses when a reachable helper performs a
+  signer check for the same account context.
+- `security.cpi.program` reports CPI program-account usage in reachable helpers
+  only when the callee path is unambiguous, and stays silent when a reachable
+  sibling helper carries parsed key-comparison evidence for the program account.
+
+The next moat diagnostics should consume `CallGraph` and
+`reachable_function_entries` rather than adding their own graph walk:
+stale-after-CPI, oracle staleness, authority reachability, signer propagation
+through CPIs, and compute-exhaustion paths.
 
 ---
 

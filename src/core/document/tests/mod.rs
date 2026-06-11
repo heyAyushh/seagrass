@@ -108,6 +108,89 @@ pub fn save_offer(context: Context<MakeOffer>, amount: u64) -> Result<()> {
 }
 
 #[test]
+fn function_calls_include_method_calls() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        ctx.accounts.vault.validate()?;
+        Ok(())
+    }
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let initialize = document
+        .symbols()
+        .instructions
+        .iter()
+        .find(|instruction| instruction.name == "initialize")
+        .unwrap();
+
+    assert!(initialize
+        .function_calls
+        .iter()
+        .any(|call| call.name == "validate"));
+}
+
+#[test]
+fn function_calls_include_calls_inside_closures() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        [1_u64].iter().for_each(|_| validate_authority(&ctx));
+        Ok(())
+    }
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let initialize = document
+        .symbols()
+        .instructions
+        .iter()
+        .find(|instruction| instruction.name == "initialize")
+        .unwrap();
+
+    assert!(initialize
+        .function_calls
+        .iter()
+        .any(|call| call.name == "validate_authority"));
+}
+
+#[test]
+fn function_calls_dedupe_repeated_callsites() {
+    let source = r#"
+#[program]
+pub mod demo {
+    pub fn initialize(ctx: Context<Initialize>) -> Result<()> {
+        validate_authority(&ctx);
+        validate_authority(&ctx);
+        Ok(())
+    }
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let initialize = document
+        .symbols()
+        .instructions
+        .iter()
+        .find(|instruction| instruction.name == "initialize")
+        .unwrap();
+    let ranges = initialize
+        .function_calls
+        .iter()
+        .filter(|call| call.name == "validate_authority")
+        .map(|call| call.range)
+        .collect::<Vec<_>>();
+
+    assert_eq!(ranges.len(), 2);
+    assert_ne!(ranges[0], ranges[1]);
+}
+
+#[test]
 fn parsed_document_captures_field_type_and_constraint_ranges() {
     let source = r#"
 #[derive(Accounts)]

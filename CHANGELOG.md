@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: add a bounded workspace call graph for reachable-helper signer defense
+  and unambiguous reachable-helper CPI program diagnostics.
 - lsp: add Anchor account-space estimation for hovers and code lenses, with
   InitSpace/max_len quick fixes for `space = T::INIT_SPACE` constraints.
 - lsp: offer checked-arithmetic quick fixes for lamport/token math and cover

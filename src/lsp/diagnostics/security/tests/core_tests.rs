@@ -261,6 +261,114 @@ pub mod demo {
 }
 
 #[test]
+fn accepts_reachable_split_helper_signer_check_by_field_name() {
+    let accounts_source = r#"
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+"#;
+    let helper_source = r#"
+#[derive(Accounts)]
+pub struct OtherLogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+
+pub fn validate_authority(ctx: Context<OtherLogMessage>) -> Result<()> {
+    require!(ctx.accounts.authority.is_signer, ErrorCode::MissingSigner);
+    Ok(())
+}
+"#;
+    let program_source = r#"
+use anchor_lang::solana_program::instruction::AccountMeta;
+
+#[program]
+pub mod demo {
+    pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+        instructions::validate_authority(ctx)?;
+        let metas = vec![AccountMeta::new(ctx.accounts.authority.key(), true)];
+        Ok(())
+    }
+}
+"#;
+    let accounts_document = ParsedDocument::parse(accounts_source).unwrap();
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/accounts.rs").unwrap(),
+                accounts_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/instructions.rs").unwrap(),
+                helper_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/lib.rs").unwrap(),
+                program_source.to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&accounts_document, Some(&workspace_index));
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_SIGNER_CODE);
+}
+
+#[test]
+fn accepts_reachable_method_call_signer_check() {
+    let accounts_source = r#"
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+"#;
+    let helper_source = r#"
+#[derive(Accounts)]
+pub struct LogMessage<'info> {
+    pub authority: AccountInfo<'info>,
+}
+
+pub fn validate_authority(ctx: Context<LogMessage>) -> Result<()> {
+    require!(ctx.accounts.authority.is_signer, ErrorCode::MissingSigner);
+    Ok(())
+}
+"#;
+    let program_source = r#"
+#[program]
+pub mod demo {
+    pub fn log_message(ctx: Context<LogMessage>) -> Result<()> {
+        ctx.accounts.authority.validate_authority();
+        let metas = vec![AccountMeta::new(ctx.accounts.authority.key(), true)];
+        Ok(())
+    }
+}
+"#;
+    let accounts_document = ParsedDocument::parse(accounts_source).unwrap();
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/accounts.rs").unwrap(),
+                accounts_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/instructions.rs").unwrap(),
+                helper_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/lib.rs").unwrap(),
+                program_source.to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&accounts_document, Some(&workspace_index));
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_SIGNER_CODE);
+}
+
+#[test]
 fn flags_deref_signer_usage_without_manual_validation() {
     let diagnostics = security_diagnostics(
         r#"
@@ -485,6 +593,185 @@ pub mod demo {
             .and_then(|value| value.as_str()),
         Some("external_program")
     );
+}
+
+#[test]
+fn ignores_unchecked_cpi_program_in_ambiguous_reachable_helper() {
+    let accounts_source = r#"
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    pub external_program: AccountInfo<'info>,
+}
+"#;
+    let helper_source = r#"
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    pub external_program: AccountInfo<'info>,
+}
+
+pub fn call_external(ctx: Context<Cpi>) -> Result<()> {
+    let cpi_ctx = CpiContext::new(ctx.accounts.external_program.to_account_info(), ());
+    Ok(())
+}
+"#;
+    let duplicate_helper_source = r#"
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    pub external_program: AccountInfo<'info>,
+}
+
+pub fn call_external(ctx: Context<Cpi>) -> Result<()> {
+    Ok(())
+}
+"#;
+    let program_source = r#"
+#[program]
+pub mod demo {
+    pub fn cpi(ctx: Context<Cpi>) -> Result<()> {
+        instructions::call_external(ctx)
+    }
+}
+"#;
+    let accounts_document = ParsedDocument::parse(accounts_source).unwrap();
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/accounts.rs").unwrap(),
+                accounts_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/instructions.rs").unwrap(),
+                helper_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/other_instructions.rs").unwrap(),
+                duplicate_helper_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/lib.rs").unwrap(),
+                program_source.to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&accounts_document, Some(&workspace_index));
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_CPI_PROGRAM_CODE);
+}
+
+#[test]
+fn accepts_reachable_cpi_program_with_address_constraint() {
+    let accounts_source = r#"
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    #[account(address = external_program::ID)]
+    pub external_program: AccountInfo<'info>,
+}
+"#;
+    let helper_source = r#"
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    #[account(address = external_program::ID)]
+    pub external_program: AccountInfo<'info>,
+}
+
+pub fn call_external(ctx: Context<Cpi>) -> Result<()> {
+    let cpi_ctx = CpiContext::new(ctx.accounts.external_program.to_account_info(), ());
+    Ok(())
+}
+"#;
+    let program_source = r#"
+#[program]
+pub mod demo {
+    pub fn cpi(ctx: Context<Cpi>) -> Result<()> {
+        instructions::call_external(ctx)
+    }
+}
+"#;
+    let accounts_document = ParsedDocument::parse(accounts_source).unwrap();
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/accounts.rs").unwrap(),
+                accounts_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/instructions.rs").unwrap(),
+                helper_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/lib.rs").unwrap(),
+                program_source.to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&accounts_document, Some(&workspace_index));
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_CPI_PROGRAM_CODE);
+}
+
+#[test]
+fn accepts_reachable_cpi_program_checked_in_sibling_helper() {
+    let accounts_source = r#"
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    pub external_program: AccountInfo<'info>,
+    pub expected_program: AccountInfo<'info>,
+}
+"#;
+    let helper_source = r#"
+#[derive(Accounts)]
+pub struct Cpi<'info> {
+    pub external_program: AccountInfo<'info>,
+    pub expected_program: AccountInfo<'info>,
+}
+
+pub fn check_program(ctx: Context<Cpi>) -> Result<()> {
+    if ctx.accounts.external_program.key() != ctx.accounts.expected_program.key() {
+        return err!(ErrorCode::InvalidProgram);
+    }
+    Ok(())
+}
+
+pub fn call_external(ctx: Context<Cpi>) -> Result<()> {
+    let cpi_ctx = CpiContext::new(ctx.accounts.external_program.to_account_info(), ());
+    Ok(())
+}
+"#;
+    let program_source = r#"
+#[program]
+pub mod demo {
+    pub fn cpi(ctx: Context<Cpi>) -> Result<()> {
+        instructions::check_program(ctx)?;
+        instructions::call_external(ctx)
+    }
+}
+"#;
+    let accounts_document = ParsedDocument::parse(accounts_source).unwrap();
+    let workspace_index = WorkspaceIndex::build(
+        &[],
+        [
+            (
+                Url::parse("file:///tmp/accounts.rs").unwrap(),
+                accounts_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/instructions.rs").unwrap(),
+                helper_source.to_string(),
+            ),
+            (
+                Url::parse("file:///tmp/lib.rs").unwrap(),
+                program_source.to_string(),
+            ),
+        ],
+    );
+
+    let diagnostics = collect_with_workspace(&accounts_document, Some(&workspace_index));
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_CPI_PROGRAM_CODE);
 }
 
 #[test]

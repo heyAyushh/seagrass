@@ -6,8 +6,9 @@ use {
             SymbolRange,
         },
         range::line_at,
+        workspace::MAX_REACHABILITY_DEPTH,
     },
-    std::collections::HashSet,
+    std::collections::{HashSet, VecDeque},
     tower_lsp::lsp_types::{Position, Range},
 };
 
@@ -254,22 +255,28 @@ fn reachable_instructions_for_accounts<'a>(
         .iter()
         .map(|instruction| instruction.name.as_str())
         .collect::<HashSet<_>>();
-    let mut changed = true;
-    while changed {
-        changed = false;
-        let called_names = reachable
-            .iter()
-            .flat_map(|instruction| instruction.function_calls.iter())
-            .map(|call| call.name.as_str())
-            .collect::<HashSet<_>>();
-        for helper in &helpers {
-            if called_names.contains(helper.name.as_str())
-                && seen_names.insert(helper.name.as_str())
-            {
-                reachable.push(*helper);
-                changed = true;
-            }
+    let mut pending = reachable
+        .iter()
+        .flat_map(|instruction| instruction.function_calls.iter())
+        .map(|call| (call.name.as_str(), 1_usize))
+        .collect::<VecDeque<_>>();
+    while let Some((name, depth)) = pending.pop_front() {
+        let Some(helper) = helpers.iter().find(|helper| helper.name == name) else {
+            continue;
+        };
+        if !seen_names.insert(helper.name.as_str()) {
+            continue;
         }
+        reachable.push(*helper);
+        if depth >= MAX_REACHABILITY_DEPTH {
+            continue;
+        }
+        pending.extend(
+            helper
+                .function_calls
+                .iter()
+                .map(|call| (call.name.as_str(), depth + 1)),
+        );
     }
 
     reachable

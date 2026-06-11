@@ -1,5 +1,6 @@
 use {
     super::*,
+    std::collections::{HashMap, HashSet},
     tower_lsp::lsp_types::{NumberOrString, Range},
 };
 
@@ -20,6 +21,20 @@ fn missing_signer_query_stays_silent_without_checks_populated() {
     let model = model_with_signer_checks(PopulatedFields::default());
 
     let diagnostics = crate::semantic::queries::missing_signer_diagnostics(&model);
+
+    assert!(diagnostics.is_empty());
+}
+
+#[test]
+fn missing_signer_query_uses_reachable_checks() {
+    let model = model_with_signer_checks(PopulatedFields(PopulatedFields::SIGNER_CHECKS));
+    let reachable_checks =
+        HashMap::from([("process".to_string(), HashSet::from(["payer".to_string()]))]);
+
+    let diagnostics = crate::semantic::queries::missing_signer_diagnostics_with_reachability(
+        &model,
+        &reachable_checks,
+    );
 
     assert!(diagnostics.is_empty());
 }

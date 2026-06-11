@@ -19,7 +19,7 @@ diagnostic shape and the semantic model nodes they should eventually query.
 | `constraint-shape` | visitor | `AccountsStruct`, `AccountField`, `Constraint`, `PdaSeedSet` | medium | Catalog-backed shape checks can migrate incrementally. |
 | `spl-semantics` | visitor | `AccountsStruct`, `AccountField`, `Constraint` | high | Blocks token-interface false positives; should query `token_interface_candidate`. |
 | `account-usage` | visitor | `Instruction`, `AccountsStruct`, `AccountField`, `Check` | medium | Mutability and account usage claims need instruction usage edges. |
-| `security` | visitor | `Instruction`, `AccountsStruct`, `AccountField`, `Check` | high | Signer/owner/type-cosplay checks are the main cross-framework query target. |
+| `security` | visitor + call graph substrate | `Instruction`, `AccountsStruct`, `AccountField`, `Check` | high | Signer propagation now has bounded reachable-helper defense; `security.cpi.program` has one reachable-helper offense proof. Remaining owner/type-cosplay ports can consume `CallGraph` instead of adding local walks. |
 | `pda` | visitor | `AccountsStruct`, `AccountField`, `Constraint`, `PdaSeedSet` | medium | PDA visibility and seed claims map directly to model seed nodes. |
 | `code-quality` | visitor | `Instruction`, `CpiCall`, `Check` | medium | Arithmetic/manual-close/stale-CPI rules can share instruction and CPI facts. |
 | `check-cfg` | model | none | low | Manifest/toolchain rule; keep outside semantic model. |
@@ -28,5 +28,7 @@ diagnostic shape and the semantic model nodes they should eventually query.
 | `ecosystem` | model | `Program` | low | Ecosystem recommendations remain manifest/artifact based. |
 
 High-priority migration targets for this plan are `account-references`,
-`spl-semantics`, and a model-based signer query under `security`. Other rules are
-left in their current shape unless a plan stage explicitly names them.
+`spl-semantics`, and the remaining model-based security queries. Plan 10 landed
+the cross-function substrate for `security`; future migrations should reuse the
+workspace `CallGraph` and framework-free reachable-check query rather than
+creating rule-local traversal.
