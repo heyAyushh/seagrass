@@ -20,6 +20,7 @@ use {
     tower_lsp::lsp_types::{Diagnostic, Range},
 };
 
+mod arithmetic;
 mod manual_close;
 mod stale_cpi;
 
@@ -39,6 +40,7 @@ pub fn collect_with_framework(
 
     let mut diagnostics = Vec::new();
     diagnostics.extend(unsafe_unwrap_diagnostics(document, program_kind));
+    diagnostics.extend(arithmetic::diagnostics(document, program_kind));
     diagnostics.extend(non_canonical_pda_bump_diagnostics(document, program_kind));
     diagnostics.extend(framework_crate_diagnostics(document, framework));
     diagnostics.extend(manual_close::diagnostics(document));

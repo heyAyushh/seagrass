@@ -143,6 +143,10 @@
       "description": "Stale account reads after CPI diagnostics."
     },
     {
+      "name": "seagrass/solana.code-quality.unchecked-arithmetic",
+      "description": "Unchecked lamports and token amount arithmetic diagnostics."
+    },
+    {
       "name": "seagrass/solana.code-quality.unsafe-unwrap",
       "description": "Unsafe unwrap and expect diagnostics."
     },

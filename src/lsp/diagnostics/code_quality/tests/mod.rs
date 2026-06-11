@@ -4,6 +4,7 @@ use {
 };
 
 mod account_lifecycle;
+mod arithmetic;
 mod instruction_bounds;
 mod native_raw;
 mod native_validation;
