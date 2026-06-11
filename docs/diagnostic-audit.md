@@ -69,17 +69,18 @@ queue across `lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/acti
 | `lsp/hover/account_constraints.rs` | constraint hover docs/evidence | generated catalog + PDA evidence | account attribute only | n/a | n/a | low | generated constraint hover tests |
 | `lsp/actions/mod.rs` | quick-fix router + resolve | diagnostic data + parsed document | diagnostic span | n/a | n/a | low | action routing tests |
 | `lsp/actions/accounts/mod.rs` | account type/field quick fixes | parsed structs, semantic diagnostics, workspace candidates | account field spans | n/a | n/a | low | account action tests |
+| `lsp/actions/arithmetic.rs` | checked arithmetic quick fixes | parsed syn expressions anchored by diagnostic operator ranges | diagnostic span | n/a | n/a | low | arithmetic action tests |
 | `lsp/actions/accounts/context_structs.rs` | create accounts struct fixes | parsed instruction/context evidence | instruction signature | n/a | n/a | low | context action tests |
 | `lsp/actions/accounts/field_edits.rs` | inferred account field edit builder | diagnostic data + parsed account semantics | accounts structs | n/a | n/a | low | field edit tests |
 | `lsp/actions/constraint_expressions.rs` | constraint expression member replacement actions | structured diagnostic data with resolved member candidates | account attribute expression spans | n/a | n/a | low | constraint expression action tests |
 | `lsp/actions/constraints.rs` | generated constraint quick fixes | generated parser catalog + parsed constraint ranges | account attributes | n/a | n/a | low | generated constraint action tests |
 | `lsp/actions/features.rs` | manifest feature quick fixes | manifest diagnostics | Cargo manifest | n/a | n/a | low | feature action tests |
-| `lsp/actions/init_constraints.rs` | init placeholder/fix-all actions | parsed init diagnostics | account attributes | n/a | n/a | low | init constraint action tests |
+| `lsp/actions/init_constraints.rs` | init placeholder/fix-all and InitSpace derive actions | parsed init diagnostics, account `space` constraints, workspace account-data definitions | account attributes and defining structs | n/a | n/a | low | init constraint action tests |
 | `lsp/actions/instructions.rs` | instruction argument quick fixes | parsed handler args + instruction attrs | instruction attrs | n/a | n/a | low | instruction action tests |
 | `lsp/actions/missing_init.rs` | missing init companion actions | parsed accounts structs | account field spans | n/a | n/a | low | missing init action tests |
 | `lsp/actions/pda.rs` | PDA limitation/copy actions | diagnostic seed metadata | diagnostic span | n/a | n/a | low | PDA action tests |
 | `lsp/actions/security.rs` | security/code-quality remediation actions | structured diagnostic data + parsed edits | diagnostic span | n/a | n/a | low | security action tests |
-| `lsp/code_lens/mod.rs` | accounts/program lens | parsed symbols + workspace index | accounts/program declarations | n/a | n/a | low | code lens tests |
+| `lsp/code_lens/mod.rs` | accounts/program and account-space lenses | parsed symbols + workspace index + Borsh/InitSpace space engine | accounts/program/account-data declarations | n/a | n/a | low | code lens tests |
 | `lsp/document_links/mod.rs` | Anchor docs links | generated constraint catalog + constraint ranges | account attributes | n/a | n/a | low | document link tests |
 | `lsp/folding/mod.rs` | account constraint folding | parsed constraint ranges | account attributes | n/a | n/a | low | folding tests |
 | `lsp/inlay_hints/mod.rs` | implied mut / PDA hints | parsed constraints + PDA evidence | account attributes | n/a | n/a | low | inlay hint tests |

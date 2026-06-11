@@ -5,6 +5,10 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: add Anchor account-space estimation for hovers and code lenses, with
+  InitSpace/max_len quick fixes for `space = T::INIT_SPACE` constraints.
+- lsp: offer checked-arithmetic quick fixes for lamport/token math and cover
+  division and remainder operators alongside add/sub/mul.
 - lsp: accept compatible SPL token program accounts for Token-2022/interface
   token initialization, resolve token-interface import aliases, and silence
   unprovable composite payer member-path checks found by the external corpus.

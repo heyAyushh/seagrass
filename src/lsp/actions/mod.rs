@@ -1,4 +1,5 @@
 mod accounts;
+mod arithmetic;
 pub(crate) mod common;
 mod constraint_expressions;
 mod constraints;
@@ -16,7 +17,7 @@ pub(crate) use common::snippet_template_for_edit;
 pub(crate) use common::snippet_text_edit;
 
 use {
-    crate::document::ParsedDocument,
+    crate::{document::ParsedDocument, workspace::WorkspaceIndex},
     tower_lsp::lsp_types::{CodeAction, Diagnostic, Range, Url},
 };
 
@@ -36,6 +37,12 @@ pub fn code_actions_unfiltered(
 ) -> Vec<CodeAction> {
     let neutral = Range::default();
     let mut actions = missing_init::code_actions(document, uri.clone(), neutral, diagnostics);
+    actions.extend(arithmetic::code_actions(
+        document,
+        uri.clone(),
+        neutral,
+        diagnostics,
+    ));
     actions.extend(accounts::code_actions(
         document,
         uri.clone(),
@@ -81,13 +88,30 @@ pub fn code_actions_unfiltered(
 /// `missing_init::fix_all_code_actions` only fires when the cursor touches a
 /// missing-init diagnostic. These must be recomputed per request because the
 /// cache holds only cursor-independent output.
+#[cfg(test)]
 pub fn cursor_dependent_code_actions(
     document: &ParsedDocument,
     uri: Url,
     range: Range,
     diagnostics: &[Diagnostic],
 ) -> Vec<CodeAction> {
-    let mut actions = init_constraints::code_actions(document, uri.clone(), range, diagnostics);
+    cursor_dependent_code_actions_with_workspace(document, uri, range, diagnostics, None)
+}
+
+pub fn cursor_dependent_code_actions_with_workspace(
+    document: &ParsedDocument,
+    uri: Url,
+    range: Range,
+    diagnostics: &[Diagnostic],
+    workspace: Option<&WorkspaceIndex>,
+) -> Vec<CodeAction> {
+    let mut actions = init_constraints::code_actions_with_workspace(
+        document,
+        uri.clone(),
+        range,
+        diagnostics,
+        workspace,
+    );
     actions.extend(missing_init::fix_all_code_actions(
         document,
         uri,

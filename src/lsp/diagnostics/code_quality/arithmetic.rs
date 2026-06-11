@@ -255,7 +255,8 @@ fn unchecked_arithmetic_diagnostic(
             "topic": TOPIC,
             "programKind": program_kind.as_str(),
             "evidenceSource": evidence.as_str(),
-            "suggestion": "Use `checked_add`, `checked_sub`, or `checked_mul` and return an explicit program error on overflow or underflow.",
+            "quickfix": "checked-arithmetic",
+            "suggestion": "Use `checked_add`, `checked_sub`, `checked_mul`, `checked_div`, or `checked_rem` and return an explicit program error on overflow, underflow, or invalid arithmetic.",
             "absorbedFrom": "semantic-local-analysis",
         })),
     )
@@ -267,9 +268,13 @@ fn is_unchecked_semantic_arithmetic_operator(op: &syn::BinOp) -> bool {
         syn::BinOp::Add(_)
             | syn::BinOp::Sub(_)
             | syn::BinOp::Mul(_)
+            | syn::BinOp::Div(_)
+            | syn::BinOp::Rem(_)
             | syn::BinOp::AddAssign(_)
             | syn::BinOp::SubAssign(_)
             | syn::BinOp::MulAssign(_)
+            | syn::BinOp::DivAssign(_)
+            | syn::BinOp::RemAssign(_)
     )
 }
 

@@ -39,12 +39,19 @@ impl Backend {
             &diagnostics,
             has_context_diagnostics,
         );
-        actions.extend(actions::cursor_dependent_code_actions(
-            &document,
-            uri.clone(),
-            range,
-            &diagnostics,
-        ));
+        {
+            let workspace_index = self
+                .workspace_index
+                .read()
+                .unwrap_or_else(|err| err.into_inner());
+            actions.extend(actions::cursor_dependent_code_actions_with_workspace(
+                &document,
+                uri.clone(),
+                range,
+                &diagnostics,
+                Some(&workspace_index),
+            ));
+        }
         actions.extend(assists::code_actions(&document, uri, range));
         let actions = actions::rank_and_filter_for_cursor(actions, range);
         Ok((!actions.is_empty()).then_some(actions.into_iter().map(Into::into).collect()))

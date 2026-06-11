@@ -6,7 +6,7 @@ Source: `seagrass`
 
 ## What It Catches
 
-Unchecked `+`, `-`, `*`, `+=`, `-=`, and `*=` operations when at least one
+Unchecked `+`, `-`, `*`, `/`, `%`, `+=`, `-=`, `*=`, `/=`, and `%=` operations when at least one
 operand is proven from parsed syntax to be a lamports value or an SPL token
 account amount.
 
@@ -25,8 +25,12 @@ The diagnostic requires semantic evidence from the current function:
   `balance`, `fee`, or `total`
 - `.amount` fields on non-token account data types
 - arithmetic expressed through checked methods such as `checked_add`,
-  `checked_sub`, or `checked_mul`
+  `checked_sub`, `checked_mul`, `checked_div`, or `checked_rem`
 - comments, doc comments, string literals, or unrelated attribute text
+
+The editor quick fix rewrites supported expressions to the matching checked
+method and returns `ProgramError::ArithmeticOverflow` through a fully qualified
+path, without adding imports.
 
 ## False-Positive Matrix
 
@@ -37,6 +41,8 @@ The diagnostic requires semantic evidence from the current function:
 | `counter_ctx.accounts.vault.amount + step` where another context has a token `vault` | no diagnostic |
 | `ctx.accounts.vault.amount.checked_sub(fee)` | no diagnostic |
 | `ctx.accounts.vault.amount - fee` where `vault` is `Account<TokenAccount>` | diagnostic |
+| `ctx.accounts.vault.amount / divisor` where `vault` is `Account<TokenAccount>` | diagnostic |
+| `ctx.accounts.vault.amount % divisor` where `vault` is `Account<TokenAccount>` | diagnostic |
 | `let amount = vault.amount; amount - fee` where `vault` aliases `ctx.accounts.vault: Account<TokenAccount>` | diagnostic |
 | `ctx.accounts.vault.to_account_info().lamports() + extra` | diagnostic |
 
