@@ -508,6 +508,7 @@ impl Backend {
             .unwrap_or_else(|err| err.into_inner())
             .clone();
         let manifest = solana_project::nearest_manifest(uri);
+        let workspace_manifest = solana_project::nearest_workspace_manifest(uri);
         let anchor_toml = project::nearest_anchor_toml_with_roots(uri, &workspace_roots);
         let seagrass_toml = project::nearest_seagrass_toml_with_roots(uri, &workspace_roots);
         let solana_program = solana_project::detect_for_document(uri, document);
@@ -526,6 +527,9 @@ impl Backend {
                 workspace_index: Some(&workspace_index),
                 framework,
                 manifest: manifest
+                    .as_ref()
+                    .map(|(manifest_uri, manifest_text)| (manifest_uri, manifest_text.as_str())),
+                workspace_manifest: workspace_manifest
                     .as_ref()
                     .map(|(manifest_uri, manifest_text)| (manifest_uri, manifest_text.as_str())),
                 anchor_toml: anchor_toml

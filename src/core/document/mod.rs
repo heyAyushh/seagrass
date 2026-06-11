@@ -24,7 +24,7 @@ mod symbols;
 use {
     account_field_type::account_field_type,
     field_types::{generic_type_ranges, type_name, type_range},
-    imports::collect_imported_names,
+    imports::{collect_imported_names, has_glob_in_use_tree, has_local_glob_in_use_tree},
 };
 
 pub use {
@@ -113,6 +113,15 @@ pub struct AnchorSymbols {
     pub account_data_structs: HashMap<String, SymbolRange>,
     pub constants: Vec<NamedRange>,
     pub imported_names: Vec<NamedRange>,
+    /// True when the file contains at least one glob `use` (`use foo::*;`),
+    /// meaning names are in scope that seagrass cannot enumerate.
+    /// Diagnostics that assert "name X does not exist" must suppress when this
+    /// flag is set, unless the workspace index provides stronger evidence.
+    pub has_glob_import: bool,
+    /// True when a glob `use` can bring project-local names into scope. External
+    /// preludes like `anchor_lang::prelude::*` are tracked by `has_glob_import`
+    /// but do not make local absence claims ambiguous.
+    pub has_local_glob_import: bool,
     /// Maps a `use Original as Alias` rename to the original terminal ident, so
     /// `Alias::CONST` resolves against `Original`'s associated values.
     pub import_aliases: HashMap<String, String>,
@@ -129,6 +138,15 @@ pub struct AnchorSymbols {
 impl AnchorSymbols {
     fn from_items(items: &[Item]) -> Self {
         let mut symbols = Self::default();
+        let local_module_names = items
+            .iter()
+            .filter_map(|item| {
+                let Item::Mod(item_mod) = item else {
+                    return None;
+                };
+                Some(item_mod.ident.to_string())
+            })
+            .collect::<HashSet<_>>();
 
         for item in items {
             match item {
@@ -196,6 +214,12 @@ impl AnchorSymbols {
                         &mut symbols.imported_names,
                         &mut symbols.import_aliases,
                     );
+                    if has_glob_in_use_tree(&item_use.tree) {
+                        symbols.has_glob_import = true;
+                    }
+                    if has_local_glob_in_use_tree(&item_use.tree, &local_module_names) {
+                        symbols.has_local_glob_import = true;
+                    }
                 }
                 Item::Enum(item_enum) => {
                     if let Some(error_code) = error_codes::error_code_enum(item_enum) {

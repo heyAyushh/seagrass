@@ -15,7 +15,7 @@ pub struct Initialize<'info> {}
     )
     .unwrap();
     let diagnostics =
-        crate::diagnostics::check_cfg::collect(&document, &manifest_uri, "[features]\n");
+        crate::diagnostics::check_cfg::collect(&document, &manifest_uri, "[features]\n", None);
     let actions = code_actions(
         &document,
         Url::parse("file:///tmp/lib.rs").unwrap(),
@@ -63,6 +63,7 @@ pub struct Initialize<'info> {
         &document,
         &manifest_uri,
         &std::fs::read_to_string(&manifest_path).unwrap(),
+        None,
     );
     let actions = code_actions(
         &document,
@@ -105,6 +106,7 @@ declare_id!("Demo111111111111111111111111111111111111");
         &document,
         &manifest_uri,
         &std::fs::read_to_string(&manifest_path).unwrap(),
+        None,
     );
     let actions = code_actions(
         &document,

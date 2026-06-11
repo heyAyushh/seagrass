@@ -26,10 +26,23 @@ pub(super) fn unresolved_path_identifier(
     if path.qself.is_some() {
         return None;
     }
+    if glob_import_makes_resolution_incomplete(document, workspace_index) {
+        return None;
+    }
     let segments = path_segments(path);
     match segments.as_slice() {
         [] => None,
         [identifier] if identifier_resolves(document, accounts, identifier) => None,
+        [identifier]
+            if glob_imported_identifier_resolves(
+                document,
+                workspace_index,
+                identifier,
+                &[SymbolKind::CONSTANT, SymbolKind::FUNCTION],
+            ) =>
+        {
+            None
+        }
         [identifier] => Some(identifier.to_string()),
         _ if path_resolves(document, workspace_index, &segments) => None,
         _ => Some(segments.join(PATH_SEPARATOR)),
@@ -45,10 +58,23 @@ pub(super) fn unresolved_call_identifier(
     if path.qself.is_some() {
         return None;
     }
+    if glob_import_makes_resolution_incomplete(document, workspace_index) {
+        return None;
+    }
     let segments = path_segments(path);
     match segments.as_slice() {
         [] => None,
         [identifier] if call_identifier_resolves(document, accounts, identifier) => None,
+        [identifier]
+            if glob_imported_identifier_resolves(
+                document,
+                workspace_index,
+                identifier,
+                &[SymbolKind::FUNCTION],
+            ) =>
+        {
+            None
+        }
         [identifier] => Some(identifier.to_string()),
         _ if path_resolves(document, workspace_index, &segments) => None,
         _ => Some(segments.join(PATH_SEPARATOR)),
@@ -89,6 +115,29 @@ fn path_segments(path: &ExprPath) -> Vec<String> {
         .iter()
         .map(|segment| segment.ident.to_string())
         .collect()
+}
+
+fn glob_import_makes_resolution_incomplete(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> bool {
+    // Open-world: a glob import can place names in scope that this file's
+    // syntax model cannot enumerate. Without workspace evidence, silence.
+    document.symbols().has_local_glob_import && workspace_index.is_none()
+}
+
+fn glob_imported_identifier_resolves(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    identifier: &str,
+    kinds: &[SymbolKind],
+) -> bool {
+    document.symbols().has_local_glob_import
+        && workspace_index.is_some_and(|index| {
+            !index
+                .symbol_locations_with_kinds(identifier, kinds)
+                .is_empty()
+        })
 }
 
 fn identifier_resolves(

@@ -300,6 +300,19 @@ fn indexed_symbols(document: &ParsedDocument) -> Vec<IndexedSymbol> {
             type_display: None,
         });
     }
+    symbols.extend(
+        document
+            .symbols()
+            .constants
+            .iter()
+            .map(|constant| IndexedSymbol {
+                name: constant.name.clone(),
+                kind: SymbolKind::CONSTANT,
+                selection_range: constant.range,
+                container_name: Some("const".to_string()),
+                type_display: None,
+            }),
+    );
 
     symbols.extend(
         document

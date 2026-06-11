@@ -1,4 +1,8 @@
-use {super::*, tower_lsp::lsp_types::NumberOrString};
+use {
+    super::*,
+    crate::workspace::WorkspaceIndex,
+    tower_lsp::lsp_types::{NumberOrString, Url},
+};
 
 #[test]
 fn reports_unresolved_bare_constraint_identifier_on_value_span() {
@@ -37,6 +41,93 @@ pub struct Run<'info> {
     assert!(
         candidates.is_some_and(|candidates| candidates.iter().any(|value| value == "amount")),
         "expected in-scope instruction argument candidate; got {diagnostic:#?}"
+    );
+}
+
+#[test]
+fn glob_import_suppresses_unresolved_identifier_without_workspace() {
+    let source = r#"
+use state::*;
+
+mod state;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(constraint = unknown_const)]
+    pub state: Account<'info, State>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+
+    assert!(collect(&document).is_empty());
+}
+
+#[test]
+fn no_glob_import_reports_unresolved_identifier() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(constraint = unknown_const)]
+    pub state: Account<'info, State>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let diagnostics = collect(&document);
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0]
+        .message
+        .contains("`unknown_const` does not resolve"));
+}
+
+#[test]
+fn glob_import_with_workspace_evidence_still_reports_absent_name() {
+    let source = r#"
+use state::*;
+
+mod state;
+
+#[derive(Accounts)]
+pub struct Run<'info> {
+    #[account(constraint = unknown_const)]
+    pub state: Account<'info, State>,
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let index = WorkspaceIndex::build(
+        &[],
+        [(
+            Url::parse("file:///workspace/program/src/state.rs").unwrap(),
+            "pub const KNOWN_CONST: bool = true;".to_string(),
+        )],
+    );
+    let diagnostics = collect_with_workspace(&document, Some(&index));
+
+    assert_eq!(diagnostics.len(), 1);
+    assert!(diagnostics[0]
+        .message
+        .contains("`unknown_const` does not resolve"));
+}
+
+#[test]
+fn fixture_workspace_glob_import_resolves_cross_file_const() {
+    let document = ParsedDocument::parse(include_str!(
+        "../../../../tests/fixtures/resolution_fp/program/src/lib.rs"
+    ))
+    .unwrap();
+    let index = WorkspaceIndex::build(
+        &[],
+        [(
+            Url::parse("file:///workspace/program/src/state.rs").unwrap(),
+            include_str!("../../../../tests/fixtures/resolution_fp/program/src/state.rs")
+                .to_string(),
+        )],
+    );
+    let diagnostics = collect_with_workspace(&document, Some(&index));
+
+    assert!(
+        diagnostics.is_empty(),
+        "fixture should not emit resolution false positives: {diagnostics:#?}"
     );
 }
 

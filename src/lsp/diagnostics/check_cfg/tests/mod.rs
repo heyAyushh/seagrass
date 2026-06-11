@@ -1,5 +1,15 @@
 use {super::*, tower_lsp::lsp_types::NumberOrString};
 
+mod workspace_feature_tests;
+
+fn collect(
+    document: &ParsedDocument,
+    manifest_uri: &Url,
+    manifest_text: &str,
+) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    super::collect(document, manifest_uri, manifest_text, None)
+}
+
 #[test]
 fn reports_accounts_derive_when_manifest_lacks_anchor_debug() {
     let document = ParsedDocument::parse(

@@ -210,7 +210,14 @@ fn collect_check_cfg(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {
     let Some((manifest_uri, manifest_text)) = input.manifest else {
         return Vec::new();
     };
-    check_cfg::collect(input.document, manifest_uri, manifest_text)
+    check_cfg::collect(
+        input.document,
+        manifest_uri,
+        manifest_text,
+        input
+            .workspace_manifest
+            .map(|(_, workspace_manifest_text)| workspace_manifest_text),
+    )
 }
 
 fn collect_project_identity(input: &DiagnosticInput<'_>) -> Vec<Diagnostic> {

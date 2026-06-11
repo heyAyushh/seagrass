@@ -342,6 +342,7 @@ pub(super) fn hot_diagnostics_for_document(
             workspace_index: Some(workspace_index),
             framework: crate::solana::frameworks::FrameworkContext::from_document(document),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: None,
             seagrass_toml: seagrass_toml
                 .as_ref()

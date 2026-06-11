@@ -303,6 +303,7 @@ allow = ["solana-code-quality.unsafe-unwrap"]
         workspace_index: None,
         framework: crate::solana::frameworks::FrameworkContext::from_document(&document),
         manifest: None,
+        workspace_manifest: None,
         anchor_toml: None,
         seagrass_toml: Some((&seagrass_toml_uri, seagrass_toml)),
         solana_program: None,

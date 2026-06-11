@@ -17,6 +17,20 @@ fn indexes_open_document_symbols() {
 }
 
 #[test]
+fn indexes_open_document_constants() {
+    let uri = Url::parse("file:///tmp/state.rs").unwrap();
+    let index = WorkspaceIndex::build(
+        &[],
+        [(uri.clone(), "pub const SPACE: usize = 8;".to_string())],
+    );
+
+    assert_eq!(
+        index.symbol_locations_with_kinds("SPACE", &[SymbolKind::CONSTANT])[0].uri,
+        uri
+    );
+}
+
+#[test]
 fn indexes_unopened_root_workspace_files_into_lookup_maps() {
     let root = unique_temp_dir("seagrass-root-index");
     let program_src = root.join("programs").join("demo").join("src");

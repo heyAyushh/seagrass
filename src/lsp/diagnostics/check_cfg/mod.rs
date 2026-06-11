@@ -21,6 +21,7 @@ pub fn collect(
     document: &ParsedDocument,
     manifest_uri: &Url,
     manifest_text: &str,
+    workspace_manifest_text: Option<&str>,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
     let mut diagnostics = Vec::new();
 
@@ -53,7 +54,7 @@ pub fn collect(
         }));
     }
 
-    if manifest_needs_init_if_needed(document, manifest_text) {
+    if manifest_needs_init_if_needed(document, manifest_text, workspace_manifest_text) {
         diagnostics.extend(init_if_needed_sites(document).into_iter().map(|site| {
             diagnostic_from_range(
                 site.range,
@@ -216,9 +217,25 @@ pub fn manifest_needs_anchor_debug(manifest_text: &str) -> bool {
     !features_section_contains(manifest_text, "anchor-debug")
 }
 
-pub fn manifest_needs_init_if_needed(document: &ParsedDocument, manifest_text: &str) -> bool {
-    !init_if_needed_sites(document).is_empty()
-        && !anchor_lang_dependency_has_feature(manifest_text, "init-if-needed")
+pub fn manifest_needs_init_if_needed(
+    document: &ParsedDocument,
+    manifest_text: &str,
+    workspace_manifest_text: Option<&str>,
+) -> bool {
+    if init_if_needed_sites(document).is_empty() {
+        return false;
+    }
+    if anchor_lang_dependency_has_feature(manifest_text, "init-if-needed") {
+        return false;
+    }
+    if anchor_lang_is_workspace_inherited(manifest_text)
+        && workspace_manifest_text.is_some_and(|workspace_manifest_text| {
+            anchor_lang_workspace_dep_has_feature(workspace_manifest_text, "init-if-needed")
+        })
+    {
+        return false;
+    }
+    true
 }
 
 pub fn manifest_needs_solana_target_os_check_cfg(
@@ -421,6 +438,40 @@ fn init_if_needed_sites(document: &ParsedDocument) -> Vec<InitIfNeededSite> {
 fn anchor_lang_dependency_has_feature(manifest_text: &str, feature: &str) -> bool {
     anchor_lang_dependency_line(manifest_text)
         .is_some_and(|dependency| dependency_has_feature(dependency.line, feature))
+}
+
+fn anchor_lang_is_workspace_inherited(manifest_text: &str) -> bool {
+    let Ok(manifest) = Manifest::from_str(manifest_text) else {
+        return manifest_declares_dotted_anchor_lang_workspace(manifest_text);
+    };
+    manifest
+        .dependencies
+        .get("anchor-lang")
+        .is_some_and(|dependency| matches!(dependency, cargo_toml::Dependency::Inherited(_)))
+        || manifest_declares_dotted_anchor_lang_workspace(manifest_text)
+}
+
+fn manifest_declares_dotted_anchor_lang_workspace(manifest_text: &str) -> bool {
+    let Ok(manifest) = toml::from_str::<toml::Value>(manifest_text) else {
+        return false;
+    };
+    manifest
+        .get("dependencies")
+        .and_then(|dependencies| dependencies.get("anchor-lang"))
+        .and_then(|anchor_lang| anchor_lang.get("workspace"))
+        .and_then(|workspace| workspace.as_bool())
+        .unwrap_or(false)
+}
+
+fn anchor_lang_workspace_dep_has_feature(workspace_manifest_text: &str, feature: &str) -> bool {
+    let Ok(manifest) = Manifest::from_str(workspace_manifest_text) else {
+        return false;
+    };
+    manifest
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.dependencies.get("anchor-lang"))
+        .is_some_and(|dependency| dependency.req_features().iter().any(|name| name == feature))
 }
 
 #[derive(Debug, Clone, Copy)]

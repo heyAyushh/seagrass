@@ -2,7 +2,9 @@ use super::*;
 use tower_lsp::lsp_types::SymbolKind;
 
 mod account_attribute_cursor;
+mod associated_values;
 mod generated_constraints;
+mod imports;
 
 #[test]
 fn parsed_document_captures_anchor_symbols() {

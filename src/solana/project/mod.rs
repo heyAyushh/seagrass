@@ -321,6 +321,31 @@ pub fn nearest_manifest(uri: &Url) -> Option<(Url, String)> {
     Some((uri, text))
 }
 
+/// Locates the nearest workspace-root `Cargo.toml` for the package that owns
+/// `uri`. This mirrors package manifest lookup, but only returns manifests with
+/// a `[workspace]` section.
+pub fn nearest_workspace_manifest(uri: &Url) -> Option<(Url, String)> {
+    let mut path = uri.to_file_path().ok()?;
+    if path.is_file() {
+        path.pop();
+    }
+
+    loop {
+        let manifest_path = path.join("Cargo.toml");
+        if manifest_path.is_file() {
+            if let Some(text) = file_text::read_limited_text(&manifest_path).ok().flatten() {
+                if Manifest::from_str(&text).is_ok_and(|manifest| manifest.workspace.is_some()) {
+                    let uri = Url::from_file_path(manifest_path).ok()?;
+                    return Some((uri, text));
+                }
+            }
+        }
+        if !path.pop() {
+            return None;
+        }
+    }
+}
+
 fn nearest_manifest_path(uri: &Url) -> Option<PathBuf> {
     let mut path = uri.to_file_path().ok()?;
     if path.is_file() {
@@ -594,6 +619,42 @@ declare_id!("Artifact1111111111111111111111111111111");
         assert_eq!(program.name, "artifact_demo");
         assert_eq!(program.root, root);
         assert_eq!(program.source_root, Some(source_dir));
+    }
+
+    #[test]
+    fn nearest_workspace_manifest_finds_workspace_root() {
+        let root = unique_temp_dir("seagrass-workspace-manifest");
+        let program_src = root.join("programs/demo/src");
+        fs::create_dir_all(&program_src).unwrap();
+        fs::write(
+            root.join("Cargo.toml"),
+            r#"
+[workspace]
+members = ["programs/demo"]
+"#,
+        )
+        .unwrap();
+        fs::write(
+            root.join("programs/demo/Cargo.toml"),
+            r#"
+[package]
+name = "demo"
+"#,
+        )
+        .unwrap();
+        let lib = program_src.join("lib.rs");
+        fs::write(&lib, "pub fn entry() {}\n").unwrap();
+        let uri = Url::from_file_path(lib).unwrap();
+
+        let (manifest_uri, manifest_text) = nearest_workspace_manifest(&uri).unwrap();
+
+        assert_eq!(
+            manifest_uri,
+            Url::from_file_path(root.join("Cargo.toml")).unwrap()
+        );
+        assert!(manifest_text.contains("[workspace]"));
+
+        let _ = fs::remove_dir_all(root);
     }
 
     fn unique_temp_dir(name: &str) -> PathBuf {

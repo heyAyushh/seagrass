@@ -250,6 +250,7 @@ fn diagnostics_for_parse_error(
             workspace_index,
             framework: crate::solana::frameworks::FrameworkContext::from_document(&document),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
             solana_program: None,
