@@ -401,11 +401,19 @@ impl Backend {
             }
         }
 
-        let mut diagnostics = open_document
-            .syntax_diagnostic
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>();
+        let workspace_roots = self
+            .workspace_roots
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone();
+        let seagrass_toml = project::nearest_seagrass_toml_with_roots(uri, &workspace_roots);
+        let mut diagnostics = syntax_diagnostics_for_document(
+            document,
+            open_document,
+            seagrass_toml
+                .as_ref()
+                .map(|(_, seagrass_toml_text)| seagrass_toml_text.as_str()),
+        );
         diagnostics.extend(self.collect_diagnostics_for_uri_with_typing_suppression(
             uri,
             document,

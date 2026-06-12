@@ -329,12 +329,14 @@ pub(super) fn hot_diagnostics_for_document(
     workspace_roots: &[Url],
     typing_suppression: Option<diagnostics::TypingSuppressionRegion>,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
-    let mut diagnostics = open_document
-        .syntax_diagnostic
-        .clone()
-        .into_iter()
-        .collect::<Vec<_>>();
     let seagrass_toml = project::nearest_seagrass_toml_with_roots(uri, workspace_roots);
+    let mut diagnostics = syntax_diagnostics_for_document(
+        document,
+        open_document,
+        seagrass_toml
+            .as_ref()
+            .map(|(_, seagrass_toml_text)| seagrass_toml_text.as_str()),
+    );
     diagnostics.extend(diagnostics::collect_hot_with_input(
         diagnostics::DiagnosticInput {
             document,
@@ -354,6 +356,22 @@ pub(super) fn hot_diagnostics_for_document(
         },
     ));
     diagnostics::dedupe(diagnostics)
+}
+
+pub(super) fn syntax_diagnostics_for_document(
+    document: &ParsedDocument,
+    open_document: &OpenDocument,
+    seagrass_toml: Option<&str>,
+) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    diagnostics::suppression::filter(
+        document,
+        seagrass_toml,
+        open_document
+            .syntax_diagnostic
+            .clone()
+            .into_iter()
+            .collect::<Vec<_>>(),
+    )
 }
 
 pub(super) fn server_capabilities(
@@ -612,6 +630,57 @@ mod manifest_watcher_tests {
                 "**/Anchor.toml".to_string(),
                 "**/Seagrass.toml".to_string(),
             ]
+        );
+    }
+}
+
+#[cfg(test)]
+mod syntax_diagnostic_suppression_tests {
+    use super::*;
+
+    #[test]
+    fn seagrass_ignore_suppresses_open_document_syntax_diagnostic() {
+        let source = r#"
+pub fn handler() -> Result<()> {
+    // seagrass-ignore
+    position_bundle.(bundle_index)?;
+    Ok(())
+}
+"#;
+        let document = ParsedOpenDocument::new(source.to_string(), Some(1));
+        assert!(
+            document.open.syntax_diagnostic.is_some(),
+            "fixture must produce the parse-pause diagnostic"
+        );
+
+        let diagnostics = syntax_diagnostics_for_document(&document.parsed, &document.open, None);
+
+        assert!(
+            diagnostics.is_empty(),
+            "`seagrass-ignore` must suppress the parse-pause diagnostic: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn workspace_allow_suppresses_open_document_syntax_diagnostic() {
+        let source = r#"
+pub fn handler() -> Result<()> {
+    position_bundle.(bundle_index)?;
+    Ok(())
+}
+"#;
+        let document = ParsedOpenDocument::new(source.to_string(), Some(1));
+        let seagrass_toml = r#"
+[lints]
+allow = ["seagrass/anchor.syntax"]
+"#;
+
+        let diagnostics =
+            syntax_diagnostics_for_document(&document.parsed, &document.open, Some(seagrass_toml));
+
+        assert!(
+            diagnostics.is_empty(),
+            "workspace syntax suppression must cover parse-pause diagnostics: {diagnostics:#?}"
         );
     }
 }

@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- lsp: apply `seagrass-ignore` and workspace lint allowances to open-document
+  syntax diagnostics before publishing editor Problems.
 - lsp: add a bounded workspace call graph for reachable-helper signer defense
   and unambiguous reachable-helper CPI program diagnostics.
 - lsp: add Anchor account-space estimation for hovers and code lenses, with

@@ -16,7 +16,7 @@ const ANY_SUPPRESSION_PATTERN: &str = "*";
 const NEXT_LINE_OFFSET: u32 = 1;
 const CODE_RULE_SEPARATOR: &str = ".";
 
-pub(super) fn filter(
+pub(crate) fn filter(
     document: &ParsedDocument,
     seagrass_toml: Option<&str>,
     diagnostics: Vec<Diagnostic>,

@@ -22,7 +22,7 @@ mod registry;
 mod rules;
 mod security;
 mod spl_semantics;
-mod suppression;
+pub(crate) mod suppression;
 
 use {
     crate::{
