@@ -118,6 +118,7 @@ VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settin
 - `diagnostics.security.instructionDataBounds`
 - `diagnostics.security.pdaSeedCollision`
 - `security.strictNative.enabled`
+- `diagnostics.artifacts.enabled`
 - `diagnostics.experimental.enabled`
 - `diagnostics.transport`
 - `diagnostics.coldPath`
@@ -126,7 +127,6 @@ VS Code uses `seagrass.*`. Zed uses `lsp.seagrass.settings.*`. Keep these settin
 - `editor.inlineValues.enabled`
 - `telemetry.completion.enabled`
 - `telemetry.diagnostics.enabled`
-- `inlayHints.enabled`
 - `workspaceIndex.enabled`
 - `trace.server`
 
@@ -142,6 +142,28 @@ Server launch settings are editor-specific because each editor models binaries d
 1. Explicit editor binary setting.
 2. `seagrass` on `PATH`.
 3. Local `cargo run` fallback for development.
+
+## Silent Surfaces
+
+Silent control surfaces must have one canon and one loud guard:
+
+- Server settings canon: `src/runtime/server_types/mod.rs::RECOGNIZED_SETTING_KEYS`.
+  The generated `editors/recognized-settings.json`,
+  `bun scripts/check-recognized-settings.ts`, and
+  `bun editors/check-ui-contract.ts` keep VS Code, Vim/CoC, and this contract
+  aligned with what the server actually parses.
+- Suppression choke point: `src/server/helpers.rs::syntax_diagnostics_for_document`
+  for parse-pause diagnostics plus `src/lsp/diagnostics/engine.rs` for semantic
+  diagnostics. `tests/jsonrpc_lsp.rs` proves suppression through push, pull,
+  parse-pause, and real `Seagrass.toml` discovery paths.
+- `Seagrass.toml` key canon:
+  `src/lsp/diagnostics/suppression.rs::SEAGRASS_TOML_KEY_PATHS`.
+  `bun scripts/check-seagrass-toml-contract.ts` rejects docs, skills, or editor
+  examples that show unparsed config keys.
+- Release artifact canon: `.github/workflows/release.yaml`.
+  `bun scripts/check-release-parity.ts` checks installer target names against the
+  release matrix, and `.github/workflows/install-smoke.yaml` proves build-time
+  and release-time install paths on macOS, Linux, and Windows.
 
 ## Manifest Watching
 

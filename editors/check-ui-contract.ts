@@ -31,7 +31,25 @@ const vimReadme = read("vim/README.md");
 const vimCocSettings = JSON.parse(read("vim/coc-settings.json"));
 const feedbackManifest = read("feedback.toml");
 const contract = read("UI_CONTRACT.md");
+const recognizedSettingsManifest = JSON.parse(read("recognized-settings.json"));
 const vscodeSettings = packageJson.contributes.configuration.properties;
+const recognizedSettings = new Set(recognizedSettingsManifest.recognizedSettings);
+const extensionLocalSettings = new Map([
+  ["serverCommand", "VS Code launch command; resolved before the LSP starts."],
+  ["serverArgs", "VS Code launch arguments; resolved before the LSP starts."],
+  ["serverCwd", "VS Code launch cwd; resolved before the LSP starts."],
+  ["serverEnv", "VS Code launch environment; resolved before the LSP starts."],
+  ["dev.useCargoFromCheckout", "VS Code development launcher switch."],
+  ["diagnostics.confidenceDecorations", "VS Code-only presentation of server metadata."],
+  ["tridentCoverage.reportPath", "VS Code-only Trident coverage overlay input."],
+  ["tridentCoverage.searchGlobs", "VS Code-only Trident coverage discovery input."],
+  ["tridentCoverage.showExecutionCount", "VS Code-only Trident gutter display toggle."],
+  ["inlayHints.enabled", "VS Code inlay-hint presentation toggle; no server setting exists yet."],
+]);
+const hiddenServerSettings = new Map([
+  ["diagnostics.security.strictNative.enabled", "Legacy alias for security.strictNative.enabled."],
+  ["editor.client", "Adapter identity supplied by clients/templates, not a user knob."],
+]);
 const securityFamilies = [
   "ownerChecks",
   "typeCosplay",
@@ -122,6 +140,83 @@ assert(
   cocServer.settings.seagrass["diagnostics.transport"] === "push",
   "CoC template should keep push diagnostics",
 );
+assertSettingsParity();
+
+function assertSettingsParity() {
+  assert(
+    Array.isArray(recognizedSettingsManifest.recognizedSettings),
+    "recognized settings manifest must expose recognizedSettings",
+  );
+  assert(
+    recognizedSettingsManifest.source === "src/runtime/server_types/mod.rs::RECOGNIZED_SETTING_KEYS",
+    "recognized settings manifest points at the wrong source",
+  );
+
+  const vscodeServerKeys = Object.keys(vscodeSettings)
+    .filter((key) => key.startsWith("seagrass."))
+    .map((key) => key.replace(/^seagrass\./, ""));
+
+  for (const key of vscodeServerKeys) {
+    const reason = extensionLocalSettings.get(key);
+    assert(
+      recognizedSettings.has(key) || reason,
+      `VS Code setting seagrass.${key} is not recognized by the server and has no local-only reason`,
+    );
+  }
+
+  for (const key of recognizedSettings) {
+    const visibleInVscode = vscodeServerKeys.includes(key);
+    const hiddenReason = hiddenServerSettings.get(key);
+    assert(
+      visibleInVscode || hiddenReason,
+      `server setting ${key} is missing from VS Code contributes.configuration`,
+    );
+  }
+
+  for (const key of cocSeagrassKeys(cocServer)) {
+    assert(recognizedSettings.has(key), `CoC setting ${key} is not recognized by the server`);
+  }
+
+  for (const key of uiContractSettingKeys(contract)) {
+    assert(recognizedSettings.has(key), `UI contract setting ${key} is not recognized by the server`);
+  }
+}
+
+function cocSeagrassKeys(server) {
+  return [
+    ...flattenSettingKeys(server.initializationOptions?.seagrass ?? {}),
+    ...flattenSettingKeys(server.settings?.seagrass ?? {}),
+  ].filter(uniqueStrings).sort(compareStrings);
+}
+
+function flattenSettingKeys(value, prefix = "") {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return [];
+  }
+  return Object.entries(value).flatMap(([key, entry]) => {
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+    if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+      return flattenSettingKeys(entry, fullKey);
+    }
+    return [fullKey];
+  });
+}
+
+function uiContractSettingKeys(text) {
+  const section = text
+    .split("Keep these settings equivalent:")[1]
+    ?.split("Security family settings")[0];
+  assert(section, "UI contract settings section is missing");
+  return [...section.matchAll(/- `([^`]+)`/g)].map((match) => match[1]);
+}
+
+function uniqueStrings(value, index, values) {
+  return values.indexOf(value) === index;
+}
+
+function compareStrings(left, right) {
+  return left.localeCompare(right);
+}
 
 function read(relativePath) {
   return readFileSync(join(editorsDir, relativePath), "utf8");

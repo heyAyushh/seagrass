@@ -17,6 +17,38 @@ export type ReleasePlatform = {
   archiveExtension: string;
 };
 
+export type ReleasePlatformMapping = ReleasePlatform & {
+  platform: string;
+  archs: string[];
+};
+
+export const SUPPORTED_RELEASE_PLATFORMS: readonly ReleasePlatformMapping[] = [
+  {
+    platform: "darwin",
+    archs: ["arm64", "aarch64"],
+    target: DARWIN_ARM64_TARGET,
+    archiveExtension: TARBALL_EXTENSION,
+  },
+  {
+    platform: "darwin",
+    archs: ["x64"],
+    target: DARWIN_X64_TARGET,
+    archiveExtension: TARBALL_EXTENSION,
+  },
+  {
+    platform: "linux",
+    archs: ["x64"],
+    target: LINUX_X64_TARGET,
+    archiveExtension: TARBALL_EXTENSION,
+  },
+  {
+    platform: "win32",
+    archs: ["x64"],
+    target: WINDOWS_X64_TARGET,
+    archiveExtension: ZIP_EXTENSION,
+  },
+];
+
 export function binaryExtension(platform: string = process.platform): string {
   return platform === "win32" ? WINDOWS_BINARY_EXTENSION : "";
 }
@@ -55,19 +87,15 @@ export function supportedReleasePlatform(
   platform: string = process.platform,
   arch: string = process.arch,
 ): ReleasePlatform | undefined {
-  if (platform === "darwin" && (arch === "arm64" || arch === "aarch64")) {
-    return { target: DARWIN_ARM64_TARGET, archiveExtension: TARBALL_EXTENSION };
-  }
-  if (platform === "darwin" && arch === "x64") {
-    return { target: DARWIN_X64_TARGET, archiveExtension: TARBALL_EXTENSION };
-  }
-  if (platform === "linux" && arch === "x64") {
-    return { target: LINUX_X64_TARGET, archiveExtension: TARBALL_EXTENSION };
-  }
-  if (platform === "win32" && arch === "x64") {
-    return { target: WINDOWS_X64_TARGET, archiveExtension: ZIP_EXTENSION };
-  }
-  return undefined;
+  const releasePlatform = SUPPORTED_RELEASE_PLATFORMS.find(
+    (entry) => entry.platform === platform && entry.archs.includes(arch),
+  );
+  return releasePlatform
+    ? {
+        target: releasePlatform.target,
+        archiveExtension: releasePlatform.archiveExtension,
+      }
+    : undefined;
 }
 
 export function expectedSha256(checksumText: string, archiveName: string): string {

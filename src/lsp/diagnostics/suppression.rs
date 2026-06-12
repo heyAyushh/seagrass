@@ -15,6 +15,8 @@ const LINE_COMMENT_DELIMITER: &str = "//";
 const ANY_SUPPRESSION_PATTERN: &str = "*";
 const NEXT_LINE_OFFSET: u32 = 1;
 const CODE_RULE_SEPARATOR: &str = ".";
+#[allow(dead_code)] // Consumed by scripts/check-seagrass-toml-contract.ts as the TOML key canon.
+pub const SEAGRASS_TOML_KEY_PATHS: &[&str] = &["lints.allow"];
 
 pub(crate) fn filter(
     document: &ParsedDocument,
@@ -380,6 +382,16 @@ allow = [
     #[test]
     fn workspace_config_malformed_toml_is_ignored() {
         assert!(workspace_allow_patterns(Some("[lints]\nallow = [")).is_empty());
+    }
+
+    #[test]
+    fn seagrass_toml_key_paths_are_sorted_and_unique() {
+        for pair in SEAGRASS_TOML_KEY_PATHS.windows(2) {
+            assert!(
+                pair[0] < pair[1],
+                "Seagrass.toml key paths must be sorted and unique: {SEAGRASS_TOML_KEY_PATHS:?}"
+            );
+        }
     }
 
     #[test]

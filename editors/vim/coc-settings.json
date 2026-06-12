@@ -32,6 +32,7 @@
       "settings": {
         "seagrass": {
           "agent.mode": false,
+          "diagnostics.artifacts.enabled": false,
           "diagnostics.security.enabled": true,
           "diagnostics.experimental.enabled": true,
           "security.strictNative.enabled": true,
@@ -41,7 +42,6 @@
           "editor.inlineValues.enabled": false,
           "telemetry.completion.enabled": true,
           "telemetry.diagnostics.enabled": true,
-          "inlayHints.enabled": true,
           "workspaceIndex.enabled": true,
           "trace.server": false
         }

@@ -80,13 +80,28 @@ download_file() {
   exit 1
 }
 
+is_musl_linux() {
+  if ! command -v ldd >/dev/null 2>&1; then
+    return 1
+  fi
+  ldd --version 2>&1 | grep -qi musl
+}
+
+linux_x86_64_target() {
+  if is_musl_linux; then
+    echo "x86_64-unknown-linux-musl"
+    return
+  fi
+  echo "x86_64-unknown-linux-gnu"
+}
+
 detect_target() {
   os_name=$(uname -s)
   arch_name=$(uname -m)
 
   case "${os_name}:${arch_name}" in
     Linux:x86_64)
-      echo "x86_64-unknown-linux-gnu"
+      linux_x86_64_target
       ;;
     Darwin:arm64|Darwin:aarch64)
       echo "aarch64-apple-darwin"

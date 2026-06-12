@@ -1,0 +1,121 @@
+name: Seagrass Install Smoke
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/install-smoke.yaml"
+      - ".github/workflows/release.yaml"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "VERSION"
+      - "editors/vscode/src/serverInstall*.ts"
+      - "editors/vscode/server-install-model.test.ts"
+      - "scripts/install*.sh"
+      - "scripts/smoke-install.sh"
+      - "scripts/smoke-release-install.ts"
+      - "scripts/protocol-smoke.ts"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag for smoke-release, e.g. v0.1.2"
+        required: false
+        type: string
+
+env:
+  NODE_VERSION: "24"
+
+jobs:
+  smoke-build:
+    name: Build smoke (${{ matrix.os }})
+    if: github.event_name != 'release'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: dtolnay/rust-toolchain@e97e2d8cc328f1b50210efc529dca0028893a2d9 # v1
+        with:
+          toolchain: 1.89.0
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Install Bun
+        run: node scripts/install-bun-ci.mjs
+      - name: Build server
+        run: cargo build -p seagrass-cli --locked
+      - name: Check built server version
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(tr -d '[:space:]' < VERSION)"
+          binary="./target/debug/seagrass"
+          if [[ "${RUNNER_OS}" == "Windows" ]]; then
+            binary="./target/debug/seagrass.exe"
+          fi
+          output="$("$binary" --version)"
+          if ! grep -Eq "(^|[[:space:]])v?${version}([[:space:]]|$)" <<<"$output"; then
+            echo "expected version ${version}, got: ${output}" >&2
+            exit 1
+          fi
+      - name: Run Unix install smoke
+        if: runner.os != 'Windows'
+        run: scripts/smoke-install.sh
+      - name: Run protocol smoke
+        run: bun scripts/protocol-smoke.ts
+
+  smoke-release:
+    name: Release smoke (${{ matrix.os }})
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.tag != '')
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@6044e13b5dc448c55e2357c09f80417699197238 # v6.2.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          package-manager-cache: false
+      - name: Install Bun
+        run: node scripts/install-bun-ci.mjs
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${{ github.event_name == 'release' && github.event.release.tag_name || inputs.tag }}"
+          if [[ -z "$tag" ]]; then
+            echo "release tag is required" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+      - name: Run Unix installer against release
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          install_dir="${RUNNER_TEMP}/seagrass-bin"
+          sh scripts/install.sh --version "${{ steps.release.outputs.tag }}" --install-dir "$install_dir"
+          output="$("${install_dir}/seagrass" --version)"
+          version="${{ steps.release.outputs.tag }}"
+          version="${version#v}"
+          if ! grep -Eq "(^|[[:space:]])v?${version}([[:space:]]|$)" <<<"$output"; then
+            echo "expected version ${version}, got: ${output}" >&2
+            exit 1
+          fi
+      - name: Run release artifact smoke
+        run: bun scripts/smoke-release-install.ts --tag "${{ steps.release.outputs.tag }}"

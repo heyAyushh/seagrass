@@ -250,6 +250,21 @@
           "default": "",
           "description": "Override the Seagrass feedback URL returned by the language server. Leave empty to use the bundled URL."
         },
+        "seagrass.editor.inlineValues.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Include editor inline-value capability context in Seagrass reports."
+        },
+        "seagrass.telemetry.completion.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow completion telemetry fields in Seagrass server reports."
+        },
+        "seagrass.telemetry.diagnostics.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Allow diagnostic telemetry fields in Seagrass server reports."
+        },
         "seagrass.diagnostics.security.enabled": {
           "type": "boolean",
           "default": true,
@@ -365,6 +380,11 @@
           "default": "warn",
           "description": "Severity for PDA seed-collision security diagnostics."
         },
+        "seagrass.security.strictNative.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require stronger proof before native Solana and Pinocchio security diagnostics escalate."
+        },
         "seagrass.diagnostics.transport": {
           "type": "string",
           "enum": [
@@ -402,6 +422,11 @@
           "type": "boolean",
           "default": true,
           "description": "Show per-line execution counts from Trident coverage in the editor gutter."
+        },
+        "seagrass.diagnostics.artifacts.enabled": {
+          "type": "boolean",
+          "default": false,
+          "description": "Enable local artifact freshness diagnostics for SBPF ELF, IDL, and generated TypeScript files."
         },
         "seagrass.diagnostics.coldPath": {
           "type": "string",

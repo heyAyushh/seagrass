@@ -1,7 +1,7 @@
 use {
     serde_json::{json, Value},
     std::{
-        fs::{create_dir_all, remove_dir_all},
+        fs::{create_dir_all, remove_dir_all, write},
         io::{Read, Write},
         path::{Path, PathBuf},
         process::{Child, ChildStdin, Command, Stdio},
@@ -14,6 +14,44 @@ use {
 const LSP_REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
 const SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
 const FORMAT_SOURCE: &str = "pub fn formatting_smoke(){let value=1;}\n";
+const SUPPRESSED_ANCHOR_SOURCE: &str = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    // seagrass-ignore
+    #[account(init)]
+    pub state: Account<'info, State>,
+    pub payer: Signer<'info>,
+}
+
+#[account]
+pub struct State {
+    pub value: u64,
+}
+"#;
+const UNSUPPRESSED_ANCHOR_SOURCE: &str = r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init)]
+    pub state: Account<'info, State>,
+    pub payer: Signer<'info>,
+}
+
+#[account]
+pub struct State {
+    pub value: u64,
+}
+"#;
+const SUPPRESSED_PARSE_PAUSE_SOURCE: &str = r#"
+pub fn handler() -> Result<()> {
+    // seagrass-ignore
+    position_bundle.(bundle_index)?;
+    Ok(())
+}
+"#;
 const PINOCCHIO_SOURCE: &str = r#"
 use pinocchio::{account_info::AccountInfo, ProgramResult};
 
@@ -274,6 +312,120 @@ fn jsonrpc_lsp_formats_and_reports_framework_diagnostics() {
     client.shutdown();
 }
 
+#[test]
+fn jsonrpc_suppression_applies_to_push_diagnostics() {
+    let workspace = TestWorkspace::new("jsonrpc-push-suppression");
+    let mut client = LspClient::spawn();
+    let initialize = client.request(
+        "initialize",
+        json!({
+            "processId": null,
+            "rootUri": file_uri(workspace.path()),
+            "workspaceFolders": [
+                { "uri": file_uri(workspace.path()), "name": "jsonrpc-push-suppression" }
+            ],
+            "capabilities": {}
+        }),
+    );
+    assert!(
+        initialize
+            .pointer("/capabilities/diagnosticProvider")
+            .is_none(),
+        "push transport should not advertise pull diagnostics: {initialize}"
+    );
+    client.notify("initialized", json!({}));
+
+    let uri = workspace.file_uri("suppressed_push.rs");
+    workspace.write_file("suppressed_push.rs", SUPPRESSED_ANCHOR_SOURCE);
+    client.open_rust_document(&uri, SUPPRESSED_ANCHOR_SOURCE);
+    let published = client.read_notification("textDocument/publishDiagnostics", |message| {
+        message.pointer("/params/uri").and_then(Value::as_str) == Some(uri.as_str())
+    });
+
+    assert_empty_published_diagnostics(&published);
+    client.shutdown();
+}
+
+#[test]
+fn jsonrpc_suppression_applies_to_pull_parse_pause_and_seagrass_toml() {
+    let workspace = TestWorkspace::new("jsonrpc-pull-suppression");
+    let mut client = LspClient::spawn();
+    client.request(
+        "initialize",
+        json!({
+            "processId": null,
+            "rootUri": file_uri(workspace.path()),
+            "workspaceFolders": [
+                { "uri": file_uri(workspace.path()), "name": "jsonrpc-pull-suppression" }
+            ],
+            "initializationOptions": {
+                "seagrass": {
+                    "diagnostics": { "transport": "pull" }
+                }
+            },
+            "capabilities": {
+                "textDocument": {
+                    "diagnostic": { "dynamicRegistration": false }
+                }
+            }
+        }),
+    );
+    client.notify("initialized", json!({}));
+
+    let ignored_uri = workspace.file_uri("suppressed_pull.rs");
+    workspace.write_file("suppressed_pull.rs", SUPPRESSED_ANCHOR_SOURCE);
+    client.open_rust_document(&ignored_uri, SUPPRESSED_ANCHOR_SOURCE);
+    assert_empty_pull_diagnostics(&client.pull_diagnostics(&ignored_uri));
+
+    workspace.write_file("suppressed_pull.rs", SUPPRESSED_PARSE_PAUSE_SOURCE);
+    client.change_rust_document(&ignored_uri, 2, SUPPRESSED_PARSE_PAUSE_SOURCE);
+    assert_empty_pull_diagnostics(&client.pull_diagnostics(&ignored_uri));
+
+    workspace.write_file("suppressed_pull.rs", SUPPRESSED_ANCHOR_SOURCE);
+    client.change_rust_document(&ignored_uri, 3, SUPPRESSED_ANCHOR_SOURCE);
+    assert_empty_pull_diagnostics(&client.pull_diagnostics(&ignored_uri));
+
+    workspace.write_file(
+        "Seagrass.toml",
+        r#"
+[lints]
+allow = [
+    "seagrass/anchor.constraint.shape",
+    "seagrass/anchor.init.missing-payer",
+    "seagrass/anchor.init.missing-space",
+]
+"#,
+    );
+    let toml_uri = workspace.file_uri("suppressed_by_toml.rs");
+    workspace.write_file("suppressed_by_toml.rs", UNSUPPRESSED_ANCHOR_SOURCE);
+    client.open_rust_document(&toml_uri, UNSUPPRESSED_ANCHOR_SOURCE);
+    assert_empty_pull_diagnostics(&client.pull_diagnostics(&toml_uri));
+
+    client.shutdown();
+}
+
+fn assert_empty_pull_diagnostics(diagnostics: &Value) {
+    let items = diagnostics
+        .get("items")
+        .and_then(Value::as_array)
+        .expect("diagnostic report should contain items");
+    assert!(
+        items.is_empty(),
+        "suppressed pull diagnostics should be empty: {diagnostics}"
+    );
+}
+
+fn assert_empty_published_diagnostics(notification: &Value) {
+    let diagnostics = notification
+        .pointer("/params/diagnostics")
+        .and_then(Value::as_array)
+        .expect("publishDiagnostics should contain diagnostics");
+    assert!(
+        diagnostics.is_empty(),
+        "suppressed published diagnostics should be empty: {notification}"
+    );
+}
+
 fn assert_diagnostic_attack(diagnostics: &Value, attack: &str, program_kind: Option<&str>) {
     let found = diagnostic_with_attack(diagnostics, attack, program_kind);
     assert!(
@@ -409,6 +561,22 @@ impl LspClient {
         }
     }
 
+    fn read_notification(&self, method: &str, predicate: impl Fn(&Value) -> bool) -> Value {
+        let deadline = Instant::now() + LSP_REQUEST_TIMEOUT;
+        loop {
+            let now = Instant::now();
+            assert!(now < deadline, "timed out waiting for {method}");
+            let message = self
+                .messages
+                .recv_timeout(deadline.saturating_duration_since(now))
+                .unwrap_or_else(|error| panic!("timed out waiting for {method}: {error}"));
+            if message.get("method").and_then(Value::as_str) == Some(method) && predicate(&message)
+            {
+                return message;
+            }
+        }
+    }
+
     fn notify(&mut self, method: &str, params: Value) {
         self.send(json!({
             "jsonrpc": "2.0",
@@ -434,6 +602,21 @@ impl LspClient {
                     "version": 1,
                     "text": text
                 }
+            }),
+        );
+    }
+
+    fn change_rust_document(&mut self, uri: &str, version: i32, text: &str) {
+        self.notify(
+            "textDocument/didChange",
+            json!({
+                "textDocument": {
+                    "uri": uri,
+                    "version": version
+                },
+                "contentChanges": [
+                    { "text": text }
+                ]
             }),
         );
     }
@@ -515,6 +698,10 @@ impl TestWorkspace {
 
     fn file_uri(&self, name: &str) -> String {
         file_uri(&self.root.join(name))
+    }
+
+    fn write_file(&self, name: &str, text: &str) {
+        write(self.root.join(name), text).expect("test workspace file should be written");
     }
 }
 

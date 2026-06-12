@@ -363,6 +363,8 @@ pub(super) fn syntax_diagnostics_for_document(
     open_document: &OpenDocument,
     seagrass_toml: Option<&str>,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    // single choke point for open-document syntax diagnostics: every publish or
+    // pull path must route parse-pause diagnostics through suppression here.
     diagnostics::suppression::filter(
         document,
         seagrass_toml,

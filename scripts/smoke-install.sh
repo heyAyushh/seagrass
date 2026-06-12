@@ -7,21 +7,22 @@ cd "$ROOT"
 
 FIXTURE="${ROOT}/fixtures/smoke-broken.rs"
 SMOKE_PATTERN='payer must be provided|space must be provided|missing `payer|missing `space|missing-payer|init` constraint is missing `payer'
+VERSION="$(tr -d '[:space:]' < "${ROOT}/VERSION")"
 
-run_diagnostics() {
+run_seagrass() {
   if [[ -x "${ROOT}/target/debug/seagrass" ]]; then
-    "${ROOT}/target/debug/seagrass" diagnostics "$FIXTURE" --json
+    "${ROOT}/target/debug/seagrass" "$@"
     return
   fi
   if [[ -x "${ROOT}/target/release/seagrass" ]]; then
-    "${ROOT}/target/release/seagrass" diagnostics "$FIXTURE" --json
+    "${ROOT}/target/release/seagrass" "$@"
     return
   fi
   if command -v seagrass >/dev/null 2>&1; then
-    seagrass diagnostics "$FIXTURE" --json
+    seagrass "$@"
     return
   fi
-  cargo run -p seagrass-cli --quiet -- diagnostics "$FIXTURE" --json
+  cargo run -p seagrass-cli --quiet -- "$@"
 }
 
 echo "==> Seagrass install smoke"
@@ -32,8 +33,14 @@ if [[ ! -f "$FIXTURE" ]]; then
   exit 2
 fi
 
+VERSION_OUTPUT="$(run_seagrass --version)"
+if ! printf '%s' "$VERSION_OUTPUT" | grep -Eq "(^|[[:space:]])v?${VERSION}([[:space:]]|$)"; then
+  echo "error: seagrass --version did not contain ${VERSION}: ${VERSION_OUTPUT}" >&2
+  exit 1
+fi
+
 set +e
-JSON="$(run_diagnostics)"
+JSON="$(run_seagrass diagnostics "$FIXTURE" --json)"
 STATUS=$?
 set -e
 if [[ "$STATUS" -ge 2 ]]; then

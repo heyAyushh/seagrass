@@ -230,6 +230,12 @@ impl LanguageServer for Backend {
         let diagnostics_transport =
             diagnostics_transport_from_initialize_options(params.initialization_options.as_ref());
         self.set_diagnostics_transport(diagnostics_transport);
+        if let Some(initialization_options) = params.initialization_options {
+            self.settings
+                .lock()
+                .unwrap_or_else(|err| err.into_inner())
+                .apply(initialization_options);
+        }
         // Defer workspace indexing to `initialized` — LSP spec requires
         // `initialize` to return fast; scanning the workspace tree during
         // the handshake causes timeout on larger projects.

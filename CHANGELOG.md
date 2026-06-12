@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- ci: guard silent editor and installer control surfaces with settings,
+  suppression, `Seagrass.toml`, release-parity, and install-smoke checks.
 - lsp: apply `seagrass-ignore` and workspace lint allowances to open-document
   syntax diagnostics before publishing editor Problems.
 - lsp: add a bounded workspace call graph for reachable-helper signer defense

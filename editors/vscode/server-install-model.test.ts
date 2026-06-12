@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  SUPPORTED_RELEASE_PLATFORMS,
   cachedBinaryName,
   expectedSha256,
   releaseArchiveName,
@@ -11,6 +12,12 @@ import {
 
 describe("server install model", () => {
   test("maps supported platforms to release archive names", () => {
+    expect(SUPPORTED_RELEASE_PLATFORMS.map((platform) => platform.target)).toEqual([
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-pc-windows-msvc",
+    ]);
     expect(releaseArchiveName("0.1.2", "darwin", "arm64")).toBe(
       "seagrass-0.1.2-aarch64-apple-darwin.tar.gz",
     );

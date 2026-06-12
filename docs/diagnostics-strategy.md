@@ -68,6 +68,12 @@ source roots with 0 ERROR-severity diagnostics, so Plan 08 fixed 0 FP families a
 empty exclusion table. This guard gives an objective definition of "false positive" that doesn't
 depend on us imagining edge cases.
 
+Corpus gates guard diagnostic claims: Seagrass should not accuse real programs
+without proof. Silent-surface gates guard controls: settings, suppression forms,
+`Seagrass.toml`, and install artifacts must not drift into knobs that do
+nothing. Both guard classes are required for an editor experience that is quiet
+when it should be quiet and loud when a control-plane contract breaks.
+
 ### Decisions taken
 - **Absence policy:** suppress entirely without whole-program evidence (zero FPs; genuine typos still
   caught once the workspace index is populated — the LSP default).
