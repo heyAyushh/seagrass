@@ -39,8 +39,10 @@ This page documents the user-facing diagnostic topic.
 
     expect(failures.join("\n")).toContain("generic boilerplate");
     expect(failures.join("\n")).toContain("seagrass-allow-file");
+    expect(failures.join("\n")).toContain("seagrass-ignore-file");
     expect(failures.join("\n")).toContain("#[seagrass(allow");
     expect(failures.join("\n")).toContain("[lints]");
+    expect(failures.join("\n")).toContain("[package.metadata.seagrass]");
   });
 
   test("generated pages document all suppression forms", () => {
@@ -54,8 +56,11 @@ This page documents the user-facing diagnostic topic.
     expect(failures).toEqual([]);
     expect(page).toContain(`// seagrass-allow: ${topic.name}`);
     expect(page).toContain(`// seagrass-allow-file: ${topic.name}`);
+    expect(page).toContain("// seagrass-ignore-file");
     expect(page).toContain("Item or block suppression");
     expect(page).toContain(`#[seagrass(allow("${topic.name}"))]`);
     expect(page).toContain(`allow = ["${topic.name}"]`);
+    expect(page).toContain("[package.metadata.seagrass]");
+    expect(page).toContain("suppress = true");
   });
 });

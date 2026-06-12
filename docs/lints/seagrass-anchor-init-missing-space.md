@@ -43,6 +43,12 @@ File suppression:
 // seagrass-allow-file: seagrass/anchor.init.missing-space
 ```
 
+Whole-file suppression (all Seagrass diagnostics, leading file comment only):
+
+```rust
+// seagrass-ignore-file
+```
+
 Item or block suppression:
 
 ```rust
@@ -57,6 +63,13 @@ Workspace suppression in `Seagrass.toml`:
 ```toml
 [lints]
 allow = ["seagrass/anchor.init.missing-space"]
+```
+
+Project suppression in `Cargo.toml` (all Seagrass diagnostics):
+
+```toml
+[package.metadata.seagrass]
+suppress = true
 ```
 
 Prefer fixing the underlying Anchor or Solana invariant when the diagnostic has

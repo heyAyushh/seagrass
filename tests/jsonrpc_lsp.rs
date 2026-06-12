@@ -347,7 +347,7 @@ fn jsonrpc_suppression_applies_to_push_diagnostics() {
 }
 
 #[test]
-fn jsonrpc_suppression_applies_to_pull_parse_pause_and_seagrass_toml() {
+fn jsonrpc_suppression_applies_to_pull_parse_pause_seagrass_toml_and_cargo() {
     let workspace = TestWorkspace::new("jsonrpc-pull-suppression");
     let mut client = LspClient::spawn();
     client.request(
@@ -400,6 +400,22 @@ allow = [
     workspace.write_file("suppressed_by_toml.rs", UNSUPPRESSED_ANCHOR_SOURCE);
     client.open_rust_document(&toml_uri, UNSUPPRESSED_ANCHOR_SOURCE);
     assert_empty_pull_diagnostics(&client.pull_diagnostics(&toml_uri));
+
+    workspace.write_file(
+        "Cargo.toml",
+        r#"
+[package]
+name = "jsonrpc-pull-suppression"
+version = "0.1.0"
+
+[package.metadata.seagrass]
+suppress = true
+"#,
+    );
+    let cargo_uri = workspace.file_uri("suppressed_by_cargo.rs");
+    workspace.write_file("suppressed_by_cargo.rs", PINOCCHIO_SOURCE);
+    client.open_rust_document(&cargo_uri, PINOCCHIO_SOURCE);
+    assert_empty_pull_diagnostics(&client.pull_diagnostics(&cargo_uri));
 
     client.shutdown();
 }

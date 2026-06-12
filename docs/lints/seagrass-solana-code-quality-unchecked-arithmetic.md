@@ -53,7 +53,7 @@ Use the narrowest suppression form that matches the false positive.
 Line or next-line suppression:
 
 ```rust
-let next = ctx.accounts.vault.amount - fee; // seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic
+// seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic
 ```
 
 File suppression:
@@ -62,19 +62,34 @@ File suppression:
 // seagrass-allow-file: seagrass/solana.code-quality.unchecked-arithmetic
 ```
 
+Whole-file suppression (all Seagrass diagnostics, leading file comment only):
+
+```rust
+// seagrass-ignore-file
+```
+
 Item or block suppression:
 
 ```rust
 #[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]
-pub fn withdraw(ctx: Context<Withdraw>, fee: u64) -> Result<()> {
-    let next = ctx.accounts.vault.amount - fee;
-    Ok(())
+{
+  // diagnostic scope
 }
 ```
 
-Workspace suppression:
+Workspace suppression in `Seagrass.toml`:
 
 ```toml
 [lints]
 allow = ["seagrass/solana.code-quality.unchecked-arithmetic"]
 ```
+
+Project suppression in `Cargo.toml` (all Seagrass diagnostics):
+
+```toml
+[package.metadata.seagrass]
+suppress = true
+```
+
+Prefer fixing the underlying Anchor or Solana invariant when the diagnostic has
+enough evidence to point at a concrete issue.

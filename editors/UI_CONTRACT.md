@@ -160,6 +160,12 @@ Silent control surfaces must have one canon and one loud guard:
   `src/lsp/diagnostics/suppression.rs::SEAGRASS_TOML_KEY_PATHS`.
   `bun scripts/check-seagrass-toml-contract.ts` rejects docs, skills, or editor
   examples that show unparsed config keys.
+- Cargo project suppression canon:
+  `src/lsp/diagnostics/suppression.rs` parses
+  `[package.metadata.seagrass] suppress = true` and
+  `[workspace.metadata.seagrass] suppress = true` from
+  `DiagnosticInput.manifest`/`workspace_manifest` in the same suppression choke
+  point.
 - Release artifact canon: `.github/workflows/release.yaml`.
   `bun scripts/check-release-parity.ts` checks installer target names against the
   release matrix, and `.github/workflows/install-smoke.yaml` proves build-time

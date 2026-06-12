@@ -99,10 +99,13 @@ export function pageContentFailures(topic: TopicEntry, path: string, text: strin
       "## Suppression",
       `// seagrass-allow: ${topic.name}`,
       `// seagrass-allow-file: ${topic.name}`,
+      "// seagrass-ignore-file",
       "Item or block suppression:",
       `#[seagrass(allow("${topic.name}"))]`,
       "[lints]",
       `allow = ["${topic.name}"]`,
+      "[package.metadata.seagrass]",
+      "suppress = true",
     ]),
     ...generatedBoilerplateFailures(topic.name, path, text),
   ];
@@ -200,6 +203,12 @@ File suppression:
 // seagrass-allow-file: ${topic.name}
 \`\`\`
 
+Whole-file suppression (all Seagrass diagnostics, leading file comment only):
+
+\`\`\`rust
+// seagrass-ignore-file
+\`\`\`
+
 Item or block suppression:
 
 \`\`\`rust
@@ -214,6 +223,13 @@ Workspace suppression in \`Seagrass.toml\`:
 \`\`\`toml
 [lints]
 allow = ["${topic.name}"]
+\`\`\`
+
+Project suppression in \`Cargo.toml\` (all Seagrass diagnostics):
+
+\`\`\`toml
+[package.metadata.seagrass]
+suppress = true
 \`\`\`
 
 Prefer fixing the underlying Anchor or Solana invariant when the diagnostic has
@@ -247,10 +263,13 @@ function replaceSuppressionSection(text: string, replacement: string): string {
 function isSuppressionFailure(failure: string): boolean {
   return (
     failure.includes("seagrass-allow") ||
+    failure.includes("seagrass-ignore-file") ||
     failure.includes("Item or block suppression") ||
     failure.includes("#[seagrass(allow") ||
     failure.includes("[lints]") ||
-    failure.includes("allow = [")
+    failure.includes("allow = [") ||
+    failure.includes("[package.metadata.seagrass]") ||
+    failure.includes("suppress = true")
   );
 }
 

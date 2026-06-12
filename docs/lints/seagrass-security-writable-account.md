@@ -44,6 +44,12 @@ File suppression:
 // seagrass-allow-file: seagrass/security.writable-account
 ```
 
+Whole-file suppression (all Seagrass diagnostics, leading file comment only):
+
+```rust
+// seagrass-ignore-file
+```
+
 Item or block suppression:
 
 ```rust
@@ -60,4 +66,12 @@ Workspace suppression in `Seagrass.toml`:
 allow = ["seagrass/security.writable-account"]
 ```
 
-Prefer checking writability before passing accounts as writable CPI metadata.
+Project suppression in `Cargo.toml` (all Seagrass diagnostics):
+
+```toml
+[package.metadata.seagrass]
+suppress = true
+```
+
+Prefer fixing the underlying Anchor or Solana invariant when the diagnostic has
+enough evidence to point at a concrete issue.

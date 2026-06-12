@@ -68,7 +68,11 @@ fn collect_through_phase(
     let mut diagnostics = arbitration::arbitrate(diagnostics, input.settings);
     diagnostics = super::suppression::filter(
         input.document,
-        input.seagrass_toml.map(|(_, text)| text),
+        super::suppression::SuppressionConfig {
+            seagrass_toml: input.seagrass_toml.map(|(_, text)| text),
+            manifest: input.manifest.map(|(_, text)| text),
+            workspace_manifest: input.workspace_manifest.map(|(_, text)| text),
+        },
         diagnostics,
     );
     super::enrich_current_document_related_information(input.document, &mut diagnostics);

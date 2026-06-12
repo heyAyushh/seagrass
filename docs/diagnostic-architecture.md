@@ -142,6 +142,8 @@ Active user syntax:
 - line: `// seagrass-allow: seagrass/solana.code-quality.unsafe-unwrap`
 - line, all Seagrass diagnostics: `// seagrass-ignore`
 - file: `// seagrass-allow-file: seagrass/solana.code-quality.unsafe-unwrap`
+- file, all Seagrass diagnostics: `// seagrass-ignore-file` in the leading
+  file comment/header before the first Rust item
 - item or block: `#[seagrass(allow("seagrass/solana.code-quality.unsafe-unwrap"))]`
   on top-level items, nested items, impl/trait/foreign items, local bindings, or
   block expressions
@@ -150,6 +152,15 @@ Active user syntax:
   ```toml
   [lints]
   allow = ["seagrass/solana.code-quality.unsafe-unwrap"]
+  ```
+- project or workspace, all Seagrass diagnostics: `Cargo.toml`
+
+  ```toml
+  [package.metadata.seagrass]
+  suppress = true
+
+  [workspace.metadata.seagrass]
+  suppress = true
   ```
 
 Suppression matches full topics, topic suffixes, diagnostic codes, or rule ids.

@@ -329,13 +329,23 @@ pub(super) fn hot_diagnostics_for_document(
     workspace_roots: &[Url],
     typing_suppression: Option<diagnostics::TypingSuppressionRegion>,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
+    let manifest = solana_project::nearest_manifest(uri);
+    let workspace_manifest = solana_project::nearest_workspace_manifest(uri);
     let seagrass_toml = project::nearest_seagrass_toml_with_roots(uri, workspace_roots);
     let mut diagnostics = syntax_diagnostics_for_document(
         document,
         open_document,
-        seagrass_toml
-            .as_ref()
-            .map(|(_, seagrass_toml_text)| seagrass_toml_text.as_str()),
+        diagnostics::suppression::SuppressionConfig {
+            seagrass_toml: seagrass_toml
+                .as_ref()
+                .map(|(_, seagrass_toml_text)| seagrass_toml_text.as_str()),
+            manifest: manifest
+                .as_ref()
+                .map(|(_, manifest_text)| manifest_text.as_str()),
+            workspace_manifest: workspace_manifest
+                .as_ref()
+                .map(|(_, manifest_text)| manifest_text.as_str()),
+        },
     );
     diagnostics.extend(diagnostics::collect_hot_with_input(
         diagnostics::DiagnosticInput {
@@ -343,8 +353,12 @@ pub(super) fn hot_diagnostics_for_document(
             uri: Some(uri),
             workspace_index: Some(workspace_index),
             framework: crate::solana::frameworks::FrameworkContext::from_document(document),
-            manifest: None,
-            workspace_manifest: None,
+            manifest: manifest
+                .as_ref()
+                .map(|(manifest_uri, manifest_text)| (manifest_uri, manifest_text.as_str())),
+            workspace_manifest: workspace_manifest
+                .as_ref()
+                .map(|(manifest_uri, manifest_text)| (manifest_uri, manifest_text.as_str())),
             anchor_toml: None,
             seagrass_toml: seagrass_toml
                 .as_ref()
@@ -361,13 +375,13 @@ pub(super) fn hot_diagnostics_for_document(
 pub(super) fn syntax_diagnostics_for_document(
     document: &ParsedDocument,
     open_document: &OpenDocument,
-    seagrass_toml: Option<&str>,
+    suppression_config: diagnostics::suppression::SuppressionConfig<'_>,
 ) -> Vec<tower_lsp::lsp_types::Diagnostic> {
     // single choke point for open-document syntax diagnostics: every publish or
     // pull path must route parse-pause diagnostics through suppression here.
     diagnostics::suppression::filter(
         document,
-        seagrass_toml,
+        suppression_config,
         open_document
             .syntax_diagnostic
             .clone()
@@ -655,7 +669,11 @@ pub fn handler() -> Result<()> {
             "fixture must produce the parse-pause diagnostic"
         );
 
-        let diagnostics = syntax_diagnostics_for_document(&document.parsed, &document.open, None);
+        let diagnostics = syntax_diagnostics_for_document(
+            &document.parsed,
+            &document.open,
+            diagnostics::suppression::SuppressionConfig::default(),
+        );
 
         assert!(
             diagnostics.is_empty(),
@@ -677,12 +695,51 @@ pub fn handler() -> Result<()> {
 allow = ["seagrass/anchor.syntax"]
 "#;
 
-        let diagnostics =
-            syntax_diagnostics_for_document(&document.parsed, &document.open, Some(seagrass_toml));
+        let diagnostics = syntax_diagnostics_for_document(
+            &document.parsed,
+            &document.open,
+            diagnostics::suppression::SuppressionConfig {
+                seagrass_toml: Some(seagrass_toml),
+                ..Default::default()
+            },
+        );
 
         assert!(
             diagnostics.is_empty(),
             "workspace syntax suppression must cover parse-pause diagnostics: {diagnostics:#?}"
+        );
+    }
+
+    #[test]
+    fn cargo_suppress_suppresses_open_document_syntax_diagnostic() {
+        let source = r#"
+pub fn handler() -> Result<()> {
+    position_bundle.(bundle_index)?;
+    Ok(())
+}
+"#;
+        let document = ParsedOpenDocument::new(source.to_string(), Some(1));
+        let manifest = r#"
+[package]
+name = "demo"
+version = "0.1.0"
+
+[package.metadata.seagrass]
+suppress = true
+"#;
+
+        let diagnostics = syntax_diagnostics_for_document(
+            &document.parsed,
+            &document.open,
+            diagnostics::suppression::SuppressionConfig {
+                manifest: Some(manifest),
+                ..Default::default()
+            },
+        );
+
+        assert!(
+            diagnostics.is_empty(),
+            "Cargo.toml suppression must cover parse-pause diagnostics: {diagnostics:#?}"
         );
     }
 }

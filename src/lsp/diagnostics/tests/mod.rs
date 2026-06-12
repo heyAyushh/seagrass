@@ -212,6 +212,27 @@ fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
 }
 
 #[test]
+fn file_ignore_filters_all_diagnostics_from_header_comment() {
+    let source = r#"
+// seagrass-ignore-file
+use pinocchio::program_error::ProgramError;
+
+fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
+    Err(ProgramError::InvalidArgument).expect("invalid argument")
+}
+"#;
+
+    let diagnostics = collect(&ParsedDocument::parse(source).unwrap());
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
+        "whole-file suppression should remove unsafe unwrap diagnostic: {diagnostics:#?}"
+    );
+}
+
+#[test]
 fn seagrass_allow_attribute_filters_item_diagnostic() {
     let source = r#"
 use pinocchio::program_error::ProgramError;
@@ -316,6 +337,60 @@ allow = ["solana-code-quality.unsafe-unwrap"]
             .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
         "workspace lint config should remove unsafe unwrap diagnostic: {diagnostics:#?}"
     );
+}
+
+#[test]
+fn cargo_metadata_suppress_filters_project_diagnostics() {
+    let source = r#"
+use pinocchio::program_error::ProgramError;
+
+fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
+    Err(ProgramError::InvalidArgument).expect("invalid argument")
+}
+"#;
+    let document = ParsedDocument::parse(source).unwrap();
+    let uri = Url::parse("file:///workspace/programs/demo/src/lib.rs").unwrap();
+    let package_manifest_uri = Url::parse("file:///workspace/programs/demo/Cargo.toml").unwrap();
+    let package_manifest = r#"
+[package]
+name = "demo"
+version = "0.1.0"
+
+[package.metadata.seagrass]
+suppress = true
+"#;
+    let workspace_manifest_uri = Url::parse("file:///workspace/Cargo.toml").unwrap();
+    let workspace_manifest = r#"
+[workspace]
+members = ["programs/demo"]
+
+[workspace.metadata.seagrass]
+suppress = true
+"#;
+    for (manifest, workspace_manifest) in [
+        (Some((&package_manifest_uri, package_manifest)), None),
+        (None, Some((&workspace_manifest_uri, workspace_manifest))),
+    ] {
+        let diagnostics = collect_with_input(DiagnosticInput {
+            document: &document,
+            uri: Some(&uri),
+            workspace_index: None,
+            framework: crate::solana::frameworks::FrameworkContext::from_document(&document),
+            manifest,
+            workspace_manifest,
+            anchor_toml: None,
+            seagrass_toml: None,
+            solana_program: None,
+            settings: DiagnosticSettings::default(),
+        });
+
+        assert!(
+            diagnostics
+                .iter()
+                .all(|diagnostic| !is_unsafe_unwrap(diagnostic)),
+            "Cargo.toml suppression should remove unsafe unwrap diagnostic: {diagnostics:#?}"
+        );
+    }
 }
 
 #[test]
