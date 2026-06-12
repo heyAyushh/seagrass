@@ -4,7 +4,7 @@ Self-contained plans for zero-context executors. Each plan carries its own conte
 doctrine, file paths (verified at write time), steps, and acceptance criteria — read
 nothing else to execute one, except this index for ordering.
 
-## Execution order (numerical = execution; run 01 → 10)
+## Execution order (numerical = execution; run 01 → 11)
 
 | # | Plan | Depends on | Why this position |
 |---|---|---|---|
@@ -18,6 +18,7 @@ nothing else to execute one, except this index for ordering.
 | 08 | [plan-08-corpus-promotion](plan-08-corpus-promotion.md) | 01–06 merged | Triage the 18-program external corpus, fix the FP families it surfaces, flip discovery mode → hard gate; the backstop every later plan leans on |
 | 09 | [plan-09-space-calculator](plan-09-space-calculator.md) | — (parallel-safe with 08/10; touches hover/lens/actions only) | `space =` size engine + hover/lens + checked-arithmetic and InitSpace quick fixes — daily-use wins while the big rocks land |
 | 10 | [plan-10-call-graph](plan-10-call-graph.md) | plan-06 (model); **plan-08 strongly recommended first** (its gate is the FP backstop) | Rung (c): name-keyed call graph, defense check-propagation through reachable helpers, one offense POC (CPI-in-reachable-helper); unblocks the moat tier |
+| 11 | [plan-11-silent-surfaces](plan-11-silent-surfaces.md) | — (parallel-safe; touches settings/CI/scripts, not diagnostics) | Generalizes the broken-`seagrass-ignore` lesson (d5e1b2e): parity guards for every silent control surface (settings keys, suppression paths, Seagrass.toml, release artifacts) + install smoke matrix on 3 OSes |
 
 [debt-inventory.md](debt-inventory.md) is the findings register behind plan-02;
 it also assigns P1 items to plans 03/05/06 — those plans absorb them at
