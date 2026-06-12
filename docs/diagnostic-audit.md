@@ -67,6 +67,7 @@ queue across `lsp/diagnostics/`, `lsp/completions/`, `lsp/hover/`, and `lsp/acti
 | `lsp/completions/proptest_support.rs` | completion property-test identifier strategies | generated test identifiers via regex plus Rust keyword denylist | completion property test inputs | authoritative | n/a | low | generated account alias property tests |
 | `lsp/hover/mod.rs` | hover router + account/context hovers | `CursorContext`, symbols, workspace | cursor position and symbol spans | n/a | n/a | low | hover tests + editor parity |
 | `lsp/hover/account_constraints.rs` | constraint hover docs/evidence | generated catalog + PDA evidence | account attribute only | n/a | n/a | low | generated constraint hover tests |
+| `lsp/hover/summaries.rs` | hover usage/type summaries | parsed symbols, account usages, and navigation targets | cursor position and symbol spans | n/a | n/a | low | hover tests + editor parity |
 | `lsp/actions/mod.rs` | quick-fix router + resolve | diagnostic data + parsed document | diagnostic span | n/a | n/a | low | action routing tests |
 | `lsp/actions/accounts/mod.rs` | account type/field quick fixes | parsed structs, semantic diagnostics, workspace candidates | account field spans | n/a | n/a | low | account action tests |
 | `lsp/actions/arithmetic.rs` | checked arithmetic quick fixes | parsed syn expressions anchored by diagnostic operator ranges | diagnostic span | n/a | n/a | low | arithmetic action tests |
@@ -177,7 +178,7 @@ means the diagnostic currently has no code action.
 | `anchor-spl-token-interface` | gap | n/a | none | Add token-interface type/constraint conversion actions. |
 | `anchor-syn` | partial | `lsp/actions/security.rs` | `replace-account-type`, `replace-invalid-sysvar` | Generic parser diagnostics without typed fix metadata remain diagnostic-only. |
 | `anchor-types-artifact` | gap | n/a | none | Add TypeScript artifact generation action from `buildCommand`. |
-| `solana-code-quality` | partial | `lsp/actions/security.rs` | `use-checked-data-access`, `add-static-pda-domain-seed`, `prefer-anchor-close`, `reject-reinit`, `insert-reload-after-cpi`, `add-signer-check`, `add-writable-check`, `add-program-id-check`, `add-owner-check`, `add-discriminator-check` | Manual close/reinit branches are guidance-only; unwrap/bump branches have no quickfix. |
+| `solana-code-quality` | partial | `lsp/actions/security.rs`, `lsp/actions/arithmetic.rs` | `use-checked-data-access`, `checked-arithmetic`, `add-static-pda-domain-seed`, `prefer-anchor-close`, `reject-reinit`, `insert-reload-after-cpi`, `add-signer-check`, `add-writable-check`, `add-program-id-check`, `add-owner-check`, `add-discriminator-check` | Manual close/reinit branches are guidance-only; unwrap/bump branches have no quickfix. |
 | `solana-idl-artifact` | gap | n/a | none | Add IDL write/import command action for non-Anchor program metadata. |
 | `solana-program-metadata` | gap | n/a | none | Expose `suggestedCommand` as a command/code action. |
 | `solana-surfpool-workspace` | gap | n/a | none | Add Surfpool workspace config action. |
