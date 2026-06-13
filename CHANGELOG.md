@@ -39,6 +39,8 @@ keep future entries aligned with release-plz output.
   not race cargo-backed server startup or diagnostic publication.
 - ci: construct JSON-RPC LSP test file URIs through the canonical URL parser so
   Windows push-diagnostic assertions compare the same URI form the server emits.
+- ci: retry the protocol-smoke formatting request after `didOpen` so slower
+  runners do not race document registration before checking rustfmt output.
 - test: add fetch-on-demand external corpus infrastructure, vendor permissively
   licensed corpus programs, and promote the corpus scan into a hard gate.
 - lsp: apply `seagrass-ignore` and workspace lint allowances to open-document

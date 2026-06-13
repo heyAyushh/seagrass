@@ -1220,6 +1220,14 @@ function completionItems(response: CompletionResponse | null | undefined): Compl
   return Array.isArray(response) ? response : (response.items ?? []);
 }
 
+function formattingEditsIncludeRustfmtOutput(edits: TextEdit[] | null | undefined): boolean {
+  const formattedText = edits?.[0]?.newText;
+  return (
+    formattedText?.includes("pub fn formatting_smoke()") === true &&
+    formattedText.includes("let value = 1;")
+  );
+}
+
 function anchorErrorsByName(diagnostics: DiagnosticReport): Map<string, JsonObject> {
   const errors = new Map<string, JsonObject>();
   for (const diagnostic of diagnostics.items ?? []) {
@@ -1588,13 +1596,17 @@ try {
   });
 
   openDocument(formattingUri, formattingSmokeSource);
-  const formattingEdits = await request<TextEdit[] | null>("textDocument/formatting", {
-    textDocument: { uri: formattingUri },
-    options: {
-      tabSize: 4,
-      insertSpaces: true,
-    },
-  });
+  const formattingEdits = await requestWithRetries(
+    () =>
+      request<TextEdit[] | null>("textDocument/formatting", {
+        textDocument: { uri: formattingUri },
+        options: {
+          tabSize: 4,
+          insertSpaces: true,
+        },
+      }),
+    formattingEditsIncludeRustfmtOutput,
+  );
   const formattedText = formattingEdits?.[0]?.newText;
   if (
     !formattedText?.includes("pub fn formatting_smoke()") ||
