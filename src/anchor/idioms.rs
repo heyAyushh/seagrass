@@ -103,7 +103,8 @@ mod tests {
     };
 
     const SOURCE_ROOT: &str = "src";
-    const IDIOMS_MODULE: &str = "src/anchor/idioms.rs";
+    const ANCHOR_MODULE_DIR: &str = "anchor";
+    const IDIOMS_MODULE_FILE: &str = "idioms.rs";
     const RUST_EXTENSION: &str = "rs";
     const TEST_PATH_FRAGMENT: &str = "test";
     const CENTRALIZED_PATTERNS: &[&str] = &[
@@ -184,6 +185,12 @@ mod tests {
         }
         let relative = path.strip_prefix(root).unwrap_or(path);
         let relative_text = relative.to_string_lossy();
-        relative_text != IDIOMS_MODULE && !relative_text.contains(TEST_PATH_FRAGMENT)
+        relative != idioms_module_path().as_path() && !relative_text.contains(TEST_PATH_FRAGMENT)
+    }
+
+    fn idioms_module_path() -> PathBuf {
+        PathBuf::from(SOURCE_ROOT)
+            .join(ANCHOR_MODULE_DIR)
+            .join(IDIOMS_MODULE_FILE)
     }
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
@@ -9,7 +9,9 @@ import { requiredValue } from "./cli-args.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const serverBinary = resolve(repoRoot, "target/debug/seagrass");
+const serverPackage = "seagrass-cli";
+const serverBinaryName = process.platform === "win32" ? "seagrass.exe" : "seagrass";
+const serverBinary = resolve(repoRoot, "target", "debug", serverBinaryName);
 const defaultWorkspaceRunId = `${Date.now()}-${process.pid}`;
 const defaultWorkspace = resolve(
   repoRoot,
@@ -79,7 +81,8 @@ runChecked("bun", [
   "--output",
   args.workspace,
 ]);
-runChecked("cargo", ["build", "-p", "seagrass"]);
+runChecked("cargo", ["build", "-p", serverPackage]);
+assertServerBinaryExists();
 
 const report = await runScaleBenchmarkSamples(args);
 mkdirSync(dirname(args.report), { recursive: true });
@@ -379,6 +382,12 @@ function runChecked(command: string, commandArgs: string[]): void {
   }
   if (result.status !== 0) {
     fail(`${command} ${commandArgs.join(" ")} failed with exit code ${result.status}`);
+  }
+}
+
+function assertServerBinaryExists(): void {
+  if (!existsSync(serverBinary)) {
+    fail(`server binary was not built at ${serverBinary}`);
   }
 }
 

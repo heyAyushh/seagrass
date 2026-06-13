@@ -263,9 +263,7 @@ fn signer_subject_name(expr: &syn::Expr) -> Option<String> {
         syn::Expr::Field(field) if matches!(&field.member, syn::Member::Named(ident) if ident == "key") => {
             signer_subject_name(&field.base)
         }
-        syn::Expr::MethodCall(method)
-            if method.method == "key" || method.method == "address" =>
-        {
+        syn::Expr::MethodCall(method) if method.method == "key" || method.method == "address" => {
             signer_subject_name(&method.receiver)
         }
         syn::Expr::Unary(unary) => signer_subject_name(&unary.expr),

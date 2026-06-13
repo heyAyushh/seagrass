@@ -4,6 +4,7 @@ import { execFileSync } from "node:child_process";
 
 const PINNED_BUN_VERSION = "1.3.8";
 const VERIFY_METADATA_ONLY_FLAG = "--verify-metadata-only";
+const USE_WINDOWS_COMMAND_SHELL = process.platform === "win32";
 const PACKAGE_INTEGRITIES = new Map([
   [
     `bun@${PINNED_BUN_VERSION}`,
@@ -40,10 +41,10 @@ verifyPackageIntegrity(`bun@${version}`);
 verifyPackageIntegrity(`${platformPackageName()}@${version}`);
 
 if (!verifyMetadataOnly) {
-  execFileSync("npm", ["install", "--global", `bun@${version}`], {
+  runCommand("npm", ["install", "--global", `bun@${version}`], {
     stdio: "inherit",
   });
-  const installedVersion = execFileSync("bun", ["--version"], {
+  const installedVersion = runCommand("bun", ["--version"], {
     encoding: "utf8",
   }).trim();
   if (installedVersion !== version) {
@@ -66,10 +67,17 @@ function verifyPackageIntegrity(packageSpec) {
 }
 
 function npmViewJson(packageSpec, field) {
-  const output = execFileSync("npm", ["view", packageSpec, field, "--json"], {
+  const output = runCommand("npm", ["view", packageSpec, field, "--json"], {
     encoding: "utf8",
   }).trim();
   return JSON.parse(output);
+}
+
+function runCommand(command, args, options) {
+  return execFileSync(command, args, {
+    ...options,
+    shell: USE_WINDOWS_COMMAND_SHELL,
+  });
 }
 
 function platformPackageName() {

@@ -2,8 +2,8 @@ use {
     super::common::{
         account_iterator_collection, called_ident, compact_token_text as normalized_token_text,
         ident_matches_any, local_ident_name, member_is_named, next_account_info_iterator_name,
-        pat_ident_name, unsigned_literal, AccountIteratorOrigin,
-        INITIAL_ITERATOR_ACCOUNT_INDEX, TRANSPARENT_ACCOUNT_ACCESS_METHODS,
+        pat_ident_name, unsigned_literal, AccountIteratorOrigin, INITIAL_ITERATOR_ACCOUNT_INDEX,
+        TRANSPARENT_ACCOUNT_ACCESS_METHODS,
     },
     crate::{
         diagnostics::{solana_code_quality_from_span, FrameworkDocument},

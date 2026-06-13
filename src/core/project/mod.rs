@@ -165,14 +165,13 @@ fn is_shared_directory(path: &Path) -> bool {
 }
 
 pub fn program_name_from_uri(uri: &Url) -> Option<String> {
-    let path = uri.to_file_path().ok()?;
-    let components = path
-        .components()
-        .filter_map(|component| component.as_os_str().to_str().map(str::to_string))
+    let components = uri
+        .path_segments()?
+        .filter(|segment| !segment.is_empty())
         .collect::<Vec<_>>();
 
     components.windows(3).find_map(|window| match window {
-        [programs, name, src] if programs == "programs" && src == "src" => {
+        [programs, name, src] if *programs == "programs" && *src == "src" => {
             Some(normalize_program_name(name))
         }
         _ => None,

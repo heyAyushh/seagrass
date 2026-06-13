@@ -24,19 +24,20 @@ const SRC_DIR: &str = "src";
 /// Derive the `crate::…` module-path segments for `file_uri` by finding the
 /// `src/` ancestor directory in the file path.
 ///
-/// Returns `None` when `file_uri` cannot be mapped (e.g. no `src/` ancestor,
-/// non-UTF-8 components, or a non-identifier path segment).
+/// Returns `None` when `file_uri` cannot be mapped (e.g. no `src/` ancestor or
+/// a non-identifier path segment).
 pub(super) fn module_path_segments(file_uri: &Url) -> Option<Vec<String>> {
-    let file_path = file_uri.to_file_path().ok()?;
-
-    // Collect all path components so we can search for the `src` boundary.
-    let all_components: Vec<&std::ffi::OsStr> =
-        file_path.components().map(|c| c.as_os_str()).collect();
+    let all_components: Vec<&str> = file_uri
+        .path_segments()?
+        .filter(|segment| !segment.is_empty())
+        .collect();
 
     // Find the index of the last `src` component — the one directly above
     // the module files.  We take the *last* occurrence to handle layouts like
     // `workspace/programs/demo/src/…` correctly.
-    let src_index = all_components.iter().rposition(|c| *c == SRC_DIR)?;
+    let src_index = all_components
+        .iter()
+        .rposition(|component| *component == SRC_DIR)?;
 
     // Components after `src/` are the module path components.
     let module_components = &all_components[src_index + 1..];
@@ -45,8 +46,7 @@ pub(super) fn module_path_segments(file_uri: &Url) -> Option<Vec<String>> {
 
     let last_index = module_components.len().checked_sub(1)?;
 
-    for (index, &component) in module_components.iter().enumerate() {
-        let name = component.to_str()?;
+    for (index, &name) in module_components.iter().enumerate() {
         if index == last_index {
             // Last component is the filename — strip `.rs` and skip the
             // crate/module root files that don't add a new segment.
@@ -86,7 +86,7 @@ mod tests {
     use super::*;
 
     fn url(path: &str) -> Url {
-        Url::from_file_path(path).unwrap()
+        Url::parse(&format!("file://{path}")).unwrap()
     }
 
     #[test]
