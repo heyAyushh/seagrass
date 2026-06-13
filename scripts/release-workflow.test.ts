@@ -152,6 +152,7 @@ describe("release workflow packaging", () => {
 
     expect(portability).toContain("ubuntu-latest");
     expect(portability).toContain("windows-latest");
+    expect(portability).toContain("timeout-minutes: 60");
     expect(portability).toContain("cargo build -p seagrass-cli --locked");
     expect(workflow).toContain("cargo test -p seagrass --locked");
   });

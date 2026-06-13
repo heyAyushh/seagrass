@@ -21,6 +21,8 @@ keep future entries aligned with release-plz output.
   slash commands.
 - client: open Zed slash-command path arguments in the throwaway LSP session so
   `/seagrass-analyze <path>` returns the same report as an active document.
+- client: parse raw Zed slash-command argument text before opening analysis
+  paths, so path plus filter forms dispatch the intended document URI.
 - client: add VS Code server-binary resolution for matching released Seagrass
   versions and document install paths for agent/editor users.
 - client: select the VS Code `x86_64-unknown-linux-musl` server release on
@@ -30,6 +32,8 @@ keep future entries aligned with release-plz output.
   release/install surfaces.
 - ci: guard silent editor and installer control surfaces with settings,
   suppression, `Seagrass.toml`, release-parity, and install-smoke checks.
+- ci: allow slower Windows server-portability runs to finish the full Seagrass
+  library test suite instead of canceling at the previous 30-minute cap.
 - test: add fetch-on-demand external corpus infrastructure, vendor permissively
   licensed corpus programs, and promote the corpus scan into a hard gate.
 - lsp: apply `seagrass-ignore` and workspace lint allowances to open-document

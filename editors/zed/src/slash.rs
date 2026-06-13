@@ -489,11 +489,8 @@ impl ParsedSlashArgs {
         let mut parsed = Self::default();
         let mut pending_key: Option<&str> = None;
 
-        for arg in args
-            .iter()
-            .map(String::as_str)
-            .filter(|arg| !arg.is_empty())
-        {
+        for arg in normalize_slash_args(args) {
+            let arg = arg.as_str();
             if let Some(key) = pending_key.take() {
                 parsed.set_key_value(key, arg);
                 continue;
@@ -567,6 +564,89 @@ impl ParsedSlashArgs {
                     .and_then(|path| absolute_worktree_relative_path(worktree_root, &path))
             })
     }
+}
+
+fn normalize_slash_args(args: &[String]) -> Vec<String> {
+    let non_empty_args = args
+        .iter()
+        .map(String::as_str)
+        .filter(|arg| !arg.is_empty())
+        .collect::<Vec<_>>();
+    if non_empty_args.len() != 1 {
+        return non_empty_args.into_iter().map(str::to_string).collect();
+    }
+
+    let raw_arg = non_empty_args[0];
+    let split_args = split_slash_argument_text(raw_arg);
+    if should_use_split_slash_args(raw_arg, &split_args) {
+        split_args
+    } else {
+        vec![raw_arg.to_string()]
+    }
+}
+
+fn should_use_split_slash_args(raw_arg: &str, split_args: &[String]) -> bool {
+    split_args.len() > 1
+        && (raw_arg.starts_with('"')
+            || raw_arg.starts_with('\'')
+            || split_args
+                .iter()
+                .skip(1)
+                .any(|arg| is_named_argument_token(arg)))
+}
+
+fn is_named_argument_token(arg: &str) -> bool {
+    if matches!(
+        arg,
+        "--instruction" | "-i" | "--function" | "-f" | "--context" | "-c"
+    ) {
+        return true;
+    }
+
+    arg.split_once('=')
+        .map(|(key, _)| {
+            matches!(
+                key.trim_start_matches('-'),
+                INSTRUCTION_KEY | FUNCTION_KEY | CONTEXT_KEY | URI_KEY | PATH_KEY
+            )
+        })
+        .unwrap_or(false)
+}
+
+fn split_slash_argument_text(input: &str) -> Vec<String> {
+    let mut args = Vec::new();
+    let mut current = String::new();
+    let mut quote = None;
+    let mut escaping = false;
+
+    for character in input.chars() {
+        if escaping {
+            current.push(character);
+            escaping = false;
+            continue;
+        }
+
+        match character {
+            '\\' => escaping = true,
+            '\'' | '"' if quote == Some(character) => quote = None,
+            '\'' | '"' if quote.is_none() => quote = Some(character),
+            character if character.is_whitespace() && quote.is_none() => {
+                if !current.is_empty() {
+                    args.push(std::mem::take(&mut current));
+                }
+            }
+            _ => current.push(character),
+        }
+    }
+
+    if escaping {
+        current.push('\\');
+    }
+    if !current.is_empty() {
+        args.push(current);
+    }
+
+    args
 }
 
 fn path_uri(worktree_root: &str, path: &str) -> String {
@@ -772,6 +852,57 @@ mod tests {
                 "uri": "file:///tmp/workspace/programs/demo/src/lib.rs",
                 "instruction": "initialize",
                 "context": "Create"
+            })]
+        );
+    }
+
+    #[test]
+    fn slash_arguments_split_raw_argument_text() {
+        let args = lsp_arguments_for_slash_command(
+            slash_command_spec(SLASH_ANALYZE).unwrap(),
+            &["programs/demo/src/lib.rs instruction=initialize context=Create".to_string()],
+            "/tmp/workspace",
+        );
+
+        assert_eq!(
+            args,
+            vec![zed::serde_json::json!({
+                "uri": "file:///tmp/workspace/programs/demo/src/lib.rs",
+                "instruction": "initialize",
+                "context": "Create"
+            })]
+        );
+    }
+
+    #[test]
+    fn slash_arguments_preserve_quoted_paths_in_raw_text() {
+        let args = lsp_arguments_for_slash_command(
+            slash_command_spec(SLASH_ANALYZE).unwrap(),
+            &["\"programs/demo/src/lib file.rs\" --function initialize".to_string()],
+            "/tmp/workspace",
+        );
+
+        assert_eq!(
+            args,
+            vec![zed::serde_json::json!({
+                "uri": "file:///tmp/workspace/programs/demo/src/lib%20file.rs",
+                "function": "initialize"
+            })]
+        );
+    }
+
+    #[test]
+    fn slash_arguments_preserve_tokenized_path_with_spaces() {
+        let args = lsp_arguments_for_slash_command(
+            slash_command_spec(SLASH_ANALYZE).unwrap(),
+            &["programs/demo/src/lib file.rs".to_string()],
+            "/tmp/workspace",
+        );
+
+        assert_eq!(
+            args,
+            vec![zed::serde_json::json!({
+                "uri": "file:///tmp/workspace/programs/demo/src/lib%20file.rs"
             })]
         );
     }
