@@ -16,6 +16,18 @@ const expectedCommands = new Map([
   ["seagrass.restart", "Seagrass: Restart Server"],
   ["seagrass.showOutput", "Seagrass: Output"],
 ]);
+const expectedServerCommands = [
+  "seagrass/status",
+  "seagrass/analyze",
+  "seagrass/artifacts",
+  "seagrass/programReport",
+  "seagrass/feedback",
+  "seagrass/logs",
+  "seagrass/errorCoverage",
+  "seagrass/supportMatrix",
+  "seagrass/generatorProfile",
+  "seagrass/projectCoverage",
+];
 const expectedZedSlashCommands = new Map([
   ["seagrass-status", "Show Seagrass server status"],
   ["seagrass-analyze", "Show Seagrass analysis report"],
@@ -96,6 +108,10 @@ for (const [command, title] of expectedCommands) {
   assert(contribution, `VS Code package is missing command ${command}`);
   assert(contribution.title === title, `VS Code command ${command} should be titled ${title}`);
   assert(contract.includes(`\`${title}\``), `UI contract is missing command title ${title}`);
+}
+
+for (const command of expectedServerCommands) {
+  assert(contract.includes(`\`${command}\``), `UI contract is missing server command ${command}`);
 }
 
 for (const line of ["Seagrass", "server:", "cwd:", "sync:", "diagnostics:", "workspaces:", "features:"]) {

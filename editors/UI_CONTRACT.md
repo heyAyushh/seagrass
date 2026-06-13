@@ -39,6 +39,7 @@ The server-side execute-command ids stay stable:
 - `seagrass/status`
 - `seagrass/analyze`
 - `seagrass/artifacts`
+- `seagrass/programReport`
 - `seagrass/feedback`
 - `seagrass/logs`
 - `seagrass/errorCoverage`
