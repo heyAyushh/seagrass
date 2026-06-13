@@ -1,6 +1,9 @@
 use {
     super::{completions, position_after},
-    crate::{document::ParsedDocument, lsp::completions::proptest_support::rust_identifier},
+    crate::{
+        document::ParsedDocument,
+        lsp::completions::proptest_support::{rust_identifier, rust_type_identifier},
+    },
     proptest::prelude::*,
 };
 
@@ -75,7 +78,7 @@ proptest! {
     fn completes_generated_as_ref_account_members(
         account_field in rust_identifier(),
         alias in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(account_field != alias);

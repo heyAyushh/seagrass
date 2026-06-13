@@ -1,7 +1,8 @@
 use {
     super::{completions, position_after},
     crate::{
-        document::ParsedDocument, lsp::completions::proptest_support::rust_identifier,
+        document::ParsedDocument,
+        lsp::completions::proptest_support::{rust_identifier, rust_type_identifier},
         workspace::WorkspaceIndex,
     },
     proptest::prelude::*,
@@ -140,7 +141,7 @@ proptest! {
     #[test]
     fn completes_generated_typed_handler_methods(
         local in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         method in rust_identifier(),
         associated_fn in rust_identifier(),
     ) {

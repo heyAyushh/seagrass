@@ -2,7 +2,10 @@ use {
     super::{completions, position_after},
     crate::{
         document::ParsedDocument,
-        lsp::{completions::proptest_support::rust_identifier, local_types},
+        lsp::{
+            completions::proptest_support::{rust_identifier, rust_type_identifier},
+            local_types,
+        },
     },
     proptest::prelude::*,
 };
@@ -132,7 +135,7 @@ proptest! {
     fn completes_generated_loaded_account_loader_members(
         account_field in rust_identifier(),
         alias in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(account_field != alias);
@@ -176,7 +179,7 @@ pub struct {owner} {{
     fn hides_generated_account_loader_data_before_load(
         account_field in rust_identifier(),
         alias in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(account_field != alias);

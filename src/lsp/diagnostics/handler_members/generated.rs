@@ -1,4 +1,8 @@
-use {super::super::collect_with_workspace, crate::document::ParsedDocument, proptest::prelude::*};
+use {
+    super::super::collect_with_workspace,
+    crate::{document::ParsedDocument, lsp::completions::proptest_support::rust_type_identifier},
+    proptest::prelude::*,
+};
 
 prop_compose! {
     fn generated_ident()(tail in "[a-z0-9_]{1,10}") -> String {
@@ -10,7 +14,7 @@ proptest! {
     #[test]
     fn reports_generated_unknown_typed_handler_member(
         local in generated_ident(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         known_field in generated_ident(),
         missing_field in generated_ident(),
     ) {
@@ -52,7 +56,7 @@ pub struct {owner} {{
     fn reports_generated_unknown_block_item_members(
         declaration in prop_oneof![Just("const"), Just("static")],
         local in "[A-Z][A-Z0-9_]{1,10}",
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         known_field in generated_ident(),
         missing_field in generated_ident(),
     ) {
@@ -97,7 +101,7 @@ pub struct {owner} {{
     #[test]
     fn reports_generated_field_called_as_method(
         local in generated_ident(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in generated_ident(),
     ) {
         let source = format!(
@@ -135,7 +139,7 @@ pub struct {owner} {{
     #[test]
     fn reports_generated_text_recovered_unknown_typed_handler_member(
         local in generated_ident(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         known_field in generated_ident(),
         missing_field in generated_ident(),
     ) {
@@ -175,7 +179,7 @@ pub struct {owner} {{
     fn reports_generated_unknown_member_through_context_account_alias(
         account_field in generated_ident(),
         alias in generated_ident(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         known_field in generated_ident(),
         missing_field in generated_ident(),
     ) {
@@ -223,7 +227,7 @@ pub struct {owner} {{
     fn reports_generated_unknown_member_through_accounts_alias(
         account_field in generated_ident(),
         accounts_alias in generated_ident(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         known_field in generated_ident(),
         missing_field in generated_ident(),
     ) {
@@ -314,7 +318,7 @@ pub struct GeneratedState {{
     fn reports_generated_unknown_member_through_typed_alias(
         local in generated_ident(),
         alias in generated_ident(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         known_field in generated_ident(),
         missing_field in generated_ident(),
     ) {
@@ -357,7 +361,7 @@ pub struct {owner} {{
     fn reports_generated_account_loader_direct_alias_member(
         account_field in generated_ident(),
         alias in generated_ident(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         known_field in generated_ident(),
         missing_field in generated_ident(),
     ) {
@@ -405,7 +409,7 @@ pub struct {owner} {{
     fn reports_generated_unknown_member_after_as_ref_alias(
         account_field in generated_ident(),
         alias in generated_ident(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         known_field in generated_ident(),
         missing_field in generated_ident(),
     ) {

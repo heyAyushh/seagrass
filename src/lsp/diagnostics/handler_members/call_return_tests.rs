@@ -2,7 +2,7 @@ use {
     super::collect_with_workspace,
     crate::{
         diagnostics::registry::ANCHOR_MISSING_ACCOUNT_REFERENCE_CODE, document::ParsedDocument,
-        workspace::WorkspaceIndex,
+        lsp::completions::proptest_support::rust_type_identifier, workspace::WorkspaceIndex,
     },
     proptest::prelude::*,
     tower_lsp::lsp_types::{NumberOrString, Url},
@@ -237,7 +237,7 @@ proptest! {
     fn reports_generated_unknown_helper_return_members(
         local in "sg[a-z0-9_]{0,8}",
         helper in "sg[a-z0-9_]{0,8}",
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         missing in "sg[a-z0-9_]{0,8}",
         known in "sg[a-z0-9_]{0,8}",
     ) {

@@ -10,7 +10,7 @@ mod handler_values;
 mod instruction_attributes;
 mod prefix_index;
 #[cfg(test)]
-mod proptest_support;
+pub(crate) mod proptest_support;
 mod ranking;
 
 use {

@@ -1,7 +1,8 @@
 use {
     super::{completions, position_after},
     crate::{
-        document::ParsedDocument, lsp::completions::proptest_support::rust_identifier,
+        document::ParsedDocument,
+        lsp::completions::proptest_support::{rust_identifier, rust_type_identifier},
         workspace::WorkspaceIndex,
     },
     proptest::prelude::*,
@@ -272,7 +273,7 @@ proptest! {
     fn completes_generated_helper_return_members(
         local in rust_identifier(),
         helper in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(local != helper);
