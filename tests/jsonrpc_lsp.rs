@@ -12,10 +12,12 @@ use {
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     },
+    tower_lsp::lsp_types::Url,
 };
 
 const LSP_REQUEST_TIMEOUT: Duration = Duration::from_secs(45);
 const SERVER_EXIT_TIMEOUT: Duration = Duration::from_secs(5);
+const OBSERVED_MESSAGE_LIMIT: usize = 16;
 const FORMAT_SOURCE: &str = "pub fn formatting_smoke(){let value=1;}\n";
 const SUPPRESSED_ANCHOR_SOURCE: &str = r#"
 use anchor_lang::prelude::*;
@@ -344,7 +346,7 @@ fn jsonrpc_suppression_applies_to_push_diagnostics() {
     workspace.write_file("suppressed_push.rs", SUPPRESSED_ANCHOR_SOURCE);
     client.open_rust_document(&uri, SUPPRESSED_ANCHOR_SOURCE);
     let published = client.read_notification("textDocument/publishDiagnostics", |message| {
-        message.pointer("/params/uri").and_then(Value::as_str) == Some(uri.as_str())
+        published_uri_matches(message, &uri)
     });
 
     assert_empty_published_diagnostics(&published);
@@ -595,17 +597,28 @@ impl LspClient {
 
     fn read_notification(&self, method: &str, predicate: impl Fn(&Value) -> bool) -> Value {
         let deadline = Instant::now() + LSP_REQUEST_TIMEOUT;
+        let mut observed_messages = Vec::new();
         loop {
             let now = Instant::now();
-            assert!(now < deadline, "timed out waiting for {method}");
+            assert!(
+                now < deadline,
+                "timed out waiting for {method}; observed messages: {}",
+                observed_messages.join(", ")
+            );
             let message = self
                 .messages
                 .recv_timeout(deadline.saturating_duration_since(now))
-                .unwrap_or_else(|error| panic!("timed out waiting for {method}: {error}"));
+                .unwrap_or_else(|error| {
+                    panic!(
+                        "timed out waiting for {method}: {error}; observed messages: {}",
+                        observed_messages.join(", ")
+                    )
+                });
             if message.get("method").and_then(Value::as_str) == Some(method) && predicate(&message)
             {
                 return message;
             }
+            record_observed_message(&mut observed_messages, &message);
         }
     }
 
@@ -765,5 +778,42 @@ fn read_lsp_message(stdout: &mut impl Read) -> std::io::Result<Value> {
 }
 
 fn file_uri(path: &Path) -> String {
-    format!("file://{}", path.to_string_lossy().replace(' ', "%20"))
+    Url::from_file_path(path)
+        .unwrap_or_else(|()| {
+            panic!(
+                "test path must be representable as a file URI: {}",
+                path.display()
+            )
+        })
+        .to_string()
+}
+
+fn published_uri_matches(message: &Value, expected_uri: &str) -> bool {
+    let Some(actual_uri) = message.pointer("/params/uri").and_then(Value::as_str) else {
+        return false;
+    };
+    actual_uri == expected_uri
+        || Url::parse(actual_uri)
+            .ok()
+            .is_some_and(|actual| actual.as_str() == expected_uri)
+}
+
+fn record_observed_message(observed_messages: &mut Vec<String>, message: &Value) {
+    if observed_messages.len() >= OBSERVED_MESSAGE_LIMIT {
+        return;
+    }
+    observed_messages.push(observed_message_summary(message));
+}
+
+fn observed_message_summary(message: &Value) -> String {
+    let method = message
+        .get("method")
+        .and_then(Value::as_str)
+        .or_else(|| message.get("id").map(|_| "response"))
+        .unwrap_or("unknown");
+    let uri = message
+        .pointer("/params/uri")
+        .and_then(Value::as_str)
+        .unwrap_or("-");
+    format!("{method}:{uri}")
 }
