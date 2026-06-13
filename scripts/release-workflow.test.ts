@@ -7,6 +7,7 @@ import { repoRoot } from "./release-evidence.ts";
 
 const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/release.yaml");
 const releasePlzWorkflowPath = resolve(repoRoot, ".github/workflows/release-plz.yaml");
+const installSmokeWorkflowPath = resolve(repoRoot, ".github/workflows/install-smoke.yaml");
 const prWorkflowPath = resolve(repoRoot, ".github/workflows/pr.yaml");
 const rustToolchainPath = resolve(repoRoot, "rust-toolchain.toml");
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
@@ -14,6 +15,7 @@ const packageReleasePath = resolve(repoRoot, "scripts/package-release.ts");
 const releaseReadinessDocPath = resolve(repoRoot, "docs/release-readiness.md");
 const seagrassWorkflowPaths = [
   ".github/workflows/fuzz.yaml",
+  ".github/workflows/install-smoke.yaml",
   ".github/workflows/perf.yaml",
   ".github/workflows/pr.yaml",
   ".github/workflows/property-tests.yaml",
@@ -128,6 +130,8 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain("bun scripts/check-research-citations.ts");
     expect(workflow).toContain("bun test scripts/check-research-citations.test.ts");
     expect(workflow).toContain("bun test scripts/check-lint-catalog.test.ts");
+    expect(workflow).toContain("bun scripts/check-generated-support.ts");
+    expect(workflow).toContain("bun test scripts/check-generated-support.test.ts");
     expect(workflow).toContain("bun test scripts/check-release-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/fuzz-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/import-fuzz-artifacts.test.ts");
@@ -150,8 +154,21 @@ describe("release workflow packaging", () => {
 
     expect(portability).toContain("ubuntu-latest");
     expect(portability).toContain("windows-latest");
+    expect(portability).toContain("timeout-minutes: 60");
     expect(portability).toContain("cargo build -p seagrass-cli --locked");
     expect(workflow).toContain("cargo test -p seagrass --locked");
+  });
+
+  test("installs rustfmt for protocol smoke formatting", () => {
+    const workflow = readFileSync(installSmokeWorkflowPath, "utf8");
+    const smokeBuild = workflowSection(
+      workflow,
+      "  smoke-build:\n    name: Build smoke",
+      "  smoke-release:",
+    );
+
+    expect(smokeBuild).toContain("components: rustfmt");
+    expect(smokeBuild).toContain("bun scripts/protocol-smoke.ts");
   });
 
   test("runs PR guardrails when release evidence workflows change", () => {
@@ -167,6 +184,8 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain('"release-plz.toml"');
     expect(workflow).toContain('"VERSION"');
     expect(workflow).toContain('"bump-version.sh"');
+    expect(workflow).toContain('"scripts/check-generated-support.ts"');
+    expect(workflow).toContain('"scripts/generated-support.lock.json"');
     expect(workflow).toContain('"scripts/package-release.ts"');
   });
 
@@ -187,6 +206,8 @@ describe("release workflow packaging", () => {
     expect(script).toContain('"scripts/check-research-citations.ts"');
     expect(script).toContain('"scripts/check-research-citations.test.ts"');
     expect(script).toContain('"scripts/check-lint-catalog.test.ts"');
+    expect(script).toContain('"scripts/check-generated-support.ts"');
+    expect(script).toContain('"scripts/check-generated-support.test.ts"');
     expect(script).toContain('"scripts/verify-proptest.ts"');
     expect(script).toContain('"scripts/package-release.test.ts"');
   });

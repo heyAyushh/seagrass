@@ -5,10 +5,19 @@
 //! with the on-chain address and the official source that defines it. Addresses
 //! are documentation only (shown in `detail`); the inserted text is the path so
 //! the program keeps resolving through the user's imports.
+//!
+//! Non-sysvar program addresses are pinned as static entries here. Sysvar entries
+//! are generated at call time from [`crate::solana::runtime_catalog::SYSVARS`] so
+//! that sysvar address strings have exactly one canonical source.
 
-use tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat};
+use {
+    crate::{document::ParsedDocument, solana::runtime_catalog},
+    tower_lsp::lsp_types::{CompletionItem, CompletionItemKind, InsertTextFormat},
+};
 
-/// A well-known program/sysvar address offered as a ready value.
+const PATH_SEPARATOR: &str = "::";
+
+/// A well-known non-sysvar program address offered as a ready completion value.
 struct WellKnownAddress {
     /// Idiomatic path inserted into the source, e.g. `token::ID`.
     path: &'static str,
@@ -18,52 +27,48 @@ struct WellKnownAddress {
     description: &'static str,
 }
 
-/// The core set: the addresses proven high-frequency in official Anchor/Solana
-/// code. Sources are cited per entry so the catalog can be audited.
-const WELL_KNOWN_ADDRESSES: &[WellKnownAddress] = &[
-    // anchor_lang::system_program::ID -> solana_sdk_ids::system_program (declare_id!).
+/// The non-sysvar program entries: addresses for SPL programs and Metaplex whose
+/// strings are not covered by the runtime sysvar catalog.
+///
+/// Sysvar addresses (`sysvar::rent::ID`, `sysvar::clock::ID`, etc.) are generated
+/// from [`runtime_catalog::SYSVARS`] by [`sysvar_address_items`] to keep them in
+/// sync with the verified catalog.
+const NON_SYSVAR_ADDRESSES: &[WellKnownAddress] = &[
+    // anchor_lang::system_program::ID re-exports solana_program::system_program::ID.
+    // The test module asserts this address against the pinned solana-program dependency.
     WellKnownAddress {
         path: "system_program::ID",
         address: "11111111111111111111111111111111",
         description: "System Program — anchor_lang::system_program::ID",
     },
     // anchor_spl::token::ID re-exports spl_token::ID (spl/src/token.rs).
+    // Source: https://github.com/otter-sec/anchor/blob/4addac5304bf2d2378448e86b5ee374c99037585/spl/src/token.rs
+    // Verified 2026-06-10.
     WellKnownAddress {
         path: "token::ID",
         address: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
         description: "SPL Token program — anchor_spl::token::ID",
     },
     // anchor_spl::token_2022::ID re-exports spl_token_2022::ID (spl/src/token_2022.rs).
+    // Source: https://github.com/otter-sec/anchor/blob/4addac5304bf2d2378448e86b5ee374c99037585/spl/src/token_2022.rs
+    // Verified 2026-06-10.
     WellKnownAddress {
         path: "token_2022::ID",
         address: "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
         description: "SPL Token-2022 program — anchor_spl::token_2022::ID",
     },
     // anchor_spl::associated_token::ID re-exports the ATA program ID (spl/src/associated_token.rs).
+    // Source: https://github.com/otter-sec/anchor/blob/4addac5304bf2d2378448e86b5ee374c99037585/spl/src/associated_token.rs
+    // Verified 2026-06-10.
     WellKnownAddress {
         path: "associated_token::ID",
         address: "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL",
         description: "Associated Token program — anchor_spl::associated_token::ID",
     },
-    // anchor_lang::solana_program::sysvar::rent::ID (solana_sdk_ids::sysvar::rent).
-    WellKnownAddress {
-        path: "sysvar::rent::ID",
-        address: "SysvarRent111111111111111111111111111111111",
-        description: "Rent sysvar — solana_program::sysvar::rent::ID",
-    },
-    // anchor_lang::solana_program::sysvar::clock::ID (solana_sdk_ids::sysvar::clock).
-    WellKnownAddress {
-        path: "sysvar::clock::ID",
-        address: "SysvarC1ock11111111111111111111111111111111",
-        description: "Clock sysvar — solana_program::sysvar::clock::ID",
-    },
-    // anchor_lang::solana_program::sysvar::instructions::ID (solana_sdk_ids::sysvar::instructions).
-    WellKnownAddress {
-        path: "sysvar::instructions::ID",
-        address: "Sysvar1nstructions1111111111111111111111111",
-        description: "Instructions sysvar — solana_program::sysvar::instructions::ID",
-    },
-    // metaplex-foundation/mpl-token-metadata declare_id! (programs/token-metadata/program/src/lib.rs).
+    // metaplex-foundation/mpl-token-metadata declare_id!.
+    // Source: corpus/manifest.toml pins
+    // https://github.com/metaplex-foundation/mpl-token-metadata/blob/349e061053c6fc5b6b815e03e896e4db57012893/programs/token-metadata/program/src/lib.rs
+    // Verified against corpus/programs/mpl-token-metadata on 2026-06-10.
     WellKnownAddress {
         path: "mpl_token_metadata::ID",
         address: "metaqbxxUerdq28cj1RbAWkYQm3ybzjb6a8bt518x1s",
@@ -71,20 +76,67 @@ const WELL_KNOWN_ADDRESSES: &[WellKnownAddress] = &[
     },
 ];
 
+/// The subset of sysvar names offered as `sysvar::<name>::ID` constraint values.
+///
+/// Only the three sysvars that appear frequently in `address =` constraints are
+/// offered here; the full catalog is available when using the `Sysvar<'info, _>`
+/// account type. The names must match [`runtime_catalog::SysvarSpec::name`].
+const SYSVAR_ID_NAMES: &[&str] = &["rent", "clock", "instructions"];
+
 const PUBKEY_LITERAL_LABEL: &str = "pubkey!(\"…\")";
 const PUBKEY_LITERAL_SNIPPET: &str = "pubkey!(\"$1\")";
 
-pub(super) fn well_known_address_items() -> Vec<CompletionItem> {
-    let mut items = WELL_KNOWN_ADDRESSES
+pub(super) fn well_known_address_items(document: &ParsedDocument) -> Vec<CompletionItem> {
+    let non_sysvar_items = NON_SYSVAR_ADDRESSES
         .iter()
+        .filter(|address| non_sysvar_address_is_available(document, address.path))
         .enumerate()
-        .map(|(rank, address)| well_known_address_item(address, rank))
-        .collect::<Vec<_>>();
+        .map(|(rank, address)| non_sysvar_address_item(address, rank));
+
+    let sysvar_items = sysvar_address_items(NON_SYSVAR_ADDRESSES.len());
+
+    let mut items: Vec<CompletionItem> = non_sysvar_items.chain(sysvar_items).collect();
     items.push(pubkey_literal_item());
     items
 }
 
-fn well_known_address_item(address: &WellKnownAddress, rank: usize) -> CompletionItem {
+#[cfg(test)]
+pub(super) fn non_sysvar_address_paths() -> impl Iterator<Item = &'static str> {
+    NON_SYSVAR_ADDRESSES.iter().map(|address| address.path)
+}
+
+/// Builds completion items for the common sysvar address constants from the
+/// verified runtime catalog. The `rank_offset` is added to the sort index so
+/// sysvar entries sort after the non-sysvar entries.
+fn sysvar_address_items(rank_offset: usize) -> impl Iterator<Item = CompletionItem> {
+    SYSVAR_ID_NAMES
+        .iter()
+        .enumerate()
+        .filter_map(move |(rank, sysvar_name)| {
+            let spec = runtime_catalog::by_name(sysvar_name)?;
+            // The idiomatic Anchor path for a sysvar address constant.
+            let path = format!("sysvar::{}::ID", spec.name);
+            let description = format!(
+                "{} sysvar — solana_program::sysvar::{}::ID",
+                spec.type_ident, spec.name
+            );
+            Some(CompletionItem {
+                label: path.clone(),
+                kind: Some(CompletionItemKind::CONSTANT),
+                detail: Some(format!("{description} ({})", spec.account_id_str)),
+                sort_text: Some(format!(
+                    "008_anchor_program_id_{:02}_{path}",
+                    rank_offset + rank
+                )),
+                data: Some(serde_json::json!({
+                    "anchorCompletion": "well-known-program-id",
+                })),
+                ..CompletionItem::default()
+            })
+        })
+}
+
+fn non_sysvar_address_item(address: &WellKnownAddress, rank: usize) -> CompletionItem {
     CompletionItem {
         label: address.path.to_string(),
         kind: Some(CompletionItemKind::CONSTANT),
@@ -95,6 +147,21 @@ fn well_known_address_item(address: &WellKnownAddress, rank: usize) -> Completio
         })),
         ..CompletionItem::default()
     }
+}
+
+fn non_sysvar_address_is_available(document: &ParsedDocument, path: &str) -> bool {
+    let Some(root) = path_root(path) else {
+        return false;
+    };
+    document
+        .symbols()
+        .imported_names
+        .iter()
+        .any(|import| import.name == root)
+}
+
+fn path_root(path: &str) -> Option<&str> {
+    path.split(PATH_SEPARATOR).next()
 }
 
 /// `pubkey!("…")` lets a human paste a base58 address with no import — the
@@ -111,5 +178,53 @@ fn pubkey_literal_item() -> CompletionItem {
             "anchorCompletion": "pubkey-literal",
         })),
         ..CompletionItem::default()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::document::ParsedDocument;
+
+    #[test]
+    fn system_program_address_matches_solana_program_dependency() {
+        let system_program = NON_SYSVAR_ADDRESSES
+            .iter()
+            .find(|address| address.path == "system_program::ID")
+            .expect("system program address entry");
+
+        assert_eq!(
+            system_program.address,
+            solana_program::system_program::ID.to_string()
+        );
+    }
+
+    /// Every sysvar entry in the completions list must reference an address string that
+    /// comes from the runtime catalog — verifying there is no independent copy.
+    #[test]
+    fn sysvar_address_completion_strings_match_runtime_catalog() {
+        let document = ParsedDocument::parse("").unwrap();
+        let items = well_known_address_items(&document);
+
+        for sysvar_name in SYSVAR_ID_NAMES {
+            let spec = runtime_catalog::by_name(sysvar_name)
+                .unwrap_or_else(|| panic!("catalog missing sysvar '{sysvar_name}'"));
+
+            let expected_label = format!("sysvar::{}::ID", spec.name);
+            let item = items
+                .iter()
+                .find(|item| item.label == expected_label)
+                .unwrap_or_else(|| panic!("no completion item for '{expected_label}'"));
+
+            // The detail string must embed the canonical address string from the catalog,
+            // not an independent copy.
+            let detail = item.detail.as_deref().unwrap_or("");
+            assert!(
+                detail.contains(spec.account_id_str),
+                "detail for '{expected_label}' does not contain catalog address '{}'; \
+                 got: {detail:?}",
+                spec.account_id_str
+            );
+        }
     }
 }

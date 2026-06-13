@@ -1,11 +1,13 @@
 use {
     crate::{
         account_semantics,
+        anchor::extractor,
         constraint_catalog::ConstraintValueKind,
         constraint_text,
         diagnostics::{diagnostic_from_range_with_related, registry::AnchorDiagnosticKind},
         document::{ParsedDocument, SymbolRange},
         evidence::{AccountSetEvidence, EvidenceGraph},
+        semantic::SemanticModel,
         workspace::WorkspaceIndex,
     },
     tower_lsp::lsp_types::{Diagnostic, DiagnosticRelatedInformation, Location, Url},
@@ -20,10 +22,13 @@ pub fn collect_with_workspace(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Vec<Diagnostic> {
+    let semantic_model = extractor::extract(document);
     EvidenceGraph::from_document(document)
         .account_sets()
         .iter()
-        .flat_map(|accounts| missing_account_references(document, accounts, workspace_index))
+        .flat_map(|accounts| {
+            missing_account_references(document, accounts, workspace_index, &semantic_model)
+        })
         .collect()
 }
 
@@ -31,6 +36,7 @@ fn missing_account_references(
     document: &ParsedDocument,
     accounts: &AccountSetEvidence<'_>,
     workspace_index: Option<&WorkspaceIndex>,
+    semantic_model: &SemanticModel,
 ) -> Vec<Diagnostic> {
     let workspace_instruction_args = workspace_index
         .map(|index| index.instruction_argument_names_for_context(&accounts.accounts.name))
@@ -47,7 +53,11 @@ fn missing_account_references(
                     .account_references()
                     .into_iter()
                     .filter(|reference| {
-                        if accounts.has_account(reference.name) {
+                        if semantic_model_has_account(
+                            semantic_model,
+                            &accounts.accounts.name,
+                            reference.name,
+                        ) {
                             return false;
                         }
                         if reference.value_kind != ConstraintValueKind::ProgramReference {
@@ -147,6 +157,18 @@ fn missing_account_references(
     }
 
     diagnostics
+}
+
+fn semantic_model_has_account(
+    semantic_model: &SemanticModel,
+    accounts_struct_name: &str,
+    reference_name: &str,
+) -> bool {
+    let terminal_name = reference_name.rsplit('.').next().unwrap_or(reference_name);
+    semantic_model
+        .all_fields_for_struct(accounts_struct_name)
+        .into_iter()
+        .any(|field| field.name == reference_name || field.name == terminal_name)
 }
 
 fn missing_instruction_argument_related_information(

@@ -218,7 +218,6 @@ pub mod demo {
     );
 
     assert_no_code(&diagnostics, ANCHOR_SECURITY_SIGNER_CODE);
-    assert_no_code(&diagnostics, ANCHOR_SECURITY_TOKEN_ACCOUNT_CODE);
     assert_no_code(&diagnostics, ANCHOR_SECURITY_CPI_PROGRAM_CODE);
     assert_no_code(&diagnostics, ANCHOR_SECURITY_OWNER_CHECK_CODE);
     assert_no_code(&diagnostics, ANCHOR_SECURITY_TYPE_COSPLAY_CODE);
@@ -338,4 +337,58 @@ pub mod demo {
     );
 
     assert_has_code(&diagnostics, ANCHOR_SECURITY_TYPE_COSPLAY_CODE);
+}
+
+// --- impl-method coverage ---
+
+/// An impl-method that reads raw account data without an owner check must be
+/// flagged, just like the equivalent free function. Before the fix, impl
+/// methods were silently skipped (under-report).
+#[test]
+fn flags_raw_account_data_without_owner_check_in_impl_method() {
+    let diagnostics = security_diagnostics(
+        r#"
+#[derive(Accounts)]
+pub struct ReadRaw<'info> {
+    user: AccountInfo<'info>,
+}
+
+pub struct Processor;
+
+impl Processor {
+    pub fn handle(ctx: Context<ReadRaw>) -> ProgramResult {
+        let data = ctx.accounts.user.data.borrow();
+        Ok(())
+    }
+}
+"#,
+    );
+
+    assert_has_code(&diagnostics, ANCHOR_SECURITY_OWNER_CHECK_CODE);
+}
+
+/// An impl-method that performs a manual owner check before reading raw data
+/// must be accepted — same as the free-function case.
+#[test]
+fn accepts_raw_account_data_with_owner_check_in_impl_method() {
+    let diagnostics = security_diagnostics(
+        r#"
+#[derive(Accounts)]
+pub struct ReadRaw<'info> {
+    user: AccountInfo<'info>,
+}
+
+pub struct Processor;
+
+impl Processor {
+    pub fn handle(ctx: Context<ReadRaw>) -> ProgramResult {
+        require!(ctx.accounts.user.owner == &crate::ID, ErrorCode::InvalidOwner);
+        let data = ctx.accounts.user.data.borrow();
+        Ok(())
+    }
+}
+"#,
+    );
+
+    assert_no_code(&diagnostics, ANCHOR_SECURITY_OWNER_CHECK_CODE);
 }

@@ -768,12 +768,8 @@ fn token_range_on_line(line: &str, line_number: u32, token: &str) -> Option<Rang
 fn token_has_identifier_boundaries(line: &str, start: usize, end: usize) -> bool {
     let previous = line[..start].chars().next_back();
     let next = line[end..].chars().next();
-    previous.is_none_or(|ch| !is_identifier_char(ch))
-        && next.is_none_or(|ch| !is_identifier_char(ch))
-}
-
-fn is_identifier_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
+    previous.is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch))
+        && next.is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch))
 }
 
 #[cfg(test)]

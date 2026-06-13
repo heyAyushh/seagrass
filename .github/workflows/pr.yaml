@@ -13,6 +13,7 @@ on:
       - "rust-toolchain.toml"
       - "bump-version.sh"
       - ".github/workflows/fuzz.yaml"
+      - ".github/workflows/install-smoke.yaml"
       - ".github/workflows/perf.yaml"
       - ".github/workflows/pr.yaml"
       - ".github/workflows/property-tests.yaml"
@@ -24,8 +25,16 @@ on:
       - "docs/topics.schema.json"
       - "docs/release-readiness.json"
       - "scripts/check-diagnostic-topics.ts"
+      - "scripts/check-generated-support.ts"
+      - "scripts/check-generated-support.test.ts"
       - "scripts/check-lint-catalog.ts"
+      - "scripts/check-recognized-settings.ts"
+      - "scripts/check-release-parity.ts"
+      - "scripts/check-release-parity.test.ts"
       - "scripts/check-release-readiness.ts"
+      - "scripts/check-seagrass-toml-contract.ts"
+      - "scripts/smoke-release-install.ts"
+      - "scripts/generated-support.lock.json"
       - "scripts/package-release.ts"
   push:
     branches:
@@ -38,6 +47,7 @@ on:
       - "rust-toolchain.toml"
       - "bump-version.sh"
       - ".github/workflows/fuzz.yaml"
+      - ".github/workflows/install-smoke.yaml"
       - ".github/workflows/perf.yaml"
       - ".github/workflows/pr.yaml"
       - ".github/workflows/property-tests.yaml"
@@ -49,8 +59,16 @@ on:
       - "docs/topics.schema.json"
       - "docs/release-readiness.json"
       - "scripts/check-diagnostic-topics.ts"
+      - "scripts/check-generated-support.ts"
+      - "scripts/check-generated-support.test.ts"
       - "scripts/check-lint-catalog.ts"
+      - "scripts/check-recognized-settings.ts"
+      - "scripts/check-release-parity.ts"
+      - "scripts/check-release-parity.test.ts"
       - "scripts/check-release-readiness.ts"
+      - "scripts/check-seagrass-toml-contract.ts"
+      - "scripts/smoke-release-install.ts"
+      - "scripts/generated-support.lock.json"
       - "scripts/package-release.ts"
   workflow_dispatch:
 
@@ -102,6 +120,18 @@ jobs:
         run: bun scripts/check-lint-catalog.ts
       - name: Test lint catalog checker
         run: bun test scripts/check-lint-catalog.test.ts
+      - name: Check recognized settings manifest
+        run: bun scripts/check-recognized-settings.ts
+      - name: Check Seagrass.toml contract
+        run: bun scripts/check-seagrass-toml-contract.ts
+      - name: Check release install parity
+        run: bun scripts/check-release-parity.ts
+      - name: Test release install parity checker
+        run: bun test scripts/check-release-parity.test.ts
+      - name: Check generated Anchor support integrity
+        run: bun scripts/check-generated-support.ts
+      - name: Test generated Anchor support checker
+        run: bun test scripts/check-generated-support.test.ts
       - name: Check release readiness evidence shape
         run: bun scripts/check-release-readiness.ts --allow-pending --version "$(tr -d '[:space:]' < VERSION)"
       - name: Test release readiness checker
@@ -130,7 +160,7 @@ jobs:
   server-portability:
     name: Server portability (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

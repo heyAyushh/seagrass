@@ -6,6 +6,64 @@ use {
 const DEGRADED_PARSE_MESSAGE: &str =
     " Semantic diagnostics are paused until this Rust file parses again.";
 
+#[allow(dead_code)] // Consumed by scripts/check-recognized-settings.ts as the settings canon.
+pub const APPLIED_SETTING_KEYS: &[&str] = &[
+    "agent.mode",
+    "diagnostics.artifacts.enabled",
+    "diagnostics.coldPath",
+    "diagnostics.experimental.enabled",
+    "diagnostics.security.accountClosing",
+    "diagnostics.security.arbitraryCpi",
+    "diagnostics.security.enabled",
+    "diagnostics.security.initialization",
+    "diagnostics.security.instructionDataBounds",
+    "diagnostics.security.ownerChecks",
+    "diagnostics.security.pdaSeedCollision",
+    "diagnostics.security.signerAuthorization",
+    "diagnostics.security.staleCpiReload",
+    "diagnostics.security.strictNative.enabled",
+    "diagnostics.security.typeCosplay",
+    "diagnostics.security.writableAccounts",
+    "editor.client",
+    "editor.inlineValues.enabled",
+    "feedback.url",
+    "security.strictNative.enabled",
+    "telemetry.completion.enabled",
+    "telemetry.diagnostics.enabled",
+    "trace.server",
+    "workspaceIndex.enabled",
+];
+#[allow(dead_code)] // Consumed by scripts/check-recognized-settings.ts as the settings canon.
+pub const INITIALIZATION_SETTING_KEYS: &[&str] = &["diagnostics.transport"];
+#[allow(dead_code)] // Consumed by scripts/check-recognized-settings.ts as the settings canon.
+pub const RECOGNIZED_SETTING_KEYS: &[&str] = &[
+    "agent.mode",
+    "diagnostics.artifacts.enabled",
+    "diagnostics.coldPath",
+    "diagnostics.experimental.enabled",
+    "diagnostics.security.accountClosing",
+    "diagnostics.security.arbitraryCpi",
+    "diagnostics.security.enabled",
+    "diagnostics.security.initialization",
+    "diagnostics.security.instructionDataBounds",
+    "diagnostics.security.ownerChecks",
+    "diagnostics.security.pdaSeedCollision",
+    "diagnostics.security.signerAuthorization",
+    "diagnostics.security.staleCpiReload",
+    "diagnostics.security.strictNative.enabled",
+    "diagnostics.security.typeCosplay",
+    "diagnostics.security.writableAccounts",
+    "diagnostics.transport",
+    "editor.client",
+    "editor.inlineValues.enabled",
+    "feedback.url",
+    "security.strictNative.enabled",
+    "telemetry.completion.enabled",
+    "telemetry.diagnostics.enabled",
+    "trace.server",
+    "workspaceIndex.enabled",
+];
+
 const SECURITY_LEVEL_SETTINGS: &[(&str, &str)] = &[
     ("diagnostics.security.ownerChecks", "security.ownerChecks"),
     ("diagnostics.security.typeCosplay", "security.typeCosplay"),
@@ -97,6 +155,7 @@ impl ParsedOpenDocument {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn parsed_open_document_places_semicolon_error_on_unterminated_statement() {
@@ -119,13 +178,86 @@ mod tests {
             .message
             .contains("Semantic diagnostics are paused"));
     }
+
+    #[test]
+    fn recognized_keys_are_sorted_and_unique() {
+        assert_sorted_unique(APPLIED_SETTING_KEYS);
+        assert_sorted_unique(INITIALIZATION_SETTING_KEYS);
+        assert_sorted_unique(RECOGNIZED_SETTING_KEYS);
+
+        let mut combined = APPLIED_SETTING_KEYS
+            .iter()
+            .chain(INITIALIZATION_SETTING_KEYS)
+            .copied()
+            .collect::<Vec<_>>();
+        combined.sort_unstable();
+        assert_eq!(
+            combined, RECOGNIZED_SETTING_KEYS,
+            "recognized settings must be exactly applied plus initialization-only keys"
+        );
+    }
+
+    #[test]
+    fn apply_consumes_every_recognized_key() {
+        for key in APPLIED_SETTING_KEYS {
+            let mut settings = ServerSettings::default();
+            settings.apply(settings_payload(key, non_default_setting_value(key)));
+
+            assert_ne!(
+                settings,
+                ServerSettings::default(),
+                "ServerSettings::apply ignored recognized setting `{key}`"
+            );
+        }
+    }
+
+    fn assert_sorted_unique(values: &[&str]) {
+        for pair in values.windows(2) {
+            assert!(
+                pair[0] < pair[1],
+                "setting keys must be sorted and unique: {values:?}"
+            );
+        }
+    }
+
+    fn settings_payload(key: &str, value: serde_json::Value) -> serde_json::Value {
+        let mut seagrass = serde_json::Map::new();
+        seagrass.insert(key.to_string(), value);
+        let mut root = serde_json::Map::new();
+        root.insert("seagrass".to_string(), serde_json::Value::Object(seagrass));
+        serde_json::Value::Object(root)
+    }
+
+    fn non_default_setting_value(key: &str) -> serde_json::Value {
+        match key {
+            "agent.mode" => json!(true),
+            "diagnostics.artifacts.enabled" => json!(true),
+            "diagnostics.coldPath" => json!("save"),
+            "diagnostics.experimental.enabled" => json!(false),
+            "diagnostics.security.enabled" => json!(false),
+            "diagnostics.security.strictNative.enabled" => json!(false),
+            "editor.client" => json!("zed"),
+            "editor.inlineValues.enabled" => json!(false),
+            "feedback.url" => json!("https://example.test/seagrass"),
+            "security.strictNative.enabled" => json!(false),
+            "telemetry.completion.enabled" => json!(false),
+            "telemetry.diagnostics.enabled" => json!(false),
+            "trace.server" => json!(true),
+            "workspaceIndex.enabled" => json!(false),
+            setting if setting.starts_with("diagnostics.security.") => json!("error"),
+            _ => panic!("missing non-default test value for `{key}`"),
+        }
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ServerSettings {
     pub(crate) agent_mode: bool,
     pub(crate) security_diagnostics: bool,
     pub(crate) experimental_diagnostics: bool,
+    /// Controls mtime-based artifact diagnostics (stale/missing SBPF ELF, IDL, TypeScript).
+    /// Off by default to avoid noise on every edit-before-rebuild cycle.
+    pub(crate) artifact_diagnostics: bool,
     pub(crate) security_levels: BTreeMap<String, diagnostics::DiagnosticLevel>,
     pub(crate) strict_native_security: bool,
     pub(crate) diagnostics_cold_path: DiagnosticsColdPath,
@@ -158,6 +290,7 @@ impl Default for ServerSettings {
             agent_mode: false,
             security_diagnostics: true,
             experimental_diagnostics: true,
+            artifact_diagnostics: false,
             security_levels: BTreeMap::new(),
             strict_native_security: true,
             diagnostics_cold_path: DiagnosticsColdPath::Idle,
@@ -182,6 +315,8 @@ impl ServerSettings {
             .unwrap_or(self.security_diagnostics);
         self.experimental_diagnostics = bool_setting(anchor, "diagnostics.experimental.enabled")
             .unwrap_or(self.experimental_diagnostics);
+        self.artifact_diagnostics = bool_setting(anchor, "diagnostics.artifacts.enabled")
+            .unwrap_or(self.artifact_diagnostics);
         self.strict_native_security = bool_setting(anchor, "security.strictNative.enabled")
             .or_else(|| bool_setting(anchor, "diagnostics.security.strictNative.enabled"))
             .unwrap_or(self.strict_native_security);

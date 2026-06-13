@@ -1,9 +1,9 @@
 ---
 name: seagrass-suppress
-description: Add a Seagrass diagnostic suppression at the narrowest correct scope. Use when the user says "suppress this seagrass warning", "ignore this finding", "silence seagrass for this line/file/project", "add seagrass-allow", or "this is a false positive, suppress it". Picks the right of four suppression forms (line, file, item/block, workspace) and writes the comment or config.
+description: Add a Seagrass diagnostic suppression at the narrowest correct scope. Use when the user says "suppress this seagrass warning", "ignore this finding", "silence seagrass for this line/file/project", "add seagrass-allow", or "this is a false positive, suppress it". Picks the right suppression form (line, item/block, file, workspace, or Cargo project switch) and writes the comment or config.
 user-invocable: true
 license: MIT
-compatibility: Requires write access to the file (or `Seagrass.toml` for workspace scope).
+compatibility: Requires write access to the file, `Seagrass.toml`, or `Cargo.toml`.
 metadata:
   author: Seagrass Maintainers
   version: 1.0.0
@@ -22,21 +22,21 @@ The user wants Seagrass to stop emitting a specific topic at a specific location
 - **Real finding, accepted** → suppress, and recommend leaving a comment line explaining why.
 - **False positive** → suppress AND route to `seagrass-debug-fp` so the upstream rule gets a regression fixture.
 
-## The five suppression forms
+## The seven suppression forms
 
 Seagrass supports exactly these. No others.
 
 ### 1. Line / next-line
 
 ```rust
-let x = a - b; // seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic
+let x = maybe_value().unwrap(); // seagrass-allow: seagrass/solana.code-quality.unsafe-unwrap
 ```
 
 Or on the preceding line:
 
 ```rust
-// seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic
-let x = a - b;
+// seagrass-allow: seagrass/solana.code-quality.unsafe-unwrap
+let x = maybe_value().unwrap();
 ```
 
 **Use when:** one specific expression triggers the FP. Narrowest scope.
@@ -53,8 +53,8 @@ let x = a - b;
 ### 3. Item / block attribute
 
 ```rust
-#[seagrass(allow("seagrass/solana.code-quality.unchecked-arithmetic"))]
-fn debit(amount: u64, fee: u64) -> u64 { amount - fee }
+#[seagrass(allow("seagrass/solana.code-quality.unsafe-unwrap"))]
+fn required_value(input: Option<u64>) -> u64 { input.unwrap() }
 ```
 
 ```rust
@@ -78,14 +78,24 @@ Place at the top of the file (before the first item).
 
 **Use when:** the file is intentionally exempt — e.g., a fixture, an unsafe-but-audited helper, a generated module.
 
-### 5. Workspace
+### 5. Whole file, all topics
+
+```rust
+// seagrass-ignore-file
+```
+
+Place in the leading file comment/header before the first Rust item.
+
+**Use when:** the whole file is outside Seagrass's useful scope. Prefer `seagrass-allow-file:` when the topic is known.
+
+### 6. Workspace topic allow-list
 
 `Seagrass.toml` at the workspace root:
 
 ```toml
 [lints]
 allow = [
-  "unchecked-arithmetic",
+  "unsafe-unwrap",
   "security.account.unchecked",
 ]
 ```
@@ -94,6 +104,24 @@ Topic names in `Seagrass.toml` use the suffix after `seagrass/`. Trailing `.<iss
 
 **Use when:** an entire crate or workspace genuinely doesn't want a topic — rare, and almost always wrong for security-category topics.
 
+### 7. Cargo project switch, all topics
+
+Package-level `Cargo.toml`:
+
+```toml
+[package.metadata.seagrass]
+suppress = true
+```
+
+Workspace-root `Cargo.toml`:
+
+```toml
+[workspace.metadata.seagrass]
+suppress = true
+```
+
+**Use when:** a package or workspace is intentionally out of Seagrass scope. This turns off all Seagrass diagnostics for files under that manifest, so push back unless the user explicitly asks for project-wide silence.
+
 ## Choosing scope (always pick the smallest)
 
 ```
@@ -101,7 +129,9 @@ Line/next-line       →  one expression / one statement
 Line all-topic       →  one documented exception where every topic is accepted
 Item/block           →  one function / one field / one struct
 File                 →  fixture file / generated module / explicit exemption
-Workspace            →  whole crate or workspace
+Whole file all-topic →  generated or external file intentionally out of scope
+Workspace topic      →  whole crate or workspace topic allow-list
+Cargo project        →  whole package or workspace all-topic disable
 ```
 
 If the user asks for a broader scope than the FP actually requires, push back: "This will silence Seagrass everywhere — are you sure? A line-scoped allow would also resolve this finding."
@@ -128,9 +158,9 @@ Ask: "Apply?"
 Add a `WHY` comment line if it isn't obvious from context:
 
 ```rust
-// seagrass-allow: seagrass/solana.code-quality.unchecked-arithmetic
-// reason: bounded by upstream `validate_amount` invariant
-let x = a - b;
+// seagrass-allow: seagrass/solana.code-quality.unsafe-unwrap
+// reason: initialization guarantees this option is present
+let x = maybe_value().unwrap();
 ```
 
 This is for the next reader. Seagrass itself only needs the directive.
@@ -139,6 +169,7 @@ This is for the next reader. Seagrass itself only needs the directive.
 
 - Adding a file-scope suppression because "there are many findings" — that hides future regressions. Run `seagrass-debug-fp` for each instead.
 - Adding a workspace-scope suppression for a security topic. Always push back.
+- Adding `[package.metadata.seagrass] suppress = true` when a topic allow-list or file suppression would work.
 - Editing `Seagrass.toml` to suppress when only one line triggers.
 - Adding a suppression without confirming Seagrass actually emits there — re-check with `seagrass diagnostics` first.
 

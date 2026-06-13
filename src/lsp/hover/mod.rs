@@ -1,32 +1,57 @@
 mod account_constraints;
+mod summaries;
 
 use {
     crate::{
-        account_semantics, anchor_types,
+        account_semantics,
+        anchor::space::{self, SpaceEstimate},
+        anchor_types,
         completions::{CursorContext, CursorContextKind, ResolvedCursorContext},
+        constraint_text,
         document::{ParsedDocument, SymbolRange},
         navigation,
         range::{word_at_position, word_range_at_position},
-        workspace::WorkspaceContextField,
+        workspace::{WorkspaceContextField, WorkspaceIndex},
+    },
+    summaries::{
+        account_data_field_usage_summary, account_path_usage_summary, account_usage_summary,
+        field_at_position, field_names, field_type_display,
     },
     tower_lsp::lsp_types::{Hover, HoverContents, MarkupContent, MarkupKind, Position},
 };
 
+#[cfg(test)]
 pub fn hover(document: &ParsedDocument, position: Position) -> Option<Hover> {
+    hover_with_workspace(document, position, None)
+}
+
+pub fn hover_with_workspace(
+    document: &ParsedDocument,
+    position: Position,
+    workspace: Option<&WorkspaceIndex>,
+) -> Option<Hover> {
     let cursor_context = CursorContext::classify_document(document, position);
-    hover_from_cursor_context(document, position, &cursor_context)
+    hover_from_cursor_context(document, position, &cursor_context, workspace)
         .or_else(|| anchor_account_type_hover(document, position))
-        .or_else(|| anchor_symbol_hover(document, position, cursor_context.context()))
+        .or_else(|| anchor_symbol_hover(document, position, cursor_context.context(), workspace))
 }
 
 fn hover_from_cursor_context(
     document: &ParsedDocument,
     position: Position,
     cursor_context: &CursorContext,
+    workspace: Option<&WorkspaceIndex>,
 ) -> Option<Hover> {
     match cursor_context.kind() {
-        CursorContextKind::AccountConstraintKey { .. }
-        | CursorContextKind::AccountConstraintValue { .. } => {
+        CursorContextKind::AccountConstraintValue { .. } => {
+            space_constraint_value_hover(document, position, cursor_context.context(), workspace)
+                .or_else(|| {
+                    account_constraints::hover(document, position).or_else(|| {
+                        instruction_argument_hover(document, position, cursor_context.context())
+                    })
+                })
+        }
+        CursorContextKind::AccountConstraintKey { .. } => {
             account_constraints::hover(document, position).or_else(|| {
                 instruction_argument_hover(document, position, cursor_context.context())
             })
@@ -181,6 +206,7 @@ fn anchor_symbol_hover(
     document: &ParsedDocument,
     position: Position,
     cursor_context: &ResolvedCursorContext,
+    workspace: Option<&WorkspaceIndex>,
 ) -> Option<Hover> {
     let word = word_at_position(document.source(), position)?;
 
@@ -323,18 +349,132 @@ fn anchor_symbol_hover(
     }
 
     if let Some(symbol) = document.symbols().account_data_structs.get(&word) {
-        return markdown_hover(
-            document,
-            position,
-            format!(
-                "`{}`\n\nAnchor account data struct.\n\nFields: {}",
-                symbol.name,
-                field_names(symbol)
-            ),
+        let mut value = format!(
+            "`{}`\n\nAnchor account data struct.\n\nFields: {}",
+            symbol.name,
+            field_names(symbol)
         );
+        if let Some(section) = account_space_section(symbol, document, workspace) {
+            value.push_str(&section);
+        }
+        return markdown_hover(document, position, value);
     }
 
     None
+}
+
+fn space_constraint_value_hover(
+    document: &ParsedDocument,
+    position: Position,
+    cursor_context: &ResolvedCursorContext,
+    workspace: Option<&WorkspaceIndex>,
+) -> Option<Hover> {
+    let cursor = document.account_attribute_cursor(position)?;
+    if cursor.constraint_key.as_deref() != Some("space") {
+        return None;
+    }
+    let account_field_name = cursor.field_name.as_ref()?;
+    let accounts_name = cursor_context.accounts_struct.as_ref()?.name.as_str();
+    let accounts = document.symbols().accounts_structs.get(accounts_name)?;
+    let field = accounts
+        .fields
+        .iter()
+        .find(|field| field.name == *account_field_name)?;
+    let account_data_type = account_data_type_for_space(accounts, field)?;
+    let account_data = account_data_symbol(document, workspace, account_data_type)?;
+    let report = space::account_space_report(&account_data, Some(document), workspace);
+    if !report.estimate.is_known() {
+        return None;
+    }
+
+    let mut value = format!(
+        "`space` for `{account_data_type}`\n\nComputed: `{}`.",
+        account_space_total_text(&report.estimate)
+    );
+    if let Some(declared) = declared_space_literal(field, cursor.range.start.line) {
+        if let SpaceEstimate::Exact(data_bytes) = report.estimate {
+            let computed = 8u64.saturating_add(data_bytes);
+            value.push_str(&format!(
+                "\n\nDeclared literal: `{declared} bytes`; computed requirement: `{computed} bytes`."
+            ));
+        }
+    }
+    markdown_hover(document, position, value)
+}
+
+fn account_data_type_for_space<'a>(
+    accounts: &'a SymbolRange,
+    field: &'a SymbolRange,
+) -> Option<&'a str> {
+    account_semantics::declared_or_expected_account_inner_type(accounts, field)
+        .or_else(|| field.generic_type_names.last().map(String::as_str))
+}
+
+fn account_data_symbol(
+    document: &ParsedDocument,
+    workspace: Option<&WorkspaceIndex>,
+    account_data_type: &str,
+) -> Option<SymbolRange> {
+    document
+        .symbols()
+        .account_data_structs
+        .get(account_data_type)
+        .cloned()
+        .or_else(|| {
+            workspace
+                .and_then(|workspace| workspace.account_data_struct(account_data_type))
+                .map(|entry| entry.symbol.clone())
+        })
+}
+
+fn declared_space_literal(field: &SymbolRange, line: u32) -> Option<u64> {
+    let constraint = field.account_constraints.iter().find(|constraint| {
+        constraint.range.start.line <= line && line <= constraint.range.end.line
+    })?;
+    let value = constraint_text::values_after_key(&constraint.text, "space")
+        .into_iter()
+        .next()?;
+    value.parse().ok()
+}
+
+fn account_space_section(
+    symbol: &SymbolRange,
+    document: &ParsedDocument,
+    workspace: Option<&WorkspaceIndex>,
+) -> Option<String> {
+    let report = space::account_space_report(symbol, Some(document), workspace);
+    if !report.estimate.is_known() {
+        return None;
+    }
+
+    let mut section = "\n\n### Space\n\n| field | type | bytes |\n|---|---|---|".to_string();
+    for field in &report.fields {
+        let bytes = space::estimate_expr(&field.estimate)?;
+        section.push_str(&format!(
+            "\n| `{}` | `{}` | `{bytes}` |",
+            field.field, field.type_display
+        ));
+    }
+    section.push_str(&format!(
+        "\n\n**{}** - `space = 8 + {}::INIT_SPACE`",
+        account_space_total_text(&report.estimate),
+        symbol.name
+    ));
+    Some(section)
+}
+
+fn account_space_total_text(estimate: &SpaceEstimate) -> String {
+    match estimate {
+        SpaceEstimate::Exact(data_bytes) => {
+            let total = 8u64.saturating_add(*data_bytes);
+            format!("8 (discriminator) + {data_bytes} = {total} bytes")
+        }
+        SpaceEstimate::Formula { fixed, symbolic } => {
+            let data_expr = space::formula_expr(*fixed, symbolic);
+            format!("8 (discriminator) + {data_expr} bytes")
+        }
+        SpaceEstimate::Unknown(reason) => format!("unknown: {reason}"),
+    }
 }
 
 fn is_context_generic_reference(source: &str, position: Position, name: &str) -> bool {
@@ -493,201 +633,6 @@ fn markdown_hover(document: &ParsedDocument, position: Position, value: String) 
         }),
         range: word_range_at_position(document.source(), position),
     })
-}
-
-fn field_at_position<'a>(
-    document: &'a ParsedDocument,
-    word: &str,
-    position: Position,
-) -> Option<(String, &'a SymbolRange)> {
-    if let Some(field) = document
-        .symbols()
-        .accounts_structs
-        .values()
-        .chain(document.symbols().account_data_structs.values())
-        .filter(|symbol| contains_position(symbol.range, position))
-        .find_map(|symbol| {
-            symbol
-                .fields
-                .iter()
-                .find(|field| field.name == word)
-                .map(|field| (symbol.name.clone(), field))
-        })
-    {
-        return Some(field);
-    }
-
-    if let Some(field) = document
-        .symbols()
-        .callable_functions()
-        .filter(|instruction| contains_position(instruction.range, position))
-        .filter_map(|instruction| instruction.context.as_ref())
-        .filter_map(|context| document.symbols().accounts_structs.get(&context.name))
-        .find_map(|accounts| {
-            accounts
-                .fields
-                .iter()
-                .find(|field| field.name == word)
-                .map(|field| (accounts.name.clone(), field))
-        })
-    {
-        return Some(field);
-    }
-
-    let mut matches = document
-        .symbols()
-        .accounts_structs
-        .values()
-        .chain(document.symbols().account_data_structs.values())
-        .flat_map(|symbol| {
-            symbol
-                .fields
-                .iter()
-                .filter(move |field| field.name == word)
-                .map(|field| (symbol.name.clone(), field))
-        });
-    let first = matches.next()?;
-    matches.next().is_none().then_some(first)
-}
-
-fn field_type_display(field: &SymbolRange) -> Option<String> {
-    let type_name = field.type_name.as_ref()?;
-    if field.generic_type_names.is_empty() {
-        Some(type_name.clone())
-    } else {
-        Some(format!(
-            "{}<{}>",
-            type_name,
-            field.generic_type_names.join(", ")
-        ))
-    }
-}
-
-fn field_names(symbol: &SymbolRange) -> String {
-    if symbol.fields.is_empty() {
-        "none".to_string()
-    } else {
-        symbol
-            .fields
-            .iter()
-            .map(|field| format!("`{}`", field.name))
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-}
-
-fn account_usage_summary(
-    document: &ParsedDocument,
-    accounts_name: &str,
-    field_name: &str,
-) -> Option<String> {
-    let usages = document
-        .symbols()
-        .callable_functions()
-        .filter(|instruction| {
-            instruction
-                .context
-                .as_ref()
-                .is_some_and(|context| context.name == accounts_name)
-        })
-        .flat_map(|instruction| {
-            instruction
-                .account_usages
-                .iter()
-                .filter(move |usage| usage.name == field_name)
-                .map(move |usage| {
-                    if usage.mutable {
-                        format!("`{}` mutates", instruction.name)
-                    } else {
-                        format!("`{}` reads", instruction.name)
-                    }
-                })
-        })
-        .collect::<Vec<_>>();
-    (!usages.is_empty()).then(|| usages.join(", "))
-}
-
-fn account_data_field_usage_summary(
-    document: &ParsedDocument,
-    account_data_type: &str,
-    field_name: &str,
-) -> Option<String> {
-    let usages = document
-        .symbols()
-        .callable_functions()
-        .flat_map(|instruction| {
-            instruction
-                .account_data_field_usages
-                .iter()
-                .filter_map(move |usage| {
-                    let accounts = instruction.context.as_ref().and_then(|context| {
-                        document.symbols().accounts_structs.get(&context.name)
-                    })?;
-                    let usage_type = accounts
-                        .fields
-                        .iter()
-                        .find(|field| field.name == usage.account)
-                        .and_then(|field| field.generic_type_names.last())?;
-                    (usage.field == field_name && usage_type == account_data_type).then(|| {
-                        if usage.mutable {
-                            format!("`{}` mutates", instruction.name)
-                        } else {
-                            format!("`{}` reads", instruction.name)
-                        }
-                    })
-                })
-        })
-        .collect::<Vec<_>>();
-    (!usages.is_empty()).then(|| usages.join(", "))
-}
-
-fn account_path_usage_summary(
-    document: &ParsedDocument,
-    accounts_name: &str,
-    field_name: &str,
-) -> Option<String> {
-    let usages = document
-        .symbols()
-        .callable_functions()
-        .filter_map(|instruction| {
-            let context = instruction.context.as_ref()?;
-            let used = instruction
-                .account_path_usages
-                .iter()
-                .flat_map(|usage| {
-                    usage
-                        .segments
-                        .iter()
-                        .enumerate()
-                        .filter_map(|(index, segment)| {
-                            let position = navigation::AccountPathPosition {
-                                context: context.name.clone(),
-                                segments: usage
-                                    .segments
-                                    .iter()
-                                    .map(|segment| segment.name.clone())
-                                    .collect(),
-                                segment_index: index,
-                                field: segment.name.clone(),
-                            };
-                            navigation::account_field_path_definition_target_for_position(
-                                document, &position,
-                            )
-                            .filter(|target| {
-                                target.container == accounts_name && target.field == field_name
-                            })
-                            .map(|_| usage.mutable)
-                        })
-                })
-                .next()?;
-            Some(if used {
-                format!("`{}` mutates", instruction.name)
-            } else {
-                format!("`{}` reads", instruction.name)
-            })
-        })
-        .collect::<Vec<_>>();
-    (!usages.is_empty()).then(|| usages.join(", "))
 }
 
 fn contains_position(range: tower_lsp::lsp_types::Range, position: Position) -> bool {

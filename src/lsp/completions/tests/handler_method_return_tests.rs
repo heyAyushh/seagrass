@@ -1,7 +1,8 @@
 use {
     super::{completions, position_after},
     crate::{
-        document::ParsedDocument, lsp::completions::proptest_support::rust_identifier,
+        document::ParsedDocument,
+        lsp::completions::proptest_support::{rust_identifier, rust_type_identifier},
         workspace::WorkspaceIndex,
     },
     proptest::prelude::*,
@@ -77,6 +78,34 @@ pub struct BundleMetadata {
 
     let items = completions(&document, position_after(source, "metadata.asset_"))
         .expect("question-mark method return member completions");
+
+    assert_eq!(items[0].label, "asset_mint");
+}
+
+#[test]
+fn completes_members_from_question_mark_self_method() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+pub fn handler(ctx: Context<Run>, bundle: PositionBundle) -> Result<()> {
+    let metadata = bundle.metadata()?;
+    metadata.asset_
+}
+
+pub struct PositionBundle {
+    pub asset_mint: Pubkey,
+}
+
+impl PositionBundle {
+    pub fn metadata(&self) -> Result<Self> {
+        unreachable!()
+    }
+}
+"#;
+    let document = ParsedDocument::parse_or_empty(source);
+
+    let items = completions(&document, position_after(source, "metadata.asset_"))
+        .expect("question-mark Self method return member completions");
 
     assert_eq!(items[0].label, "asset_mint");
 }
@@ -172,9 +201,9 @@ proptest! {
     #[test]
     fn completes_generated_method_return_members(
         local in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         method in rust_identifier(),
-        returned in "[A-Z][A-Za-z0-9_]{1,10}",
+        returned in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(local != method);

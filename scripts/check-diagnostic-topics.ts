@@ -1,8 +1,14 @@
 #!/usr/bin/env bun
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { isRecord } from "./json-utils.ts";
+import {
+  isProductionDiagnosticSourcePath as isProductionDiagnosticSourcePathForRoot,
+  rustFiles,
+} from "./script-paths.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -71,10 +77,6 @@ function isTopicEntry(value: unknown): value is TopicEntry {
     typeof value.description === "string" &&
     value.description.trim().length > 0
   );
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
 }
 
 export function topicManifestFailures(topics: TopicEntry[], sourceTopics: string[]): string[] {
@@ -152,24 +154,7 @@ export function sourceTopicsFromText(text: string): string[] {
 }
 
 export function isProductionDiagnosticSourcePath(path: string): boolean {
-  const relativePath = relative(repoRoot, path).replaceAll("\\", "/");
-  return (
-    relativePath.endsWith(".rs") &&
-    !relativePath.endsWith("_tests.rs") &&
-    !relativePath.endsWith("/tests.rs") &&
-    !relativePath.includes("/tests/")
-  );
-}
-
-function rustFiles(root: string): string[] {
-  return readdirSync(root)
-    .map((name) => resolve(root, name))
-    .flatMap((path) => {
-      if (statSync(path).isDirectory()) {
-        return rustFiles(path);
-      }
-      return path.endsWith(".rs") ? [path] : [];
-    });
+  return isProductionDiagnosticSourcePathForRoot(repoRoot, path);
 }
 
 function formatTopicList(label: string, topics: string[]): string {

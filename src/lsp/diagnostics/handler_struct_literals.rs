@@ -23,7 +23,7 @@ use {
     tower_lsp::lsp_types::{Diagnostic, Range},
 };
 
-const TOPIC: &str = "seagrass/anchor.account.usage";
+const TOPIC: &str = AnchorDiagnosticKind::AnchorMissingAccountReference.topic();
 const REASON: &str = "unknown-struct-literal-field";
 const PATTERN_REASON: &str = "unknown-struct-pattern-field";
 const EVIDENCE_SOURCE: &str = "parsed-rust-struct-literal-fields";

@@ -1,8 +1,13 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { readFileSync } from "node:fs";
+import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { isRecord, stringField } from "./json-utils.ts";
+import { treeFiles } from "./script-paths.ts";
+
+export { isRecord, stringField } from "./json-utils.ts";
 
 export const MILLISECONDS_PER_SECOND = 1_000;
 export const SECONDS_PER_HOUR = 60 * 60;
@@ -269,18 +274,6 @@ export function compareStrings(left: string, right: string): number {
   return left.localeCompare(right);
 }
 
-export function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-export function stringField(record: Record<string, unknown>, field: string): string {
-  const value = record[field];
-  if (typeof value !== "string") {
-    throw new Error(`${field} must be a string`);
-  }
-  return value;
-}
-
 function workflowMatrixList(contents: string, key: string): string[] {
   const lines = contents.split(/\r?\n/);
   for (let index = 0; index < lines.length; index += 1) {
@@ -309,22 +302,6 @@ function workflowMatrixList(contents: string, key: string): string[] {
     }
   }
   throw new Error(`could not find ${key} matrix in ${fuzzWorkflowPath}`);
-}
-
-function treeFiles(root: string): string[] {
-  if (!existsSync(root)) {
-    throw new Error(`path does not exist: ${root}`);
-  }
-  return readdirSync(root)
-    .map((entry) => join(root, entry))
-    .flatMap((path) => {
-      const stat = statSync(path);
-      if (stat.isDirectory()) {
-        return treeFiles(path);
-      }
-      return stat.isFile() ? [path] : [];
-    })
-    .sort(compareStrings);
 }
 
 function nonNegativeInteger(value: string, field: string): number {

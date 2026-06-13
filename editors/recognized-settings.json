@@ -1,0 +1,30 @@
+{
+  "source": "src/runtime/server_types/mod.rs::RECOGNIZED_SETTING_KEYS",
+  "recognizedSettings": [
+    "agent.mode",
+    "diagnostics.artifacts.enabled",
+    "diagnostics.coldPath",
+    "diagnostics.experimental.enabled",
+    "diagnostics.security.accountClosing",
+    "diagnostics.security.arbitraryCpi",
+    "diagnostics.security.enabled",
+    "diagnostics.security.initialization",
+    "diagnostics.security.instructionDataBounds",
+    "diagnostics.security.ownerChecks",
+    "diagnostics.security.pdaSeedCollision",
+    "diagnostics.security.signerAuthorization",
+    "diagnostics.security.staleCpiReload",
+    "diagnostics.security.strictNative.enabled",
+    "diagnostics.security.typeCosplay",
+    "diagnostics.security.writableAccounts",
+    "diagnostics.transport",
+    "editor.client",
+    "editor.inlineValues.enabled",
+    "feedback.url",
+    "security.strictNative.enabled",
+    "telemetry.completion.enabled",
+    "telemetry.diagnostics.enabled",
+    "trace.server",
+    "workspaceIndex.enabled"
+  ]
+}

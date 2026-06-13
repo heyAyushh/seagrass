@@ -5,6 +5,8 @@ use {
         diagnostics::{diagnostic_from_range, diagnostic_from_syn_error},
         document::{derives_accounts, has_attr, ParsedDocument},
         range::range_from_span,
+        solana::{capability_registry, runtime_catalog},
+        solana_project::CargoManifestDeps,
         workspace::WorkspaceIndex,
     },
     std::collections::HashSet,
@@ -32,9 +34,18 @@ pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
     collect_with_workspace(document, None)
 }
 
+#[cfg(test)]
 pub fn collect_with_workspace(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
+) -> Vec<Diagnostic> {
+    collect_with_context(document, workspace_index, &CargoManifestDeps::default())
+}
+
+pub fn collect_with_context(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    manifest_deps: &CargoManifestDeps,
 ) -> Vec<Diagnostic> {
     document
         .syntax()
@@ -45,7 +56,7 @@ pub fn collect_with_workspace(
                 validate_program(item_mod)
             }
             Item::Struct(item_struct) if derives_accounts(&item_struct.attrs) => {
-                validate_accounts(document, item_struct, workspace_index)
+                validate_accounts(document, item_struct, workspace_index, manifest_deps)
             }
             _ => Vec::new(),
         })
@@ -56,6 +67,7 @@ fn validate_accounts(
     document: &ParsedDocument,
     item_struct: &ItemStruct,
     workspace_index: Option<&WorkspaceIndex>,
+    manifest_deps: &CargoManifestDeps,
 ) -> Vec<Diagnostic> {
     let mut semantic_diagnostics =
         unresolved_account_generic_diagnostics(document, item_struct, workspace_index);
@@ -67,7 +79,7 @@ fn validate_accounts(
         Ok(_) => Vec::new(),
         Err(err) => {
             if err.to_string().contains("invalid sysvar provided") {
-                match invalid_sysvar_diagnostic(document, item_struct, &err) {
+                match invalid_sysvar_diagnostic(document, item_struct, &err, manifest_deps) {
                     InvalidSysvarDiagnostic::Diagnostic(diagnostic) => vec![*diagnostic],
                     InvalidSysvarDiagnostic::Suppress => Vec::new(),
                     InvalidSysvarDiagnostic::Fallback => vec![diagnostic_from_syn_error(err)],
@@ -142,6 +154,7 @@ fn unresolved_account_generic_diagnostics(
                 &declared_type_params,
                 &local_struct_names,
                 &inferred_expected,
+                document,
                 workspace_index,
             )
         })
@@ -156,16 +169,20 @@ fn unresolved_account_generic_diagnostic(
         String,
         account_semantics::ExpectedAccountInnerType,
     >,
+    document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
 ) -> Option<Diagnostic> {
     let field_name = field.ident.as_ref()?.to_string();
     let (container, generic, generic_range, container_range, boxed_wrapper) =
         account_generic_argument(&field.ty)?;
+    let resolved_generic = document.symbols().resolve_type_alias(&generic);
 
     if declared_type_params.contains(&generic)
         || local_struct_names.contains(&generic)
+        || local_struct_names.contains(resolved_generic)
         || is_known_workspace_type(workspace_index, &generic)
-        || is_generated_anchor_account_inner_type(&container, &generic)
+        || is_known_workspace_type(workspace_index, resolved_generic)
+        || is_generated_anchor_account_inner_type(&container, resolved_generic)
     {
         return None;
     }
@@ -278,7 +295,7 @@ fn account_wrapper_shape_diagnostic(field: &Field, existing: &[Diagnostic]) -> O
             .first()
             .map(|generic| format!("{container}<'info, {generic}>"));
         let example = expected
-            .as_deref()
+            .clone()
             .unwrap_or_else(|| account_wrapper_shape_example(&container));
         return Some(account_wrapper_shape_error(
             &field_name,
@@ -295,7 +312,7 @@ fn account_wrapper_shape_diagnostic(field: &Field, existing: &[Diagnostic]) -> O
     if type_args.is_empty() {
         let expected = account_wrapper_missing_type_expected(&field_name, &container);
         let example = expected
-            .as_deref()
+            .clone()
             .unwrap_or_else(|| account_wrapper_shape_example(&container));
         return Some(account_wrapper_shape_error(
             &field_name,
@@ -315,7 +332,9 @@ fn account_wrapper_shape_diagnostic(field: &Field, existing: &[Diagnostic]) -> O
             range,
             format!(
                 "`{field_name}` uses qualified `{container}`; import the Anchor wrapper and write `{}`.",
-                expected.as_deref().unwrap_or_else(|| account_wrapper_shape_example(&container))
+                expected
+                    .clone()
+                    .unwrap_or_else(|| account_wrapper_shape_example(&container))
             ),
             expected,
             "qualified-wrapper-path",
@@ -389,17 +408,25 @@ fn is_anchor_account_generic_wrapper(container: &str) -> bool {
     )
 }
 
-fn account_wrapper_shape_example(container: &str) -> &'static str {
+fn account_wrapper_shape_example(container: &str) -> String {
     match container {
-        "Sysvar" => "Sysvar<'info, Clock>",
-        "Program" => "Program<'info, System>",
-        "Interface" => "Interface<'info, TokenInterface>",
-        "Account" => "Account<'info, AccountType>",
-        "InterfaceAccount" => "InterfaceAccount<'info, AccountType>",
-        "AccountLoader" => "AccountLoader<'info, AccountType>",
-        "LazyAccount" => "LazyAccount<'info, AccountType>",
-        _ => "Account<'info, AccountType>",
+        "Sysvar" => format!("Sysvar<'info, {}>", example_sysvar_type_ident()),
+        "Program" => "Program<'info, System>".to_string(),
+        "Interface" => "Interface<'info, TokenInterface>".to_string(),
+        "Account" => "Account<'info, AccountType>".to_string(),
+        "InterfaceAccount" => "InterfaceAccount<'info, AccountType>".to_string(),
+        "AccountLoader" => "AccountLoader<'info, AccountType>".to_string(),
+        "LazyAccount" => "LazyAccount<'info, AccountType>".to_string(),
+        _ => "Account<'info, AccountType>".to_string(),
     }
+}
+
+fn example_sysvar_type_ident() -> &'static str {
+    runtime_catalog::SYSVARS
+        .iter()
+        .find(|sysvar| !sysvar.is_deprecated)
+        .map(|sysvar| sysvar.type_ident)
+        .unwrap_or("Sysvar")
 }
 
 fn account_generic_argument(ty: &Type) -> Option<(String, String, Range, Range, bool)> {
@@ -516,14 +543,20 @@ fn invalid_sysvar_diagnostic(
     document: &ParsedDocument,
     item_struct: &ItemStruct,
     err: &syn::Error,
+    manifest_deps: &CargoManifestDeps,
 ) -> InvalidSysvarDiagnostic {
     let err_range = range_from_span(err.span());
+    let mut resolved_imported_sysvar = false;
     let candidates = item_struct
         .fields
         .iter()
         .filter_map(|field| {
             let ident = field.ident.as_ref()?;
             let (current, current_range) = sysvar_generic_argument(&field.ty)?;
+            if imported_sysvar_generic_resolves(document, &current, manifest_deps) {
+                resolved_imported_sysvar = true;
+                return None;
+            }
             let replacement = anchor_types::sysvar_generic_for_field(&ident.to_string());
             if replacement.is_some_and(|replacement| current == replacement) {
                 return None;
@@ -537,6 +570,9 @@ fn invalid_sysvar_diagnostic(
         .find(|(_, _, _, range)| ranges_overlap(*range, err_range))
         .or_else(|| candidates.first())
     else {
+        if resolved_imported_sysvar {
+            return InvalidSysvarDiagnostic::Suppress;
+        }
         return InvalidSysvarDiagnostic::Fallback;
     };
     let replacement = *replacement;
@@ -545,12 +581,13 @@ fn invalid_sysvar_diagnostic(
         return InvalidSysvarDiagnostic::Suppress;
     }
 
+    let example_sysvar = example_sysvar_type_ident();
     let Some(replacement) = replacement else {
         return InvalidSysvarDiagnostic::Diagnostic(Box::new(diagnostic_from_range(
             *range,
             AnchorDiagnosticKind::AnchorSyn,
             format!(
-                "`{current}` is not an Anchor sysvar type for `{field_name}`; use a known sysvar such as `Clock` or `Rent`."
+                "`{current}` is not an Anchor sysvar type for `{field_name}`; use a known sysvar such as `{example_sysvar}`."
             ),
             Some(serde_json::json!({
                 "account": field_name,
@@ -577,6 +614,20 @@ fn invalid_sysvar_diagnostic(
             "generatedFrom": "lang/syn/src/parser/accounts/mod.rs",
         })),
     )))
+}
+
+fn imported_sysvar_generic_resolves(
+    document: &ParsedDocument,
+    current: &str,
+    manifest_deps: &CargoManifestDeps,
+) -> bool {
+    capability_registry::resolve_concept_with_aliases(
+        current,
+        &document.symbols().import_origins,
+        &document.symbols().import_aliases,
+        manifest_deps,
+    )
+    .is_some_and(capability_registry::Concept::is_sysvar)
 }
 
 fn sysvar_generic_candidates() -> Vec<&'static str> {

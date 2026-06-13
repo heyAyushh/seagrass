@@ -1,12 +1,10 @@
 use {
-    crate::range::range_from_span,
+    crate::{anchor::idioms, range::range_from_span},
     quote::ToTokens,
     std::collections::HashMap,
     syn::{Attribute, ImplItem, ItemImpl, Path, Type},
     tower_lsp::lsp_types::Range,
 };
-
-const INIT_SPACE_ASSOCIATED_CONST: &str = "INIT_SPACE";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AssociatedValueRange {
@@ -62,7 +60,7 @@ pub fn derives_init_space(attrs: &[Attribute]) -> bool {
 }
 
 pub fn is_generated_init_space_value(value_name: &str) -> bool {
-    value_name == INIT_SPACE_ASSOCIATED_CONST
+    value_name == idioms::INIT_SPACE_ASSOCIATED_CONST
 }
 
 fn impl_self_type_name(item_impl: &ItemImpl) -> Option<String> {

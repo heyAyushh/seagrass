@@ -51,6 +51,7 @@ Check that generated files are current:
 
 ```sh
 bun scripts/regen-support.ts --anchor-path "$SEAGRASS_ANCHOR_PATH" --family v1 --check
+bun scripts/check-generated-support.ts
 ```
 
 Standalone Seagrass checkouts can run the production gate against a separate
@@ -69,10 +70,18 @@ bun scripts/regen-support.ts \
   --check
 ```
 
+Anchor v2-preview is generated from its own `anchor-next` source and may differ
+from the v1 catalog. The generated support integrity gate checks the committed
+file digests for v1 and v2-preview outputs. Set
+`SEAGRASS_ANCHOR_V2_PREVIEW_PATH` to a local `anchor-next` checkout when you
+want the same gate to run a source-backed v2-preview regeneration check.
+
 When bumping Anchor support:
 
 - update the root `anchor-syn` git revision
 - regenerate `src/anchor/generated/*.rs`
+- update `scripts/generated-support.lock.json` with
+  `bun scripts/check-generated-support.ts --update`
 - inspect support-matrix and fingerprint changes
 - commit the dependency pin, generated files, and semantic LSP updates together
 

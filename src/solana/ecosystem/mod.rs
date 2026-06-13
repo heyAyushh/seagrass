@@ -1,6 +1,7 @@
 use {
     crate::{
         document::ParsedDocument,
+        solana::{artifact_paths, idl},
         solana_project::{self, SolanaProgram},
     },
     cargo_toml::{DepsSet, Manifest},
@@ -299,11 +300,7 @@ fn idl_sources(program: &SolanaProgram, hints: &WorkspaceHints) -> Vec<IdlSource
     let mut sources = Vec::new();
     if let Some(anchor) = idl_report_from_path(
         IdlSourceKind::Anchor,
-        program
-            .root
-            .join("target")
-            .join("idl")
-            .join(format!("{}.json", program.name)),
+        artifact_paths::idl_file(&program.root, &program.name),
         None,
     ) {
         sources.push(anchor);
@@ -373,19 +370,16 @@ fn codama_idl_reports(program: &SolanaProgram) -> Vec<IdlSourceReport> {
 }
 
 fn shank_idl_report(program: &SolanaProgram) -> IdlSourceReport {
-    let path = program
-        .root
-        .join("target")
-        .join("idl")
-        .join(format!("{}.json", program.name));
+    let path = artifact_paths::idl_file(&program.root, &program.name);
     idl_report_from_path(IdlSourceKind::Shank, path.clone(), None).unwrap_or(IdlSourceReport {
         kind: IdlSourceKind::Shank,
         status: EcosystemArtifactStatus::Missing,
         path: Some(path),
         config_path: None,
-        reason: Some(
-            "Shank markers were found, but the expected target/idl artifact is missing".to_string(),
-        ),
+        reason: Some(format!(
+            "Shank markers were found, but the expected {} artifact is missing",
+            artifact_paths::TARGET_IDL_DIR
+        )),
         program_name: None,
         address: None,
     })
@@ -423,8 +417,8 @@ fn idl_report_from_path(
                 path: Some(path),
                 config_path,
                 reason: None,
-                program_name: idl_program_name(&value),
-                address: idl_address(&value),
+                program_name: idl::program_name(&value),
+                address: idl::address(&value),
             })
         }
         Err(reason) => Some(IdlSourceReport {
@@ -470,40 +464,6 @@ fn classify_idl_format(value: &Value) -> Option<IdlSourceKind> {
         return Some(IdlSourceKind::Anchor);
     }
     None
-}
-
-fn idl_program_name(value: &Value) -> Option<String> {
-    value
-        .get("program")
-        .and_then(|program| program.get("name"))
-        .or_else(|| {
-            value
-                .get("metadata")
-                .and_then(|metadata| metadata.get("name"))
-        })
-        .or_else(|| value.get("name"))
-        .and_then(Value::as_str)
-        .map(str::to_string)
-}
-
-fn idl_address(value: &Value) -> Option<String> {
-    value
-        .get("program")
-        .and_then(|program| program.get("publicKey"))
-        .or_else(|| value.get("address"))
-        .or_else(|| value.get("programId"))
-        .or_else(|| {
-            value
-                .get("metadata")
-                .and_then(|metadata| metadata.get("address"))
-        })
-        .or_else(|| {
-            value
-                .get("metadata")
-                .and_then(|metadata| metadata.get("programId"))
-        })
-        .and_then(Value::as_str)
-        .map(str::to_string)
 }
 
 /// Validates that an untrusted program id is a well-formed Solana public key
@@ -632,11 +592,7 @@ fn harness_status(dependency_marker: bool, test_files: &[PathBuf]) -> TestHarnes
 }
 
 fn surfpool_report(program: &SolanaProgram, hints: &WorkspaceHints) -> SurfpoolReport {
-    let deploy_path = program
-        .root
-        .join("target")
-        .join("deploy")
-        .join(format!("{}.so", program.name));
+    let deploy_path = artifact_paths::deploy_file(&program.root, &program.name);
     let configured = hints.package_markers.surfpool || !hints.surfpool_config_paths.is_empty();
     let status = if !configured {
         SurfpoolStatus::NotConfigured

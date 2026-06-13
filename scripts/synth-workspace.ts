@@ -4,6 +4,8 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { requiredValue } from "./cli-args.ts";
+
 const DEFAULT_PROGRAM_COUNT = 200;
 const MIN_PROGRAM_COUNT = 1;
 const MAX_PROGRAM_COUNT = 2_000;
@@ -39,19 +41,12 @@ function parseArgList(rawArgs: string[], parsed: Args): Args {
     return parsed;
   }
   if (arg === "--programs") {
-    return parseArgList(remainingArgs, { ...parsed, programs: Number(requiredArg(value, arg)) });
+    return parseArgList(remainingArgs, { ...parsed, programs: Number(requiredValue(value, arg)) });
   }
   if (arg === "--output") {
-    return parseArgList(remainingArgs, { ...parsed, output: requiredArg(value, arg) });
+    return parseArgList(remainingArgs, { ...parsed, output: requiredValue(value, arg) });
   }
   throw new Error(`unknown argument: ${arg}`);
-}
-
-function requiredArg(value: string | undefined, name: string): string {
-  if (!value) {
-    throw new Error(`${name} requires a value`);
-  }
-  return value;
 }
 
 function boundedProgramCount(value: number): number {

@@ -110,7 +110,7 @@ fn macro_name_before_delimiter(source: &str, open_index: usize) -> Option<String
         .get(start..)?
         .rsplit("::")
         .next()
-        .filter(|name| is_identifier(name))
+        .filter(|name| crate::syntax::is_ascii_identifier(name))
         .map(str::to_string)
 }
 
@@ -189,12 +189,4 @@ impl CodeScanner {
             (Self::Code, _) => true,
         }
     }
-}
-
-fn is_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
-        && chars.all(|ch| ch == '_' || ch.is_ascii_alphanumeric())
 }

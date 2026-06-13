@@ -12,7 +12,8 @@ use {
     std::collections::{BTreeSet, HashSet},
     syn::{
         visit::{self, Visit},
-        BinOp, Expr, ExprCall, ExprPath, FnArg, ItemFn, ItemMod, Pat, PathArguments,
+        BinOp, Expr, ExprCall, ExprPath, FnArg, ImplItemFn, ItemFn, ItemMod, Pat, PathArguments,
+        Signature,
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
@@ -74,13 +75,24 @@ impl HandlerScopeVisitor {
 
     fn visit_anchor_function(&mut self, item_fn: &ItemFn) {
         self.scopes.push();
-        self.declare_function_inputs(item_fn);
+        self.declare_signature_inputs(&item_fn.sig);
         self.visit_block(&item_fn.block);
         self.scopes.pop();
     }
 
-    fn declare_function_inputs(&mut self, item_fn: &ItemFn) {
-        for input in &item_fn.sig.inputs {
+    /// Walk an impl-block method (e.g. helpers on an `#[derive(Accounts)]`
+    /// struct) as its own scope. Without this the method body is still visited
+    /// by syn's default recursion, but the method's own parameters are never
+    /// declared — so they would be reported as unresolved identifiers.
+    fn visit_impl_method(&mut self, method: &ImplItemFn) {
+        self.scopes.push();
+        self.declare_signature_inputs(&method.sig);
+        self.visit_block(&method.block);
+        self.scopes.pop();
+    }
+
+    fn declare_signature_inputs(&mut self, signature: &Signature) {
+        for input in &signature.inputs {
             match input {
                 FnArg::Receiver(_) => self.scopes.declare("self"),
                 FnArg::Typed(pat_type) => self.scopes.declare_pat(&pat_type.pat),
@@ -179,6 +191,10 @@ impl<'ast> Visit<'ast> for HandlerScopeVisitor {
         if self.in_program_module || item_fn_has_anchor_context_arg(node) {
             self.visit_anchor_function(node);
         }
+    }
+
+    fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
+        self.visit_impl_method(node);
     }
 
     fn visit_block(&mut self, node: &'ast syn::Block) {
@@ -408,7 +424,7 @@ fn parse_error_identifier_is_value(source: &str, range: Range) -> bool {
 
 fn identifier_bounds_at(source: &str, offset: usize) -> Option<(usize, usize)> {
     let byte = source.as_bytes().get(offset).copied()?;
-    if !is_identifier_byte(byte) {
+    if !crate::syntax::is_ascii_identifier_byte(byte) {
         return None;
     }
 
@@ -417,7 +433,7 @@ fn identifier_bounds_at(source: &str, offset: usize) -> Option<(usize, usize)> {
         && source
             .as_bytes()
             .get(start - 1)
-            .is_some_and(|byte| is_identifier_byte(*byte))
+            .is_some_and(|byte| crate::syntax::is_ascii_identifier_byte(*byte))
     {
         start -= 1;
     }
@@ -426,7 +442,7 @@ fn identifier_bounds_at(source: &str, offset: usize) -> Option<(usize, usize)> {
     while source
         .as_bytes()
         .get(end)
-        .is_some_and(|byte| is_identifier_byte(*byte))
+        .is_some_and(|byte| crate::syntax::is_ascii_identifier_byte(*byte))
     {
         end += 1;
     }
@@ -452,7 +468,9 @@ fn previous_word(source: &str, offset: usize) -> Option<&str> {
     let start = before
         .char_indices()
         .rev()
-        .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx + ch.len_utf8()))
+        .find_map(|(idx, ch)| {
+            (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx + ch.len_utf8())
+        })
         .unwrap_or(0);
     before.get(start..end).filter(|word| !word.is_empty())
 }
@@ -466,14 +484,6 @@ fn bare_value_identifier(path: &ExprPath) -> Option<String> {
         return None;
     }
     Some(segment.ident.to_string())
-}
-
-fn is_identifier_char(ch: char) -> bool {
-    ch == '_' || ch.is_ascii_alphanumeric()
-}
-
-fn is_identifier_byte(byte: u8) -> bool {
-    byte == b'_' || byte.is_ascii_alphanumeric()
 }
 
 #[cfg(test)]

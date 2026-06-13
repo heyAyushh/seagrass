@@ -50,6 +50,12 @@ File suppression:
 // seagrass-allow-file: seagrass/solana.code-quality.unsafe-unwrap
 ```
 
+Whole-file suppression (all Seagrass diagnostics, leading file comment only):
+
+```rust
+// seagrass-ignore-file
+```
+
 Item or block suppression:
 
 ```rust
@@ -64,6 +70,13 @@ Workspace suppression in `Seagrass.toml`:
 ```toml
 [lints]
 allow = ["seagrass/solana.code-quality.unsafe-unwrap"]
+```
+
+Project suppression in `Cargo.toml` (all Seagrass diagnostics):
+
+```toml
+[package.metadata.seagrass]
+suppress = true
 ```
 
 Prefer fixing the underlying Anchor or Solana invariant when the diagnostic has

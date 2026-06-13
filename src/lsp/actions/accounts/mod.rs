@@ -1,15 +1,14 @@
 //! Account-related code actions for Anchor `#[derive(Accounts)]` structs,
 //! `Context<T>` types, missing account fields, mut constraints, system program,
-//! has_one targets, and duplicate account detection.
+//! and has_one targets.
 
 mod context_structs;
 mod field_edits;
 
 use {
     super::common::{
-        account_struct_closing_line, add_constraint_to_field_edit, constraint_action,
-        diagnostic_code, edit_distance, field_indent, single_document_edit, single_text_edit,
-        snippet_text_edit,
+        account_struct_closing_line, diagnostic_code, edit_distance, field_indent,
+        single_document_edit, single_text_edit, snippet_text_edit,
     },
     crate::{
         document::{ParsedDocument, SymbolRange},
@@ -63,11 +62,6 @@ pub fn code_actions(
         diagnostics,
     ));
     actions.extend(replace_handler_identifier_actions(uri.clone(), diagnostics));
-    actions.extend(duplicate_account_actions(
-        document,
-        uri.clone(),
-        diagnostics,
-    ));
     actions
 }
 
@@ -257,6 +251,12 @@ fn system_program_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Code
                 .and_then(|data| data.get("expected"))
                 .and_then(|value| value.as_str())
                 .unwrap_or("Program<'info, System>");
+            let quickfix_type = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfixType"))
+                .and_then(|value| value.as_str())
+                .unwrap_or(expected);
             let field_name = diagnostic
                 .data
                 .as_ref()
@@ -266,11 +266,11 @@ fn system_program_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Code
             let mut changes = HashMap::new();
             changes.insert(
                 uri.clone(),
-                vec![snippet_text_edit(diagnostic.range, expected)],
+                vec![snippet_text_edit(diagnostic.range, quickfix_type)],
             );
 
             CodeAction {
-                title: format!("Change `{field_name}` type to `{expected}`"),
+                title: format!("Change `{field_name}` type to `{quickfix_type}`"),
                 kind: Some(CodeActionKind::QUICKFIX),
                 diagnostics: Some(vec![diagnostic.clone()]),
                 edit: Some(WorkspaceEdit {
@@ -285,6 +285,7 @@ fn system_program_type_actions(uri: Url, diagnostics: &[Diagnostic]) -> Vec<Code
                     "anchorAction": "program-field-type",
                     "field": field_name,
                     "expected": expected,
+                    "quickfixType": quickfix_type,
                 })),
             }
         })
@@ -317,6 +318,12 @@ fn add_missing_system_program_actions(
                 .and_then(|data| data.get("expected"))
                 .and_then(|value| value.as_str())
                 .unwrap_or_else(|| default_program_field_type(missing));
+            let quickfix_type = diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("quickfixType"))
+                .and_then(|value| value.as_str())
+                .unwrap_or(expected);
             let accounts_name = diagnostic
                 .data
                 .as_ref()
@@ -336,7 +343,7 @@ fn add_missing_system_program_actions(
                         character: 0,
                     },
                 },
-                &format!("{indent}pub {missing}: {expected},\n"),
+                &format!("{indent}pub {missing}: {quickfix_type},\n"),
             );
             let mut changes = HashMap::new();
             changes.insert(uri.clone(), vec![edit]);
@@ -358,6 +365,7 @@ fn add_missing_system_program_actions(
                     "accountsStruct": accounts_name,
                     "field": missing,
                     "expected": expected,
+                    "quickfixType": quickfix_type,
                 })),
             })
         })
@@ -582,109 +590,6 @@ fn add_mut_edit(document: &ParsedDocument, field: &SymbolRange) -> Option<TextEd
         },
         &format!("{indent}#[account(mut)]\n"),
     ))
-}
-
-fn duplicate_account_actions(
-    document: &ParsedDocument,
-    uri: Url,
-    diagnostics: &[Diagnostic],
-) -> Vec<CodeAction> {
-    diagnostics
-        .iter()
-        .filter(|diagnostic| {
-            diagnostic_code(diagnostic) == Some("anchor-security-duplicate-account")
-                && diagnostic
-                    .data
-                    .as_ref()
-                    .and_then(|data| data.get("quickfix"))
-                    .and_then(|value| value.as_str())
-                    == Some("duplicate-account-remediation")
-        })
-        .flat_map(|diagnostic| duplicate_account_actions_for_diagnostic(document, &uri, diagnostic))
-        .collect()
-}
-
-fn duplicate_account_actions_for_diagnostic(
-    document: &ParsedDocument,
-    uri: &Url,
-    diagnostic: &Diagnostic,
-) -> Vec<CodeAction> {
-    let Some(data) = diagnostic.data.as_ref() else {
-        return Vec::new();
-    };
-    let Some(account) = data.get("account").and_then(|value| value.as_str()) else {
-        return Vec::new();
-    };
-    let account_path = data
-        .get("accountPath")
-        .and_then(|value| value.as_str())
-        .unwrap_or(account);
-    let Some(peer) = data.get("peer").and_then(|value| value.as_str()) else {
-        return Vec::new();
-    };
-    let peer_path = data
-        .get("peerPath")
-        .and_then(|value| value.as_str())
-        .unwrap_or(peer);
-    let accounts_struct = data.get("accountsStruct").and_then(|value| value.as_str());
-    let Some(field) = document
-        .symbols()
-        .accounts_structs
-        .values()
-        .filter(|accounts| {
-            accounts_struct
-                .map(|name| accounts.name == name)
-                .unwrap_or(true)
-        })
-        .flat_map(|accounts| accounts.fields.iter())
-        .find(|field| field.name == account)
-    else {
-        return Vec::new();
-    };
-
-    let mut actions = Vec::with_capacity(2);
-
-    let allow_distinct = data
-        .get("allowDistinctConstraint")
-        .and_then(|value| value.as_bool())
-        .unwrap_or(true);
-    let distinct = format!("constraint = {account_path}.key() != {peer_path}.key()");
-    if allow_distinct {
-        if let Some(edit) = add_constraint_to_field_edit(document, field, &distinct) {
-            actions.push(constraint_action(
-                uri,
-                diagnostic,
-                format!("Require `{account_path}` and `{peer_path}` to be distinct"),
-                edit,
-                true,
-                serde_json::json!({
-                    "anchorAction": "add-distinct-account-constraint",
-                    "account": account,
-                    "accountPath": account_path,
-                    "peer": peer,
-                    "peerPath": peer_path,
-                    "insertText": distinct,
-                }),
-            ));
-        }
-    }
-
-    if let Some(edit) = add_constraint_to_field_edit(document, field, "dup") {
-        actions.push(constraint_action(
-            uri,
-            diagnostic,
-            format!("Allow duplicate mutable `{account}` with `dup`"),
-            edit,
-            false,
-            serde_json::json!({
-                "anchorAction": "add-dup-constraint",
-                "account": account,
-                "insertText": "dup",
-            }),
-        ));
-    }
-
-    actions
 }
 
 fn closest_account<'a>(accounts: &'a SymbolRange, missing: &str) -> Option<&'a str> {

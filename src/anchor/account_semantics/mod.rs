@@ -127,11 +127,17 @@ pub fn resolve_field_account_type(
     resolve_field_type_parts(field, type_name, inner)
 }
 
-pub fn resolve_declared_field_account_type(field: &SymbolRange) -> ResolvedAccountType {
+pub fn resolve_declared_field_account_type_with_symbols(
+    symbols: &crate::document::AnchorSymbols,
+    field: &SymbolRange,
+) -> ResolvedAccountType {
     resolve_field_type_parts(
         field,
         field.type_name.as_deref(),
-        field.generic_type_names.last().map(String::as_str),
+        field
+            .generic_type_names
+            .last()
+            .map(|inner| symbols.resolve_type_alias(inner)),
     )
 }
 
@@ -458,11 +464,11 @@ fn has_path_property_access(text: &str, field_name: &str, property: &str) -> boo
         let previous_ok = text[..start]
             .chars()
             .next_back()
-            .is_none_or(|ch| !is_ident_char(ch) && ch != ':');
+            .is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch) && ch != ':');
         let next_ok = text[end..]
             .chars()
             .next()
-            .is_none_or(|ch| !is_ident_char(ch));
+            .is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch));
         if previous_ok && next_ok {
             return true;
         }
@@ -509,11 +515,10 @@ fn take_constraint_value(value: &str) -> Option<String> {
 }
 
 fn simple_identifier(value: String) -> Option<String> {
-    value.chars().all(is_ident_char).then_some(value)
-}
-
-fn is_ident_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
+    value
+        .chars()
+        .all(crate::syntax::is_ascii_identifier_char)
+        .then_some(value)
 }
 
 fn account_constraint_texts_from_attrs(attrs: &[Attribute]) -> Vec<String> {

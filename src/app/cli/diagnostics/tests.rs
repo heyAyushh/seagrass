@@ -181,6 +181,60 @@ fn diagnostics_cli_reads_stdin_source() {
 }
 
 #[test]
+fn diagnostics_cli_honors_file_ignore_for_parse_errors() {
+    let diagnostics =
+        diagnostics_for_stdin_source(None, "// seagrass-ignore-file\npub fn broken(".to_string())
+            .unwrap();
+
+    assert!(
+        diagnostics.is_empty(),
+        "whole-file ignore should suppress CLI parse diagnostics: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn diagnostics_cli_honors_cargo_package_metadata_suppress() {
+    let temp_root = unique_temp_dir("seagrass-cli-cargo-suppress");
+    let source_dir = temp_root.join("programs/demo/src");
+    fs::create_dir_all(&source_dir).unwrap();
+    fs::write(
+        temp_root.join("programs/demo/Cargo.toml"),
+        r#"
+[package]
+name = "demo"
+version = "0.1.0"
+
+[package.metadata.seagrass]
+suppress = true
+"#,
+    )
+    .unwrap();
+    let source_path = source_dir.join("lib.rs");
+    fs::write(
+        &source_path,
+        r#"
+use pinocchio::program_error::ProgramError;
+
+fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
+    Err(ProgramError::InvalidArgument).expect("invalid argument")
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = diagnostics_for_path(&source_path).unwrap();
+
+    assert!(
+        diagnostics.iter().all(|diagnostic| {
+            diagnostic.topic.as_deref() != Some("seagrass/solana.code-quality.unsafe-unwrap")
+        }),
+        "Cargo.toml suppression should suppress CLI diagnostics: {diagnostics:#?}"
+    );
+
+    let _ = fs::remove_dir_all(temp_root);
+}
+
+#[test]
 fn diagnostics_cli_rejects_missing_path_with_example() {
     let temp_root = unique_temp_dir("seagrass-cli-missing-path");
     let missing_path = temp_root.join("programs/demo/src/lib.rs");

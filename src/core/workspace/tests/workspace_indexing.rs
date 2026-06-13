@@ -1,5 +1,8 @@
 use super::*;
-use std::fs;
+use {
+    crate::solana::artifact_paths,
+    std::{fs, path::Path},
+};
 
 #[test]
 fn indexes_open_document_symbols() {
@@ -11,6 +14,20 @@ fn indexes_open_document_symbols() {
 
     assert_eq!(index.indexed_file_count(), 1);
     assert_eq!(index.symbol_locations("State")[0].uri, uri);
+}
+
+#[test]
+fn indexes_open_document_constants() {
+    let uri = Url::parse("file:///tmp/state.rs").unwrap();
+    let index = WorkspaceIndex::build(
+        &[],
+        [(uri.clone(), "pub const SPACE: usize = 8;".to_string())],
+    );
+
+    assert_eq!(
+        index.symbol_locations_with_kinds("SPACE", &[SymbolKind::CONSTANT])[0].uri,
+        uri
+    );
 }
 
 #[test]
@@ -85,12 +102,16 @@ pub struct State {}
 #[test]
 fn workspace_symbols_include_no_build_idl_bridge_definitions() {
     let root = unique_temp_dir("seagrass-idl-bridge-index");
-    fs::create_dir_all(root.join("target").join("idl")).unwrap();
+    fs::create_dir_all(artifact_paths::idl_dir(&root)).unwrap();
     fs::write(
-            root.join("target").join("idl").join("escrow.json"),
+            artifact_paths::idl_file(&root, "escrow"),
             r#"{"instructions":[{"name":"makeOffer","args":[{"name":"id","type":"u64"}]}],"accounts":[{"name":"Offer","type":{"kind":"struct","fields":[{"name":"maker","type":"pubkey"}]}}]}"#,
         )
         .unwrap();
+    let idl_uri_suffix = format!(
+        "/{}",
+        url_path_suffix(&artifact_paths::idl_file(Path::new(""), "escrow"))
+    );
 
     let root_uri = Url::from_directory_path(&root).unwrap();
     let index = WorkspaceIndex::build(std::slice::from_ref(&root_uri), []);
@@ -98,11 +119,7 @@ fn workspace_symbols_include_no_build_idl_bridge_definitions() {
     assert!(index.workspace_symbols("make").iter().any(|symbol| {
         symbol.name == "makeOffer"
             && symbol.kind == SymbolKind::FUNCTION
-            && symbol
-                .location
-                .uri
-                .as_str()
-                .ends_with("/target/idl/escrow.json")
+            && symbol.location.uri.as_str().ends_with(&idl_uri_suffix)
     }));
     assert!(!index
         .symbol_locations_with_kinds("Offer", &[SymbolKind::STRUCT])
@@ -110,13 +127,17 @@ fn workspace_symbols_include_no_build_idl_bridge_definitions() {
     assert!(index
         .symbol_locations_in_container("maker", &[SymbolKind::FIELD], "Offer")
         .iter()
-        .any(|location| location.uri.as_str().ends_with("/target/idl/escrow.json")));
+        .any(|location| location.uri.as_str().ends_with(&idl_uri_suffix)));
     let maker = index
         .field_info_in_container("maker", "Offer")
         .expect("IDL account field info");
     assert_eq!(maker.type_display.as_deref(), Some("pubkey"));
 
     let _ = fs::remove_dir_all(root);
+}
+
+fn url_path_suffix(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 #[test]
@@ -169,7 +190,7 @@ fn workspace_file_update_indexes_only_changed_rust_file() {
     let root = unique_temp_dir("seagrass-incremental-index");
     let program_src = root.join("programs").join("demo").join("src");
     fs::create_dir_all(&program_src).unwrap();
-    let source_path = program_src.join("lib.rs");
+    let source_path = program_src.join("state.rs");
     fs::write(&source_path, "#[account]\npub struct IncrementalState {}").unwrap();
     let root_uri = Url::from_directory_path(&root).unwrap();
     let uri = Url::from_file_path(&source_path).unwrap();
@@ -181,11 +202,21 @@ fn workspace_file_update_indexes_only_changed_rust_file() {
     index.upsert_open_document_update(update);
 
     assert_eq!(index.symbol_locations("IncrementalState")[0].uri, uri);
+    assert!(index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "state".to_string(),
+        "IncrementalState".to_string(),
+    ]));
     assert_eq!(index.indexed_file_count(), 1);
 
     index.remove_document(&uri);
 
     assert!(index.symbol_locations("IncrementalState").is_empty());
+    assert!(!index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "state".to_string(),
+        "IncrementalState".to_string(),
+    ]));
     assert_eq!(index.indexed_file_count(), 0);
 
     let _ = fs::remove_dir_all(root);
@@ -396,4 +427,72 @@ pub fn save_offer(context: Context<MakeOffer>, amount: u64) -> Result<()> {
     let references = index.function_references("save_offer");
     assert!(references.iter().any(|location| location.uri == helper_uri));
     assert!(references.iter().any(|location| location.uri == lib_uri));
+}
+
+/// The module-path trie maps `crate::module::Symbol` paths across file
+/// boundaries.  Given a multi-file workspace layout:
+///
+/// ```text
+/// src/
+///   lib.rs        — declares #[program] mod, imports via `use state::*`
+///   state.rs      — declares `#[account] pub struct Escrow`
+///   instructions/
+///     mod.rs
+///     make.rs     — declares `#[derive(Accounts)] pub struct Make`
+/// ```
+///
+/// The trie should resolve:
+///  - `["crate", "state", "Escrow"]`     → true  (Escrow in src/state.rs)
+///  - `["crate", "instructions", "make", "Make"]` → true  (Make in src/instructions/make.rs)
+///  - `["crate", "state", "Missing"]`    → false (no such symbol)
+#[test]
+fn trie_resolves_multi_segment_module_path_across_files() {
+    let root = unique_temp_dir("seagrass-module-path-trie");
+    let src = root.join("programs").join("demo").join("src");
+    let instructions_dir = src.join("instructions");
+    fs::create_dir_all(&instructions_dir).unwrap();
+
+    fs::write(
+        src.join("lib.rs"),
+        "#[program]\npub mod demo {}\nuse state::*;",
+    )
+    .unwrap();
+    fs::write(
+        src.join("state.rs"),
+        "#[account]\npub struct Escrow { pub amount: u64 }",
+    )
+    .unwrap();
+    fs::write(instructions_dir.join("mod.rs"), "pub mod make;").unwrap();
+    fs::write(
+        instructions_dir.join("make.rs"),
+        "#[derive(Accounts)]\npub struct Make<'info> {}",
+    )
+    .unwrap();
+
+    let root_uri = Url::from_directory_path(&root).unwrap();
+    let index = WorkspaceIndex::build(&[root_uri], []);
+
+    // Symbol in src/state.rs — reachable as crate::state::Escrow
+    assert!(index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "state".to_string(),
+        "Escrow".to_string(),
+    ]));
+
+    // Symbol in src/instructions/make.rs — reachable as crate::instructions::make::Make
+    assert!(index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "instructions".to_string(),
+        "make".to_string(),
+        "Make".to_string(),
+    ]));
+
+    // Symbol that does not exist under that path
+    assert!(!index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "state".to_string(),
+        "Missing".to_string(),
+    ]));
+
+    let _ = fs::remove_dir_all(root);
 }

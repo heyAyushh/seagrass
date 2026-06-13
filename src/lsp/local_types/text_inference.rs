@@ -101,13 +101,5 @@ fn context_type_name_from_binding(binding: &TextHandlerBinding) -> Option<String
 }
 
 fn is_identifier_path(value: &str) -> bool {
-    !value.is_empty() && value.split("::").all(is_identifier)
-}
-
-fn is_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphabetic() || ch == '_')
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    crate::syntax::is_ascii_identifier_path(value, "::")
 }

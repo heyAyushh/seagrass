@@ -1,13 +1,17 @@
 #!/usr/bin/env bun
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { spawn, spawnSync } from "node:child_process";
 
+import { requiredValue } from "./cli-args.ts";
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
-const serverBinary = resolve(repoRoot, "target/debug/seagrass");
+const serverPackage = "seagrass-cli";
+const serverBinaryName = process.platform === "win32" ? "seagrass.exe" : "seagrass";
+const serverBinary = resolve(repoRoot, "target", "debug", serverBinaryName);
 const defaultWorkspaceRunId = `${Date.now()}-${process.pid}`;
 const defaultWorkspace = resolve(
   repoRoot,
@@ -77,7 +81,8 @@ runChecked("bun", [
   "--output",
   args.workspace,
 ]);
-runChecked("cargo", ["build", "-p", "seagrass"]);
+runChecked("cargo", ["build", "-p", serverPackage]);
+assertServerBinaryExists();
 
 const report = await runScaleBenchmarkSamples(args);
 mkdirSync(dirname(args.report), { recursive: true });
@@ -341,10 +346,10 @@ function parseArgList(rawArgs: string[], parsed: Args): Args {
     return parseArgList(remainingArgs, { ...parsed, programs: numberArg(value, arg) });
   }
   if (arg === "--workspace") {
-    return parseArgList(remainingArgs, { ...parsed, workspace: resolve(stringArg(value, arg)) });
+    return parseArgList(remainingArgs, { ...parsed, workspace: resolve(requiredValue(value, arg)) });
   }
   if (arg === "--report") {
-    return parseArgList(remainingArgs, { ...parsed, report: resolve(stringArg(value, arg)) });
+    return parseArgList(remainingArgs, { ...parsed, report: resolve(requiredValue(value, arg)) });
   }
   if (arg === "--samples") {
     return parseArgList(remainingArgs, { ...parsed, samples: numberArg(value, arg) });
@@ -358,15 +363,8 @@ function parseArgList(rawArgs: string[], parsed: Args): Args {
   throw new Error(`unknown argument: ${arg}`);
 }
 
-function stringArg(value: string | undefined, name: string): string {
-  if (!value) {
-    throw new Error(`${name} requires a value`);
-  }
-  return value;
-}
-
 function numberArg(rawValue: string | undefined, name: string): number {
-  const value = Number(stringArg(rawValue, name));
+  const value = Number(requiredValue(rawValue, name));
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`${name} requires a positive number`);
   }
@@ -384,6 +382,12 @@ function runChecked(command: string, commandArgs: string[]): void {
   }
   if (result.status !== 0) {
     fail(`${command} ${commandArgs.join(" ")} failed with exit code ${result.status}`);
+  }
+}
+
+function assertServerBinaryExists(): void {
+  if (!existsSync(serverBinary)) {
+    fail(`server binary was not built at ${serverBinary}`);
   }
 }
 

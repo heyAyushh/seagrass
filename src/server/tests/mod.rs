@@ -321,6 +321,7 @@ fn status_text_reports_observable_server_state() {
         agent_mode: false,
         security_diagnostics: true,
         experimental_diagnostics: false,
+        artifact_diagnostics: false,
         security_levels: BTreeMap::new(),
         strict_native_security: true,
         diagnostics_cold_path: crate::server_types::DiagnosticsColdPath::Save,
@@ -490,6 +491,9 @@ fn settings_accept_flat_and_nested_vscode_shapes() {
             "diagnostics.security.enabled": false,
             "diagnostics": {
                 "coldPath": "save",
+                "artifacts": {
+                    "enabled": true
+                },
                 "experimental": {
                     "enabled": false
                 }
@@ -523,6 +527,7 @@ fn settings_accept_flat_and_nested_vscode_shapes() {
 
     assert!(!settings.security_diagnostics);
     assert!(!settings.experimental_diagnostics);
+    assert!(settings.artifact_diagnostics);
     assert_eq!(
         settings.security_levels.get("security.ownerChecks"),
         Some(&diagnostics::DiagnosticLevel::Error)
@@ -543,6 +548,7 @@ fn agent_mode_fills_unset_server_settings() {
         agent_mode: false,
         security_diagnostics: false,
         experimental_diagnostics: false,
+        artifact_diagnostics: false,
         security_levels: BTreeMap::new(),
         strict_native_security: false,
         diagnostics_cold_path: crate::server_types::DiagnosticsColdPath::Save,

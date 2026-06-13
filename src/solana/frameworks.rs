@@ -172,11 +172,12 @@ impl FrameworkContext {
     ) -> Self {
         let manifest_id = manifest_text.and_then(framework_from_manifest);
         let document_id = framework_from_document(document);
-        let id = program
-            .map(|program| FrameworkId::from_project_kind(program.kind))
-            .map(|project_id| refine_project_framework(project_id, manifest_id, document_id))
-            .or(manifest_id)
-            .unwrap_or(document_id);
+        let id = if let Some(program) = program {
+            let project_id = FrameworkId::from_project_kind(program.kind);
+            refine_project_framework(project_id, manifest_id, document_id)
+        } else {
+            refine_manifest_document_framework(manifest_id, document_id)
+        };
 
         Self::new(id)
     }
@@ -230,6 +231,26 @@ fn refine_project_framework(
         return FrameworkId::AnchorV2Preview;
     }
     project_id
+}
+
+fn refine_manifest_document_framework(
+    manifest_id: Option<FrameworkId>,
+    document_id: FrameworkId,
+) -> FrameworkId {
+    if document_id != FrameworkId::Unknown {
+        return refine_document_framework(document_id, manifest_id);
+    }
+    manifest_id.unwrap_or(FrameworkId::Unknown)
+}
+
+fn refine_document_framework(
+    document_id: FrameworkId,
+    manifest_id: Option<FrameworkId>,
+) -> FrameworkId {
+    if document_id == FrameworkId::AnchorV1 && manifest_id == Some(FrameworkId::AnchorV2Preview) {
+        return FrameworkId::AnchorV2Preview;
+    }
+    document_id
 }
 
 fn framework_from_manifest(manifest_text: &str) -> Option<FrameworkId> {
@@ -536,6 +557,49 @@ solana-program-error = "3"
         assert_eq!(
             framework_from_manifest(manifest),
             Some(FrameworkId::NativeSolana)
+        );
+    }
+
+    #[test]
+    fn concrete_document_framework_overrides_manifest_fallback() {
+        let manifest = r#"
+[package]
+name = "workspace-tooling"
+
+[dependencies]
+solana-program = "2"
+"#;
+        let document = ParsedDocument::parse_or_empty(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Check<'info> {
+    pub authority: Signer<'info>,
+}
+"#,
+        );
+
+        assert_eq!(
+            FrameworkContext::from_project_and_document(None, Some(manifest), &document).id(),
+            FrameworkId::AnchorV1
+        );
+    }
+
+    #[test]
+    fn manifest_fallback_keeps_context_for_incomplete_documents() {
+        let manifest = r#"
+[package]
+name = "workspace-tooling"
+
+[dependencies]
+solana-program = "2"
+"#;
+        let document = ParsedDocument::parse_or_empty("pub fn run() {\n");
+
+        assert_eq!(
+            FrameworkContext::from_project_and_document(None, Some(manifest), &document).id(),
+            FrameworkId::NativeSolana
         );
     }
 

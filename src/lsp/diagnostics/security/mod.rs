@@ -7,17 +7,17 @@ use {
             registry::AnchorDiagnosticKind,
         },
         document::{ParsedDocument, SymbolRange},
-        workspace::WorkspaceIndex,
+        workspace::{IndexedFunctionEntry, WorkspaceIndex, MAX_REACHABILITY_DEPTH},
     },
-    std::collections::HashSet,
+    std::collections::{HashSet, VecDeque},
     syn::visit::{self, Visit},
     tower_lsp::lsp_types::Diagnostic,
 };
 
-mod duplicates;
 mod raw_account;
+#[cfg(test)]
+mod signer_query;
 
-use duplicates::duplicate_account_checks;
 use raw_account::raw_account_risk;
 
 #[cfg(test)]
@@ -32,11 +32,9 @@ pub fn collect_with_workspace(
     let mut diagnostics = Vec::new();
     diagnostics.extend(signer_authorization_diagnostics(document, workspace_index));
     diagnostics.extend(sysvar_address_diagnostics(document));
-    diagnostics.extend(token_account_unpacking_diagnostics(document));
     diagnostics.extend(raw_owner_checking_diagnostics(document));
     diagnostics.extend(raw_type_cosplay_diagnostics(document));
     diagnostics.extend(arbitrary_cpi_program_diagnostics(document, workspace_index));
-    diagnostics.extend(duplicate_account_checks(document, workspace_index));
     diagnostics
 }
 
@@ -177,78 +175,6 @@ fn sysvar_address_checking(field: &SymbolRange) -> Option<Diagnostic> {
                 "account": field.name,
                 "expected": expected,
                 "reason": "typed-sysvar",
-            })
-        }),
-    ))
-}
-
-fn token_account_unpacking_diagnostics(document: &ParsedDocument) -> Vec<Diagnostic> {
-    run_lint_visitor(
-        document,
-        TokenAccountUnpackingVisitor {
-            document,
-            diagnostics: Vec::new(),
-        },
-    )
-}
-
-struct TokenAccountUnpackingVisitor<'a> {
-    document: &'a ParsedDocument,
-    diagnostics: Vec<Diagnostic>,
-}
-
-impl<'ast> LintVisitor<'ast> for TokenAccountUnpackingVisitor<'_> {
-    const SCOPE: &'static [Region] = &[Region::AccountsStructField];
-    const CONFIDENCE: Confidence = Confidence::Heuristic;
-    const APPLICABILITY: Applicability = Applicability::Unspecified;
-    const TOPIC: &'static str = "seagrass/security.token-account";
-
-    fn finish(self) -> Vec<Diagnostic> {
-        self.diagnostics
-    }
-}
-
-impl<'ast> Visit<'ast> for TokenAccountUnpackingVisitor<'_> {
-    fn visit_attribute(&mut self, _node: &'ast syn::Attribute) {}
-
-    fn visit_item_struct(&mut self, node: &'ast syn::ItemStruct) {
-        if let Some(accounts) = accounts_for_item(self.document, node) {
-            self.diagnostics.extend(
-                accounts
-                    .fields
-                    .iter()
-                    .filter_map(|field| token_account_unpacking(self.document, accounts, field)),
-            );
-        }
-        visit::visit_item_struct(self, node);
-    }
-}
-
-fn token_account_unpacking(
-    document: &ParsedDocument,
-    accounts: &SymbolRange,
-    field: &SymbolRange,
-) -> Option<Diagnostic> {
-    if !is_unchecked_account(field)
-        || has_owner_constraint(field)
-        || !account_used_in_manual_token_unpack(document, accounts, field)
-    {
-        return None;
-    }
-
-    Some(diagnostic_from_range(
-        unsafe_account_range(field),
-        AnchorDiagnosticKind::SecurityTokenAccount,
-        format!(
-            "`{}` is manually unpacked as a token account; prefer `Account<'info, TokenAccount>` or add explicit owner/data checks.",
-            field.name
-        ),
-        anchor_types::spl_account_type("TokenAccount").map(|expected| {
-            serde_json::json!({
-                "quickfix": "replace-account-type",
-                "account": field.name,
-                "expected": expected,
-                "reason": "typed-token-account",
             })
         }),
     ))
@@ -453,6 +379,7 @@ fn arbitrary_cpi_program(
         || !is_unchecked_account(field)
         || has_address_constraint(field)
         || has_owner_constraint(field)
+        || has_reachable_program_account_check(document, workspace_index, accounts, field)
     {
         return None;
     }
@@ -552,23 +479,6 @@ fn constraint_key_boundary(text: &str, idx: usize, key_len: usize) -> bool {
             .unwrap_or(true)
 }
 
-fn account_used_in_manual_token_unpack(
-    document: &ParsedDocument,
-    accounts: &SymbolRange,
-    field: &SymbolRange,
-) -> bool {
-    document.symbols().callable_functions().any(|instruction| {
-        instruction
-            .context
-            .as_ref()
-            .is_some_and(|context| context.name == accounts.name)
-            && instruction
-                .token_account_unpack_usages
-                .iter()
-                .any(|usage| usage.name == field.name)
-    })
-}
-
 fn account_used_as_cpi_program(
     document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
@@ -580,7 +490,7 @@ fn account_used_as_cpi_program(
             &function.cpi_program_usages
         })
     {
-        return usages.contains(&field.name);
+        return !usages.truncated && usages.names.contains(&field.name);
     }
 
     if local_account_usage_exists(document, accounts, field, |function| {
@@ -590,8 +500,16 @@ fn account_used_as_cpi_program(
     }
 
     workspace_index
-        .and_then(|index| index.reachable_cpi_program_usage_names_for_context(&accounts.name))
-        .is_some_and(|usages| usages.contains(&field.name))
+        .and_then(|index| {
+            reachable_workspace_account_usage_names_for_context(
+                index,
+                &accounts.name,
+                ReachabilityUse::Offense,
+                None,
+                |function| &function.cpi_program_usages,
+            )
+        })
+        .is_some_and(|usages| !usages.truncated && usages.names.contains(&field.name))
 }
 
 fn account_used_as_signer(
@@ -605,7 +523,7 @@ fn account_used_as_signer(
             &function.signer_usages
         })
     {
-        return usages.contains(&field.name);
+        return !usages.truncated && usages.names.contains(&field.name);
     }
 
     if local_account_usage_exists(document, accounts, field, |function| {
@@ -615,8 +533,16 @@ fn account_used_as_signer(
     }
 
     workspace_index
-        .and_then(|index| index.reachable_signer_usage_names_for_context(&accounts.name))
-        .is_some_and(|usages| usages.contains(&field.name))
+        .and_then(|index| {
+            reachable_workspace_account_usage_names_for_context(
+                index,
+                &accounts.name,
+                ReachabilityUse::Defense,
+                None,
+                |function| &function.signer_usages,
+            )
+        })
+        .is_some_and(|usages| usages.names.contains(&field.name))
 }
 
 fn has_manual_signer_check(
@@ -630,7 +556,7 @@ fn has_manual_signer_check(
             &function.signer_checks
         })
     {
-        return checks.contains(&field.name);
+        return checks.truncated || checks.names.contains(&field.name);
     }
 
     if local_account_usage_exists(document, accounts, field, |function| {
@@ -640,8 +566,102 @@ fn has_manual_signer_check(
     }
 
     workspace_index
-        .and_then(|index| index.reachable_signer_check_names_for_context(&accounts.name))
-        .is_some_and(|checks| checks.contains(&field.name))
+        .and_then(|index| {
+            reachable_workspace_account_usage_names_for_context(
+                index,
+                &accounts.name,
+                ReachabilityUse::Defense,
+                Some(&field.name),
+                |function| &function.signer_checks,
+            )
+        })
+        .is_some_and(|checks| checks.truncated || checks.names.contains(&field.name))
+}
+
+fn has_reachable_program_account_check(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    accounts: &SymbolRange,
+    field: &SymbolRange,
+) -> bool {
+    if has_reachable_local_program_account_check(document, &accounts.name, &field.name) {
+        return true;
+    }
+
+    workspace_index
+        .and_then(|index| index.reachable_function_entries_for_context(&accounts.name))
+        .is_some_and(|(entries, truncated)| {
+            truncated
+                || entries.iter().any(|function| {
+                    function.account_key_comparisons.iter().any(|comparison| {
+                        comparison.compares_account_to_static_program_id(&field.name)
+                    })
+                })
+        })
+}
+
+fn has_reachable_local_program_account_check(
+    document: &ParsedDocument,
+    context_name: &str,
+    field_name: &str,
+) -> bool {
+    let Some(reachable) = reachable_local_function_names_for_context(document, context_name) else {
+        return false;
+    };
+    reachable.truncated
+        || document
+            .symbols()
+            .callable_functions()
+            .filter(|function| reachable.names.contains(&function.name))
+            .any(|function| {
+                function
+                    .account_key_comparisons
+                    .iter()
+                    .any(|comparison| comparison.compares_account_to_static_program_id(field_name))
+            })
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ReachabilityUse {
+    Defense,
+    Offense,
+}
+
+struct ReachableAccountUsageNames {
+    names: HashSet<String>,
+    truncated: bool,
+}
+
+fn reachable_workspace_account_usage_names_for_context(
+    index: &WorkspaceIndex,
+    context_name: &str,
+    reachability_use: ReachabilityUse,
+    exact_field_name: Option<&str>,
+    usages: impl Fn(&IndexedFunctionEntry) -> &[crate::document::AccountUsage],
+) -> Option<ReachableAccountUsageNames> {
+    let (entries, truncated) = match reachability_use {
+        ReachabilityUse::Defense => {
+            index.reachable_function_entries_for_context_matching(context_name, |function| {
+                function.context_name.as_deref() == Some(context_name)
+                    || exact_field_name.is_some_and(|field_name| {
+                        usages(function)
+                            .iter()
+                            .any(|usage| usage.name == field_name)
+                    })
+            })?
+        }
+        ReachabilityUse::Offense => {
+            index.unambiguous_reachable_function_entries_for_context(context_name)?
+        }
+    };
+    Some(ReachableAccountUsageNames {
+        names: entries
+            .iter()
+            .flat_map(|function| usages(function))
+            .map(|usage| usage.name.clone())
+            .collect(),
+        truncated,
+    })
 }
 
 fn local_account_usage_exists(
@@ -665,8 +685,31 @@ fn reachable_local_account_usage_names_for_context(
     document: &ParsedDocument,
     context_name: &str,
     usages: impl Fn(&crate::document::InstructionSymbol) -> &[crate::document::AccountUsage],
-) -> Option<HashSet<String>> {
-    let mut reachable = document
+) -> Option<ReachableAccountUsageNames> {
+    let reachable = reachable_local_function_names_for_context(document, context_name)?;
+
+    Some(ReachableAccountUsageNames {
+        names: document
+            .symbols()
+            .callable_functions()
+            .filter(|function| reachable.names.contains(&function.name))
+            .flat_map(usages)
+            .map(|usage| usage.name.clone())
+            .collect(),
+        truncated: reachable.truncated,
+    })
+}
+
+struct ReachableLocalFunctionNames {
+    names: HashSet<String>,
+    truncated: bool,
+}
+
+fn reachable_local_function_names_for_context(
+    document: &ParsedDocument,
+    context_name: &str,
+) -> Option<ReachableLocalFunctionNames> {
+    let instructions = document
         .symbols()
         .instructions
         .iter()
@@ -676,38 +719,50 @@ fn reachable_local_account_usage_names_for_context(
                 .as_ref()
                 .is_some_and(|context| context.name == context_name)
         })
-        .map(|instruction| instruction.name.clone())
-        .collect::<HashSet<_>>();
-    if reachable.is_empty() {
+        .collect::<Vec<_>>();
+    if instructions.is_empty() {
         return None;
     }
 
-    let mut changed = true;
-    while changed {
-        changed = false;
-        let called_names = document
-            .symbols()
-            .callable_functions()
-            .filter(|function| reachable.contains(&function.name))
-            .flat_map(|function| function.function_calls.iter())
-            .map(|call| call.name.clone())
-            .collect::<HashSet<_>>();
-        for function in &document.symbols().functions {
-            if called_names.contains(&function.name) && reachable.insert(function.name.clone()) {
-                changed = true;
-            }
+    let mut reachable = instructions
+        .iter()
+        .map(|instruction| instruction.name.clone())
+        .collect::<HashSet<_>>();
+    let mut pending = instructions
+        .iter()
+        .flat_map(|instruction| instruction.function_calls.iter())
+        .map(|call| (call.name.clone(), 1_usize))
+        .collect::<VecDeque<_>>();
+    let mut truncated = false;
+
+    while let Some((name, depth)) = pending.pop_front() {
+        if !reachable.insert(name.clone()) {
+            continue;
         }
+        let Some(function) = document
+            .symbols()
+            .functions
+            .iter()
+            .find(|function| function.name == name)
+        else {
+            continue;
+        };
+        if depth >= MAX_REACHABILITY_DEPTH {
+            truncated |= !function.function_calls.is_empty();
+            continue;
+        }
+        pending.extend(
+            function
+                .function_calls
+                .iter()
+                .map(|call| (call.name.clone(), depth + 1)),
+        );
     }
 
-    Some(
-        document
-            .symbols()
-            .callable_functions()
-            .filter(|function| reachable.contains(&function.name))
-            .flat_map(usages)
-            .map(|usage| usage.name.clone())
-            .collect(),
-    )
+    Some(ReachableLocalFunctionNames {
+        names: reachable,
+        truncated,
+    })
 }
 
 fn typed_cpi_program_quickfix(field: &SymbolRange) -> Option<serde_json::Value> {

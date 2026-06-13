@@ -17,5 +17,8 @@ impl WorkspaceIndex {
         self.accounts_by_name
             .values_mut()
             .for_each(|entries| entries.sort_by_key(|entry| !entry.is_open));
+        self.account_data_by_name
+            .values_mut()
+            .for_each(|entries| entries.sort_by_key(|entry| !entry.is_open));
     }
 }

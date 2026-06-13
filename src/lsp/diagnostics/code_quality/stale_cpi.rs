@@ -1,9 +1,11 @@
 use {
+    crate::anchor::idioms,
     crate::diagnostics::{
         diagnostic_from_span,
         lint::{run_lint_visitor_on_functions, Applicability, Confidence, LintVisitor, Region},
         registry::AnchorDiagnosticKind,
     },
+    crate::syntax::{expr_path_ends_with, member_is_named, member_name},
     syn::{
         spanned::Spanned,
         visit::{self, Visit},
@@ -83,7 +85,7 @@ impl<'ast> Visit<'ast> for StaleAccountAfterCpiVisitor {
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
-        if node.method == "reload" {
+        if node.method == idioms::ACCOUNT_RELOAD_METHOD {
             if let Some(account) = ctx_account_name(&node.receiver) {
                 self.record_reload(account);
             }
@@ -120,9 +122,16 @@ fn stale_account_after_cpi_diagnostic(span: proc_macro2::Span, account: String) 
 }
 
 fn is_cpi_call(func: &syn::Expr) -> bool {
-    path_ends_with(func, &["CpiContext", "new"])
-        || path_ends_with(func, &["CpiContext", "new_with_signer"])
-        || path_ends_with(func, &["invoke"])
+    expr_path_ends_with(
+        func,
+        &[idioms::CPI_CONTEXT_TYPE, idioms::CPI_CONTEXT_NEW_METHOD],
+    ) || expr_path_ends_with(
+        func,
+        &[
+            idioms::CPI_CONTEXT_TYPE,
+            idioms::CPI_CONTEXT_NEW_WITH_SIGNER_METHOD,
+        ],
+    ) || expr_path_ends_with(func, &[idioms::SOLANA_INVOKE_FUNCTION])
 }
 
 fn ctx_account_field_read_name(field: &syn::ExprField) -> Option<String> {
@@ -153,37 +162,4 @@ fn expr_is_ctx_accounts(expr: &syn::Expr) -> bool {
 
 fn expr_is_ident(expr: &syn::Expr, expected: &str) -> bool {
     matches!(expr, syn::Expr::Path(path) if path.path.is_ident(expected))
-}
-
-fn path_ends_with(expr: &syn::Expr, expected: &[&str]) -> bool {
-    match expr {
-        syn::Expr::Path(path) => {
-            let segments = path
-                .path
-                .segments
-                .iter()
-                .map(|segment| segment.ident.to_string())
-                .collect::<Vec<_>>();
-            segments.len() >= expected.len()
-                && segments[segments.len() - expected.len()..]
-                    .iter()
-                    .map(String::as_str)
-                    .eq(expected.iter().copied())
-        }
-        syn::Expr::Group(group) => path_ends_with(&group.expr, expected),
-        syn::Expr::Paren(paren) => path_ends_with(&paren.expr, expected),
-        syn::Expr::Reference(reference) => path_ends_with(&reference.expr, expected),
-        _ => false,
-    }
-}
-
-fn member_name(member: &syn::Member) -> Option<String> {
-    match member {
-        syn::Member::Named(ident) => Some(ident.to_string()),
-        syn::Member::Unnamed(_) => None,
-    }
-}
-
-fn member_is_named(member: &syn::Member, expected: &str) -> bool {
-    matches!(member, syn::Member::Named(ident) if ident == expected)
 }

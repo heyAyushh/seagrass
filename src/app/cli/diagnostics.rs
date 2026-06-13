@@ -1,7 +1,7 @@
 use {
     crate::{
-        diagnostics as diagnostic_engine, document::ParsedDocument, file_text,
-        workspace::WorkspaceIndex,
+        diagnostics as diagnostic_engine, document::ParsedDocument, file_text, project,
+        solana_project, workspace::WorkspaceIndex,
     },
     clap::Args,
     serde::Serialize,
@@ -194,7 +194,8 @@ fn diagnostics_for_file(
     let source = file_text::read_limited_text(path)?.ok_or_else(|| OversizedSourceFile {
         path: path.to_path_buf(),
     })?;
-    diagnostics_for_source(display_path(path), source, workspace_index)
+    let config = CliDiagnosticConfig::from_path(Some(path));
+    diagnostics_for_source(display_path(path), source, workspace_index, &config)
 }
 
 fn diagnostics_for_stdin(source_path: Option<&Path>) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
@@ -213,20 +214,22 @@ fn diagnostics_for_stdin_source(
     source: String,
 ) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
     let workspace_index = workspace_index_for_stdin_path(source_path);
+    let config = CliDiagnosticConfig::from_path(source_path);
     let display_path = source_path
         .map(display_path)
         .unwrap_or_else(|| STDIN_DISPLAY_PATH.to_string());
-    diagnostics_for_source(display_path, source, workspace_index.as_ref())
+    diagnostics_for_source(display_path, source, workspace_index.as_ref(), &config)
 }
 
 fn diagnostics_for_source(
     file: String,
     source: String,
     workspace_index: Option<&WorkspaceIndex>,
+    config: &CliDiagnosticConfig,
 ) -> Result<Vec<CliDiagnostic>, Box<dyn Error>> {
     let diagnostics = match ParsedDocument::parse(source.clone()) {
-        Ok(document) => diagnostic_engine::collect_with_workspace(&document, workspace_index),
-        Err(error) => diagnostics_for_parse_error(error, &source, workspace_index),
+        Ok(document) => diagnostics_for_parsed_document(&document, workspace_index, config),
+        Err(error) => diagnostics_for_parse_error(error, &source, workspace_index, config),
     };
     Ok(diagnostics
         .into_iter()
@@ -234,25 +237,130 @@ fn diagnostics_for_source(
         .collect())
 }
 
+#[derive(Default)]
+struct CliDiagnosticConfig {
+    uri: Option<Url>,
+    manifest: Option<(Url, String)>,
+    workspace_manifest: Option<(Url, String)>,
+    seagrass_toml: Option<(Url, String)>,
+}
+
+impl CliDiagnosticConfig {
+    fn from_path(path: Option<&Path>) -> Self {
+        let uri = path.and_then(source_uri_for_path);
+        let manifest = uri.as_ref().and_then(solana_project::nearest_manifest);
+        let workspace_manifest = uri
+            .as_ref()
+            .and_then(solana_project::nearest_workspace_manifest);
+        let seagrass_toml = uri.as_ref().and_then(project::nearest_seagrass_toml);
+        Self {
+            uri,
+            manifest,
+            workspace_manifest,
+            seagrass_toml,
+        }
+    }
+
+    fn manifest_text(&self) -> Option<&str> {
+        self.manifest.as_ref().map(|(_, text)| text.as_str())
+    }
+
+    fn manifest_input(&self) -> Option<(&Url, &str)> {
+        self.manifest
+            .as_ref()
+            .map(|(uri, text)| (uri, text.as_str()))
+    }
+
+    fn workspace_manifest_input(&self) -> Option<(&Url, &str)> {
+        self.workspace_manifest
+            .as_ref()
+            .map(|(uri, text)| (uri, text.as_str()))
+    }
+
+    fn seagrass_toml_input(&self) -> Option<(&Url, &str)> {
+        self.seagrass_toml
+            .as_ref()
+            .map(|(uri, text)| (uri, text.as_str()))
+    }
+
+    fn suppression_config(&self) -> diagnostic_engine::suppression::SuppressionConfig<'_> {
+        diagnostic_engine::suppression::SuppressionConfig {
+            seagrass_toml: self.seagrass_toml_input().map(|(_, text)| text),
+            manifest: self.manifest_text(),
+            workspace_manifest: self.workspace_manifest_input().map(|(_, text)| text),
+        }
+    }
+}
+
+fn source_uri_for_path(path: &Path) -> Option<Url> {
+    let absolute_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::env::current_dir().ok()?.join(path)
+    };
+    Url::from_file_path(absolute_path).ok()
+}
+
+fn diagnostics_for_parsed_document(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    config: &CliDiagnosticConfig,
+) -> Vec<Diagnostic> {
+    let solana_program = config
+        .uri
+        .as_ref()
+        .and_then(|uri| solana_project::detect_for_document(uri, document));
+    diagnostic_engine::collect_with_input(diagnostic_engine::DiagnosticInput {
+        document,
+        uri: config.uri.as_ref(),
+        workspace_index,
+        framework: crate::solana::frameworks::FrameworkContext::from_project_and_document(
+            solana_program.as_ref(),
+            config.manifest_text(),
+            document,
+        ),
+        manifest: config.manifest_input(),
+        workspace_manifest: config.workspace_manifest_input(),
+        anchor_toml: None,
+        seagrass_toml: config.seagrass_toml_input(),
+        solana_program: solana_program.as_ref(),
+        settings: diagnostic_engine::DiagnosticSettings::default(),
+    })
+}
+
 fn diagnostics_for_parse_error(
     error: syn::Error,
     source: &str,
     workspace_index: Option<&WorkspaceIndex>,
+    config: &CliDiagnosticConfig,
 ) -> Vec<Diagnostic> {
     let document = ParsedDocument::parse_or_empty(source.to_string());
-    let mut diagnostics = vec![diagnostic_engine::diagnostic_from_parse_error_with_source(
-        error, source,
-    )];
+    let solana_program = config
+        .uri
+        .as_ref()
+        .and_then(|uri| solana_project::detect_for_document(uri, &document));
+    let mut diagnostics = diagnostic_engine::suppression::filter(
+        &document,
+        config.suppression_config(),
+        vec![diagnostic_engine::diagnostic_from_parse_error_with_source(
+            error, source,
+        )],
+    );
     diagnostics.extend(diagnostic_engine::collect_hot_with_input(
         diagnostic_engine::DiagnosticInput {
             document: &document,
-            uri: None,
+            uri: config.uri.as_ref(),
             workspace_index,
-            framework: crate::solana::frameworks::FrameworkContext::from_document(&document),
-            manifest: None,
+            framework: crate::solana::frameworks::FrameworkContext::from_project_and_document(
+                solana_program.as_ref(),
+                config.manifest_text(),
+                &document,
+            ),
+            manifest: config.manifest_input(),
+            workspace_manifest: config.workspace_manifest_input(),
             anchor_toml: None,
-            seagrass_toml: None,
-            solana_program: None,
+            seagrass_toml: config.seagrass_toml_input(),
+            solana_program: solana_program.as_ref(),
             settings: diagnostic_engine::DiagnosticSettings::default(),
         },
     ));

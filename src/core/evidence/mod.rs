@@ -6,11 +6,13 @@ use {
             SymbolRange,
         },
         range::line_at,
+        workspace::MAX_REACHABILITY_DEPTH,
     },
-    std::collections::HashSet,
+    std::collections::{HashSet, VecDeque},
     tower_lsp::lsp_types::{Position, Range},
 };
 
+mod composites;
 mod summaries;
 
 pub use summaries::summary;
@@ -68,11 +70,12 @@ impl<'a> AccountSetEvidence<'a> {
         let instructions =
             reachable_instructions_for_accounts(document, accounts, workspace_reachable_functions);
 
-        let account_names = accounts
+        let mut account_names = accounts
             .fields
             .iter()
             .map(|field| field.name.as_str())
             .collect::<HashSet<_>>();
+        account_names.extend(composites::account_names(document, accounts));
         let instruction_argument_names = instructions
             .iter()
             .flat_map(|instruction| instruction.arguments.iter())
@@ -252,22 +255,28 @@ fn reachable_instructions_for_accounts<'a>(
         .iter()
         .map(|instruction| instruction.name.as_str())
         .collect::<HashSet<_>>();
-    let mut changed = true;
-    while changed {
-        changed = false;
-        let called_names = reachable
-            .iter()
-            .flat_map(|instruction| instruction.function_calls.iter())
-            .map(|call| call.name.as_str())
-            .collect::<HashSet<_>>();
-        for helper in &helpers {
-            if called_names.contains(helper.name.as_str())
-                && seen_names.insert(helper.name.as_str())
-            {
-                reachable.push(*helper);
-                changed = true;
-            }
+    let mut pending = reachable
+        .iter()
+        .flat_map(|instruction| instruction.function_calls.iter())
+        .map(|call| (call.name.as_str(), 1_usize))
+        .collect::<VecDeque<_>>();
+    while let Some((name, depth)) = pending.pop_front() {
+        let Some(helper) = helpers.iter().find(|helper| helper.name == name) else {
+            continue;
+        };
+        if !seen_names.insert(helper.name.as_str()) {
+            continue;
         }
+        reachable.push(*helper);
+        if depth >= MAX_REACHABILITY_DEPTH {
+            continue;
+        }
+        pending.extend(
+            helper
+                .function_calls
+                .iter()
+                .map(|call| (call.name.as_str(), depth + 1)),
+        );
     }
 
     reachable
@@ -680,7 +689,7 @@ fn is_init_like_name(name: &str) -> bool {
 fn leading_identifier(value: &str) -> Option<(&str, &str)> {
     let end = value
         .char_indices()
-        .find_map(|(idx, ch)| (!is_ident_char(ch)).then_some(idx))
+        .find_map(|(idx, ch)| (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx))
         .unwrap_or(value.len());
     let identifier = &value[..end];
     if !is_account_identifier(identifier) {
@@ -735,11 +744,8 @@ fn is_account_identifier(value: &str) -> bool {
         return false;
     };
 
-    (first.is_ascii_alphabetic() || first == '_') && chars.all(is_ident_char)
-}
-
-fn is_ident_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
+    crate::syntax::is_ascii_identifier_start(first)
+        && chars.all(crate::syntax::is_ascii_identifier_char)
 }
 
 fn value_range_on_line(source: &str, line_number: u32, key: &str, value: &str) -> Option<Range> {

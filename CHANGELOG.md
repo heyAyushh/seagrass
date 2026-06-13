@@ -5,6 +5,65 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- build: pin Solana and Anchor catalog inputs, add runtime catalog parity checks,
+  and keep generated Anchor support guarded against hand-edited drift.
+- lsp: derive diagnostic severity from registry provability, enforce
+  truth-source audit coverage, and align emitted topics with the lint catalog.
+- lsp: add framework semantic modeling and capability-registry resolution so
+  Anchor, native Solana, and Pinocchio diagnostics rely on parsed workspace
+  facts instead of name-only guesses.
+- lsp: add trie-backed completion wakeups and program-id completion gating so
+  Anchor-aware completions stay fast without polluting normal Rust contexts.
+- client: add first-class Vim-family command surfaces with Vim quickfix CLI
+  scans, a Neovim runtime package, and explicit classic vi CLI-only guidance.
+- client: add Zed-native completion and symbol labels, language-server
+  installation status reporting, and file/instruction arguments for document
+  slash commands.
+- client: open Zed slash-command path arguments in the throwaway LSP session so
+  `/seagrass-analyze <path>` returns the same report as an active document.
+- client: parse raw Zed slash-command argument text before opening analysis
+  paths, so path plus filter forms dispatch the intended document URI.
+- client: add VS Code server-binary resolution for matching released Seagrass
+  versions and document install paths for agent/editor users.
+- client: select the VS Code `x86_64-unknown-linux-musl` server release on
+  musl-based Linux extension hosts instead of caching the glibc binary.
+- ci: add installer and release packaging workflows, release parity checks,
+  generated-support freshness checks, and local production-gate coverage for the
+  release/install surfaces.
+- ci: guard silent editor and installer control surfaces with settings,
+  suppression, `Seagrass.toml`, release-parity, and install-smoke checks.
+- ci: allow slower Windows server-portability runs to finish the full Seagrass
+  library test suite instead of canceling at the previous 30-minute cap, and
+  install rustfmt explicitly for cross-platform protocol formatting smoke.
+- ci: serialize black-box JSON-RPC LSP integration tests so platform runners do
+  not race cargo-backed server startup or diagnostic publication.
+- ci: construct JSON-RPC LSP test file URIs through the canonical URL parser so
+  Windows push-diagnostic assertions compare the same URI form the server emits.
+- ci: retry the protocol-smoke formatting request after `didOpen` so slower
+  runners do not race document registration before checking rustfmt output.
+- test: keep large real-program corpus trees fetch-only instead of committing
+  their source mirrors under `fixtures/corpus`.
+- test: add fetch-on-demand external corpus infrastructure, vendor permissively
+  licensed corpus programs, and promote the corpus scan into a hard gate.
+- lsp: apply `seagrass-ignore` and workspace lint allowances to open-document
+  syntax diagnostics before publishing editor Problems.
+- lsp: require static program-id evidence before suppressing arbitrary-CPI
+  program-account diagnostics from reachable runtime checks.
+- lsp: add a bounded workspace call graph for reachable-helper signer defense
+  and unambiguous reachable-helper CPI program diagnostics.
+- lsp: update trie-backed module-path resolution during incremental workspace
+  file upserts and removals, not only during full startup scans.
+- lsp: add Anchor account-space estimation for hovers and code lenses, with
+  InitSpace/max_len quick fixes for `space = T::INIT_SPACE` constraints.
+- lsp: offer checked-arithmetic quick fixes for lamport/token math and cover
+  division and remainder operators alongside add/sub/mul.
+- lsp: accept compatible SPL token program accounts for Token-2022/interface
+  token initialization, resolve token-interface import aliases, and silence
+  unprovable composite payer member-path checks found by the external corpus.
+- test: add committed corpus regressions for SPL token-program compatibility
+  and composite payer references, and make external-corpus setup fail early
+  when Python is too old for `tomllib`.
+
 ## [0.1.2] - 2026-06-05
 
 - client: expose Seagrass analysis, program report, error coverage, support

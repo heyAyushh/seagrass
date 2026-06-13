@@ -22,7 +22,7 @@ mod registry;
 mod rules;
 mod security;
 mod spl_semantics;
-mod suppression;
+pub(crate) mod suppression;
 
 use {
     crate::{
@@ -65,6 +65,7 @@ pub fn collect_with_workspace(
         workspace_index,
         framework: crate::solana::frameworks::FrameworkContext::from_document(document),
         manifest: None,
+        workspace_manifest: None,
         anchor_toml: None,
         seagrass_toml: None,
         solana_program: None,
@@ -767,6 +768,9 @@ fn diagnostic_data(
     object
         .entry("topic".to_string())
         .or_insert_with(|| serde_json::Value::String(kind.topic().to_string()));
+    object
+        .entry("truthSource".to_string())
+        .or_insert_with(|| serde_json::Value::String(kind.truth_source().as_str().to_string()));
     let anchor_errors = crate::anchor_errors::diagnostic_error_data(kind.anchor_error_names());
     if !anchor_errors.is_empty() {
         object.insert(

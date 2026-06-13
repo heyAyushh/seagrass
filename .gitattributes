@@ -1,0 +1,3 @@
+# Vendored corpus fixtures are scanned under byte-size limits; keep checkout
+# size stable on Windows.
+fixtures/corpus/** text eol=lf

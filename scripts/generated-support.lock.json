@@ -1,0 +1,37 @@
+{
+  "schemaVersion": 1,
+  "generatedRoots": [
+    {
+      "id": "anchor-v1-main",
+      "path": "src/anchor/generated",
+      "source": "Anchor v1 generated catalog from the pinned anchor-syn checkout.",
+      "files": {
+        "anchor_error_catalog_generated.rs": "3a0adf382f959fcc47cdddfc59b0f51320c4222205e85df7e56d7b291793fc6a",
+        "anchor_field_completions_generated.rs": "d1d937eb80a9ed6fc8c8198b17cf50607cbdc09e8063cb4a94bb20eead4d3846",
+        "anchor_support_generated.rs": "c3f128392e15a73328e7d1b44c6a9c40279b565ef9729af8232de8fa75dbcbd7",
+        "constraint_catalog_generated.rs": "d158ad04fb02317b721b8beb42cb5d695c1a0b172aaa984b4b4da64d097a3e58",
+        "constraint_keys_generated.rs": "ca1d54eb6f9a1e3369b47eab2bd161ae52f60a4fc7f0f86b4be88d324d2393d0"
+      }
+    },
+    {
+      "id": "anchor-v1-manifest",
+      "path": "crates/seagrass-anchor-v1/src/generated",
+      "source": "Anchor v1 framework package manifest only; dead duplicate catalogs were intentionally removed.",
+      "files": {
+        "anchor_support_generated.rs": "38205560e312e243863263773bfe790291f7b5314ea3644e43a172aa9263be1b"
+      }
+    },
+    {
+      "id": "anchor-v2-preview",
+      "path": "crates/seagrass-anchor-v2-preview/src/generated",
+      "source": "Anchor v2 preview generated catalog from an anchor-next checkout.",
+      "files": {
+        "anchor_error_catalog_generated.rs": "925b325a5816cebaceaa4967e68cc077bdb90f84e7af7ee94bb2020950b70f72",
+        "anchor_field_completions_generated.rs": "d1d937eb80a9ed6fc8c8198b17cf50607cbdc09e8063cb4a94bb20eead4d3846",
+        "anchor_support_generated.rs": "5374422019ba75b978eb24504e17c83fb6a357f62a7280413f66bde831a3b3c7",
+        "constraint_catalog_generated.rs": "44c6fd210e9a630194f3c23c90f57450079c53600a8be2512f2ff16bfcb8a3da",
+        "constraint_keys_generated.rs": "ca1d54eb6f9a1e3369b47eab2bd161ae52f60a4fc7f0f86b4be88d324d2393d0"
+      }
+    }
+  ]
+}

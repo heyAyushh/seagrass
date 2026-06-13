@@ -1,8 +1,12 @@
 use {
-    crate::diagnostics::{
-        diagnostic_from_span,
-        lint::{run_lint_visitor_on_functions, Applicability, Confidence, LintVisitor, Region},
-        registry::AnchorDiagnosticKind,
+    crate::{
+        anchor::idioms,
+        diagnostics::{
+            diagnostic_from_span,
+            lint::{run_lint_visitor_on_functions, Applicability, Confidence, LintVisitor, Region},
+            registry::AnchorDiagnosticKind,
+        },
+        syntax::{expr_path_ends_with, expr_path_last_ident},
     },
     syn::{
         spanned::Spanned,
@@ -77,7 +81,7 @@ impl<'ast> Visit<'ast> for ManualCloseReinitVisitor {
             "fill" if first_method_arg_is_zero(node) && receiver_is_mut_data(node) => {
                 self.record_close_action(node.method.span());
             }
-            "try_deserialize_unchecked" => {
+            idioms::TRY_DESERIALIZE_UNCHECKED_METHOD => {
                 self.unchecked_initialization
                     .get_or_insert(node.method.span());
             }
@@ -91,7 +95,9 @@ impl<'ast> Visit<'ast> for ManualCloseReinitVisitor {
         if expr_contains_ident(&node.left, "lamports") && expr_is_zero(&node.right) {
             self.record_lamports_mutation(node.eq_token.spans[0]);
         }
-        if expr_contains_ident(&node.left, "discriminator") && expr_is_false(&node.right) {
+        if expr_contains_ident(&node.left, idioms::ACCOUNT_DISCRIMINATOR_FIELD)
+            && expr_is_false(&node.right)
+        {
             self.unchecked_initialization
                 .get_or_insert(node.eq_token.spans[0]);
         }
@@ -99,7 +105,9 @@ impl<'ast> Visit<'ast> for ManualCloseReinitVisitor {
     }
 
     fn visit_expr_call(&mut self, node: &'ast syn::ExprCall) {
-        if called_ident(&node.func).is_some_and(|ident| ident == "try_deserialize_unchecked") {
+        if expr_path_last_ident(&node.func)
+            .is_some_and(|ident| ident == idioms::TRY_DESERIALIZE_UNCHECKED_METHOD)
+        {
             self.unchecked_initialization
                 .get_or_insert(node.func.span());
         }
@@ -111,7 +119,7 @@ impl<'ast> Visit<'ast> for ManualCloseReinitVisitor {
             .path
             .segments
             .iter()
-            .any(|segment| segment.ident == "CLOSED_ACCOUNT_DISCRIMINATOR")
+            .any(|segment| segment.ident == idioms::CLOSED_ACCOUNT_DISCRIMINATOR)
         {
             self.closed_discriminator = true;
         }
@@ -173,44 +181,9 @@ fn receiver_is_mut_data(node: &syn::ExprMethodCall) -> bool {
             && expr_contains_ident(&node.receiver, "data"))
 }
 
-fn called_ident(func: &syn::Expr) -> Option<&syn::Ident> {
-    let syn::Expr::Path(expr_path) = func else {
-        return None;
-    };
-    expr_path.path.segments.last().map(|segment| &segment.ident)
-}
-
 fn is_system_program_id_expr(expr: &Expr) -> bool {
     expr_path_ends_with(expr, &["system_program", "ID"])
         || expr_path_ends_with(expr, &["System", "id"])
-}
-
-fn expr_path_ends_with(expr: &Expr, expected: &[&str]) -> bool {
-    match expr {
-        Expr::Path(expr_path) => path_ends_with(&expr_path.path, expected),
-        Expr::Call(expr_call) => expr_path_ends_with(&expr_call.func, expected),
-        Expr::Group(expr_group) => expr_path_ends_with(&expr_group.expr, expected),
-        Expr::Paren(expr_paren) => expr_path_ends_with(&expr_paren.expr, expected),
-        Expr::Reference(expr_reference) => expr_path_ends_with(&expr_reference.expr, expected),
-        _ => false,
-    }
-}
-
-fn path_ends_with(path: &syn::Path, expected: &[&str]) -> bool {
-    let actual = path
-        .segments
-        .iter()
-        .map(|segment| segment.ident.to_string())
-        .collect::<Vec<_>>();
-    let Some(suffix) = actual.get(actual.len().saturating_sub(expected.len())..) else {
-        return false;
-    };
-    suffix.len() == expected.len()
-        && suffix
-            .iter()
-            .map(String::as_str)
-            .zip(expected.iter().copied())
-            .all(|(actual, expected)| actual == expected)
 }
 
 fn expr_is_zero(expr: &Expr) -> bool {

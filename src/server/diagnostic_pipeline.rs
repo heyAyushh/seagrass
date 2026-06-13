@@ -401,11 +401,29 @@ impl Backend {
             }
         }
 
-        let mut diagnostics = open_document
-            .syntax_diagnostic
-            .clone()
-            .into_iter()
-            .collect::<Vec<_>>();
+        let workspace_roots = self
+            .workspace_roots
+            .lock()
+            .unwrap_or_else(|err| err.into_inner())
+            .clone();
+        let manifest = solana_project::nearest_manifest(uri);
+        let workspace_manifest = solana_project::nearest_workspace_manifest(uri);
+        let seagrass_toml = project::nearest_seagrass_toml_with_roots(uri, &workspace_roots);
+        let mut diagnostics = syntax_diagnostics_for_document(
+            document,
+            open_document,
+            diagnostics::suppression::SuppressionConfig {
+                seagrass_toml: seagrass_toml
+                    .as_ref()
+                    .map(|(_, seagrass_toml_text)| seagrass_toml_text.as_str()),
+                manifest: manifest
+                    .as_ref()
+                    .map(|(_, manifest_text)| manifest_text.as_str()),
+                workspace_manifest: workspace_manifest
+                    .as_ref()
+                    .map(|(_, manifest_text)| manifest_text.as_str()),
+            },
+        );
         diagnostics.extend(self.collect_diagnostics_for_uri_with_typing_suppression(
             uri,
             document,
@@ -508,6 +526,7 @@ impl Backend {
             .unwrap_or_else(|err| err.into_inner())
             .clone();
         let manifest = solana_project::nearest_manifest(uri);
+        let workspace_manifest = solana_project::nearest_workspace_manifest(uri);
         let anchor_toml = project::nearest_anchor_toml_with_roots(uri, &workspace_roots);
         let seagrass_toml = project::nearest_seagrass_toml_with_roots(uri, &workspace_roots);
         let solana_program = solana_project::detect_for_document(uri, document);
@@ -526,6 +545,9 @@ impl Backend {
                 workspace_index: Some(&workspace_index),
                 framework,
                 manifest: manifest
+                    .as_ref()
+                    .map(|(manifest_uri, manifest_text)| (manifest_uri, manifest_text.as_str())),
+                workspace_manifest: workspace_manifest
                     .as_ref()
                     .map(|(manifest_uri, manifest_text)| (manifest_uri, manifest_text.as_str())),
                 anchor_toml: anchor_toml

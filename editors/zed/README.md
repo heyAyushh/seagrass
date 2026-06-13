@@ -91,6 +91,8 @@ export SEAGRASS_MANIFEST_PATH=<seagrass-checkout>/crates/seagrass/Cargo.toml
 
 The extension registers `seagrass` with Rust's `rust` language id and advertises quick-fix/source code-action kinds to Zed. The server still owns the real LSP capability negotiation: diagnostics, completions, hovers, signature help, semantic tokens, code actions, document/workspace symbols, document links to Anchor docs, definition, references, workspace-backed Anchor rename/prepare-rename, highlights, selection ranges, folding ranges, watched files, workspace folders, and execute commands for status/artifacts/recent logs/error coverage/support matrix/generator profile. Artifact reports include Anchor projects plus deployable Pinocchio and native Solana Cargo programs, and native/Pinocchio security diagnostics include account-scoped owner/type/signer/writable validation plus expression-scoped CPI program-id checks.
 
+The adapter provides Zed-native code labels for Seagrass completion and symbol rows, so Anchor handlers, account structs, modules, and field-like completions render with tighter Rust-shaped labels while filtering still targets the original server label.
+
 Zed settings under `lsp.seagrass.settings` are passed through to `workspace/didChangeConfiguration`. The extension also sends `diagnostics.transport` during initialization. Zed defaults to `push` so each Seagrass diagnostic has one editor transport. Use `pull` only if your Zed build needs pull-based Problems population. Mixed push-and-pull transport is intentionally rejected because Zed can display duplicate diagnostics for the same range.
 
 Completions are expected to wake on the first typed Anchor prefix and after delimiter spaces such as `#[account(init, `, not after Zed's generic minimum-word heuristic. The server advertises identifier and space trigger characters, then filters requests semantically so normal Rust spaces stay quiet.
@@ -108,6 +110,8 @@ During `initialized`, Seagrass dynamically registers `workspace/didChangeWatched
 ## Logs And Support
 
 Zed shows extension and language-server process output in `Zed.log`; run `zed: open log` from the command palette. For live foreground debugging, launch Zed from a terminal with `zed --foreground`.
+
+During server command resolution, the extension reports language-server installation status to Zed while it checks `lsp.seagrass.binary`, `seagrass` on `PATH`, and cargo fallback options. Resolution errors are surfaced as failed installation status instead of only returning a silent command error.
 
 When Zed starts the server, the resolved command should match the shared startup contract:
 
@@ -130,6 +134,13 @@ The server also exposes a bounded in-memory log snapshot over LSP. The snapshot 
 The same execute-command surface exposes `seagrass/status`, `seagrass/artifacts`, `seagrass/logs`, `seagrass/feedback`, `seagrass/errorCoverage`, `seagrass/supportMatrix`, `seagrass/generatorProfile`, and `seagrass/analyze`. Zed's adapter stays thin, so these commands are implemented once in the server and remain available to other LSP clients and agent harnesses.
 
 Assistant slash commands are registered as `/seagrass-status`, `/seagrass-analyze`, `/seagrass-coverage`, `/seagrass-artifacts`, `/seagrass-program-report`, `/seagrass-error-coverage`, `/seagrass-support-matrix`, `/seagrass-generator-profile`, `/seagrass-logs`, and `/seagrass-feedback`. Zed 0.7.0 does not expose a direct Assistant-to-running-LSP execute-command bridge, so the adapter sends a one-shot `workspace/executeCommand` request to the resolved Seagrass binary and returns the server JSON. If the binary or cargo fallback is unavailable, the slash command returns a "Start the Seagrass server first" message instead of failing silently.
+
+`/seagrass-analyze` and `/seagrass-artifacts` accept an optional path or URI. Relative paths resolve from the Zed worktree root, and analysis accepts `instruction=initialize`, `function=initialize`, and `context=Create` argument forms:
+
+```text
+/seagrass-analyze programs/demo/src/lib.rs instruction=initialize context=Create
+/seagrass-artifacts file:///workspace/programs/demo/src/lib.rs
+```
 
 `seagrass/feedback` returns the bundled feedback URL from the server. The Zed extension does not expose a native command for it because `zed_extension_api` 0.7.0 cannot open external URLs from the wasm extension; use `/seagrass-feedback` to print the URL in Assistant.
 

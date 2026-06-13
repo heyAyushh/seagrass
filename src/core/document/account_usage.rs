@@ -1,9 +1,9 @@
 use {
     super::{
-        context_accounts_type, AccountDataFieldUsage, AccountKeyComparison, AccountPathUsage,
-        AccountUsage, FunctionCall, NamedRange,
+        context_accounts_type, AccountDataFieldUsage, AccountKeyComparison, AccountKeyOperand,
+        AccountPathUsage, AccountUsage, FunctionCall, NamedRange,
     },
-    crate::range::range_from_span,
+    crate::{anchor::idioms, range::range_from_span, syntax::member_is_named},
     aliases::{
         account_field_alias_target_for_expr, direct_account_usage_from_expr, AccountFieldAlias,
     },
@@ -20,7 +20,7 @@ mod aliases;
 mod expressions;
 
 use expressions::{
-    account_key_from_expr, account_path_from_expr, account_usage_from_expr,
+    account_key_operand_from_expr, account_path_from_expr, account_usage_from_expr,
     is_accounts_container_expr,
 };
 
@@ -175,20 +175,20 @@ impl AccountUsageVisitor {
     }
 
     fn record_account_key_comparison(&mut self, left: &syn::Expr, right: &syn::Expr) {
-        let Some(left) = self.account_key_from_expr(left) else {
+        let Some(left) = self.account_key_operand_from_expr(left) else {
             return;
         };
-        let Some(right) = self.account_key_from_expr(right) else {
+        let Some(right) = self.account_key_operand_from_expr(right) else {
             return;
         };
-        if left == right {
+        let comparison = AccountKeyComparison { left, right };
+        if !comparison.has_account_operand() || comparison.compares_account_to_itself() {
             return;
         }
-        let comparison = AccountKeyComparison { left, right };
         if !self
             .account_key_comparisons
             .iter()
-            .any(|existing| existing.matches(&comparison.left, &comparison.right))
+            .any(|existing| existing.matches_operands(&comparison.left, &comparison.right))
         {
             self.account_key_comparisons.push(comparison);
         }
@@ -211,6 +211,20 @@ impl AccountUsageVisitor {
         let call = FunctionCall {
             name: segment.ident.to_string(),
             range: range_from_span(segment.ident.span()),
+        };
+        if !self
+            .function_calls
+            .iter()
+            .any(|existing| existing.name == call.name && existing.range == call.range)
+        {
+            self.function_calls.push(call);
+        }
+    }
+
+    fn record_method_call(&mut self, method: &syn::Ident) {
+        let call = FunctionCall {
+            name: method.to_string(),
+            range: range_from_span(method.span()),
         };
         if !self
             .function_calls
@@ -281,8 +295,8 @@ impl AccountUsageVisitor {
         )
     }
 
-    fn account_key_from_expr(&self, expr: &syn::Expr) -> Option<String> {
-        account_key_from_expr(
+    fn account_key_operand_from_expr(&self, expr: &syn::Expr) -> Option<AccountKeyOperand> {
+        account_key_operand_from_expr(
             expr,
             &self.context_names,
             &self.accounts_aliases,
@@ -324,6 +338,7 @@ impl<'ast> Visit<'ast> for AccountUsageVisitor {
     }
 
     fn visit_expr_method_call(&mut self, node: &'ast syn::ExprMethodCall) {
+        self.record_method_call(&node.method);
         if is_mutating_account_method(&node.method.to_string()) {
             self.with_mutable_context(|visitor| visitor.visit_expr(&node.receiver));
             for arg in &node.args {
@@ -363,7 +378,7 @@ impl<'ast> Visit<'ast> for AccountUsageVisitor {
         self.record_data_field_usage(node);
         self.record_usage(node);
         self.record_account_path_usage(&syn::Expr::Field(node.clone()));
-        if matches!(&node.member, syn::Member::Named(ident) if ident == "is_signer") {
+        if member_is_named(&node.member, "is_signer") {
             self.record_signer_check(node.base.as_ref());
         }
         visit::visit_expr_field(self, node);
@@ -372,7 +387,7 @@ impl<'ast> Visit<'ast> for AccountUsageVisitor {
     fn visit_expr_struct(&mut self, node: &'ast syn::ExprStruct) {
         if is_instruction_path(&node.path) {
             for field in &node.fields {
-                if matches!(&field.member, syn::Member::Named(ident) if ident == "program_id") {
+                if member_is_named(&field.member, "program_id") {
                     self.record_cpi_program_usage(&field.expr);
                 }
             }
@@ -380,14 +395,12 @@ impl<'ast> Visit<'ast> for AccountUsageVisitor {
             let pubkey = node
                 .fields
                 .iter()
-                .find(
-                    |field| matches!(&field.member, syn::Member::Named(ident) if ident == "pubkey"),
-                )
+                .find(|field| member_is_named(&field.member, "pubkey"))
                 .map(|field| &field.expr);
             let is_signer = node
                 .fields
                 .iter()
-                .find(|field| matches!(&field.member, syn::Member::Named(ident) if ident == "is_signer"))
+                .find(|field| member_is_named(&field.member, "is_signer"))
                 .is_some_and(|field| is_bool_true(&field.expr));
             if is_signer {
                 if let Some(pubkey) = pubkey {
@@ -456,7 +469,38 @@ fn context_argument_names(item_fn: &ItemFn) -> Vec<String> {
 
 impl AccountKeyComparison {
     pub fn matches(&self, left: &str, right: &str) -> bool {
-        (self.left == left && self.right == right) || (self.left == right && self.right == left)
+        self.matches_operands(
+            &AccountKeyOperand::Account(left.to_string()),
+            &AccountKeyOperand::Account(right.to_string()),
+        )
+    }
+
+    pub fn matches_operands(&self, left: &AccountKeyOperand, right: &AccountKeyOperand) -> bool {
+        (self.left == *left && self.right == *right) || (self.left == *right && self.right == *left)
+    }
+
+    pub fn compares_account_to_static_program_id(&self, account: &str) -> bool {
+        matches!(
+            (&self.left, &self.right),
+            (AccountKeyOperand::Account(left), AccountKeyOperand::StaticProgramId)
+                if left == account
+        ) || matches!(
+            (&self.left, &self.right),
+            (AccountKeyOperand::StaticProgramId, AccountKeyOperand::Account(right))
+                if right == account
+        )
+    }
+
+    fn has_account_operand(&self) -> bool {
+        matches!(self.left, AccountKeyOperand::Account(_))
+            || matches!(self.right, AccountKeyOperand::Account(_))
+    }
+
+    fn compares_account_to_itself(&self) -> bool {
+        matches!(
+            (&self.left, &self.right),
+            (AccountKeyOperand::Account(left), AccountKeyOperand::Account(right)) if left == right
+        )
     }
 }
 
@@ -493,13 +537,13 @@ fn is_cpi_context_constructor(expr: &syn::Expr) -> bool {
     let Some(path) = expr_path(expr) else {
         return false;
     };
-    path.segments
-        .last()
-        .is_some_and(|segment| segment.ident == "new" || segment.ident == "new_with_signer")
-        && path
-            .segments
-            .iter()
-            .any(|segment| segment.ident == "CpiContext")
+    path.segments.last().is_some_and(|segment| {
+        segment.ident == idioms::CPI_CONTEXT_NEW_METHOD
+            || segment.ident == idioms::CPI_CONTEXT_NEW_WITH_SIGNER_METHOD
+    }) && path
+        .segments
+        .iter()
+        .any(|segment| segment.ident == idioms::CPI_CONTEXT_TYPE)
 }
 
 fn is_instruction_constructor(expr: &syn::Expr) -> bool {
@@ -529,18 +573,12 @@ fn is_token_account_unpack_call(expr: &syn::Expr) -> bool {
     let Some(last) = path.segments.last() else {
         return false;
     };
-    if !matches!(
-        last.ident.to_string().as_str(),
-        "unpack" | "unpack_unchecked" | "unpack_from_slice"
-    ) {
+    if !idioms::ident_is_any(&last.ident, idioms::TOKEN_ACCOUNT_UNPACK_METHODS) {
         return false;
     }
-    path.segments.iter().any(|segment| {
-        matches!(
-            segment.ident.to_string().as_str(),
-            "Account" | "TokenAccount" | "SplTokenAccount" | "StateWithExtensions"
-        )
-    })
+    path.segments
+        .iter()
+        .any(|segment| idioms::ident_is_any(&segment.ident, idioms::TOKEN_ACCOUNT_UNPACK_TYPES))
 }
 
 fn is_instruction_path(path: &Path) -> bool {
@@ -581,8 +619,6 @@ fn is_bool_true(expr: &syn::Expr) -> bool {
 }
 
 fn is_mutating_account_method(method: &str) -> bool {
-    matches!(
-        method,
-        "set_inner" | "reload" | "load_mut" | "close" | "realloc"
-    )
+    method == idioms::ACCOUNT_RELOAD_METHOD
+        || matches!(method, "set_inner" | "load_mut" | "close" | "realloc")
 }

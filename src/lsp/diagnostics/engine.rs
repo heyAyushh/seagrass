@@ -16,6 +16,7 @@ pub struct DiagnosticInput<'a> {
     pub workspace_index: Option<&'a WorkspaceIndex>,
     pub framework: FrameworkContext,
     pub manifest: Option<(&'a Url, &'a str)>,
+    pub workspace_manifest: Option<(&'a Url, &'a str)>,
     pub anchor_toml: Option<(&'a Url, &'a str)>,
     pub seagrass_toml: Option<(&'a Url, &'a str)>,
     pub solana_program: Option<&'a SolanaProgram>,
@@ -31,6 +32,7 @@ impl<'a> DiagnosticInput<'a> {
             workspace_index: None,
             framework: FrameworkContext::from_document(document),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
             solana_program: None,
@@ -66,7 +68,11 @@ fn collect_through_phase(
     let mut diagnostics = arbitration::arbitrate(diagnostics, input.settings);
     diagnostics = super::suppression::filter(
         input.document,
-        input.seagrass_toml.map(|(_, text)| text),
+        super::suppression::SuppressionConfig {
+            seagrass_toml: input.seagrass_toml.map(|(_, text)| text),
+            manifest: input.manifest.map(|(_, text)| text),
+            workspace_manifest: input.workspace_manifest.map(|(_, text)| text),
+        },
         diagnostics,
     );
     super::enrich_current_document_related_information(input.document, &mut diagnostics);
@@ -130,6 +136,7 @@ my_program = "Expected111111111111111111111111111111111"
             workspace_index: None,
             framework: FrameworkContext::from_document(&document),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: Some((&anchor_toml_uri, anchor_toml)),
             seagrass_toml: None,
             solana_program: None,
@@ -167,6 +174,7 @@ pub struct Create<'info> {
             workspace_index: None,
             framework: FrameworkContext::from_document(&document),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
             solana_program: None,
@@ -217,6 +225,7 @@ pub struct Create<'info> {
             workspace_index: None,
             framework: FrameworkContext::from_document(&document),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
             solana_program: None,
@@ -253,8 +262,6 @@ declare_id!("Declared111111111111111111111111111111111");
 
 #[program]
 pub mod demo {
-    use super::*;
-
     pub fn create(ctx: Context<Create>) -> Result<()> {
         Ok(())
     }
@@ -275,6 +282,7 @@ demo = "Expected111111111111111111111111111111111"
             workspace_index: None,
             framework: FrameworkContext::from_document(&document),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: Some((&anchor_toml_uri, anchor_toml)),
             seagrass_toml: None,
             solana_program: None,
@@ -326,6 +334,7 @@ pub fn close(ctx: Context<Close>) -> Result<()> {
             workspace_index: None,
             framework: FrameworkContext::from_document(&document),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
             solana_program: None,
@@ -359,6 +368,7 @@ pub struct Create<'info> {
             workspace_index: None,
             framework: FrameworkContext::new(crate::solana::frameworks::FrameworkId::Pinocchio),
             manifest: None,
+            workspace_manifest: None,
             anchor_toml: None,
             seagrass_toml: None,
             solana_program: None,

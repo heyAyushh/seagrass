@@ -1,9 +1,11 @@
 use {
-    super::{WorkspaceAccountField, WorkspaceAccountsStruct},
+    super::{WorkspaceAccountDataStruct, WorkspaceAccountField, WorkspaceAccountsStruct},
     crate::{
+        anchor::idioms,
         definition_bridge::BridgeSymbol,
         document::{
-            document_symbols, AccountUsage, AssociatedValueKind, InstructionSymbol, ParsedDocument,
+            document_symbols, AccountKeyComparison, AccountUsage, AssociatedValueKind,
+            InstructionSymbol, ParsedDocument,
         },
         navigation::{account_field_path_definition_target_for_position, AccountPathPosition},
         range::range_from_span,
@@ -38,6 +40,8 @@ pub(super) struct IndexedAccountsStruct {
     pub(super) is_open: bool,
     pub(super) accounts: WorkspaceAccountsStruct,
 }
+
+pub(super) type IndexedAccountDataStruct = WorkspaceAccountDataStruct;
 
 #[derive(Debug, Clone)]
 pub(super) struct IndexedSymbol {
@@ -116,39 +120,42 @@ impl IndexedReferenceEntry {
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct IndexedFunction {
-    pub(super) name: String,
-    pub(super) context_name: Option<String>,
-    pub(super) return_type_display: Option<String>,
-    pub(super) selection_range: Range,
-    pub(super) is_program_instruction: bool,
-    pub(super) calls: Vec<String>,
-    pub(super) cpi_program_usages: Vec<AccountUsage>,
-    pub(super) signer_usages: Vec<AccountUsage>,
-    pub(super) signer_checks: Vec<AccountUsage>,
-    pub(super) arguments: Vec<IndexedFunctionArgument>,
+pub(crate) struct IndexedFunction {
+    pub(crate) name: String,
+    pub(crate) context_name: Option<String>,
+    pub(crate) return_type_display: Option<String>,
+    pub(crate) selection_range: Range,
+    pub(crate) is_program_instruction: bool,
+    pub(crate) calls: Vec<String>,
+    pub(crate) cpi_program_usages: Vec<AccountUsage>,
+    pub(crate) signer_usages: Vec<AccountUsage>,
+    pub(crate) signer_checks: Vec<AccountUsage>,
+    pub(crate) account_key_comparisons: Vec<AccountKeyComparison>,
+    pub(crate) arguments: Vec<IndexedFunctionArgument>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct IndexedFunctionArgument {
-    pub(super) name: String,
-    pub(super) range: Range,
-    pub(super) type_name: Option<String>,
+pub(crate) struct IndexedFunctionArgument {
+    pub(crate) name: String,
+    pub(crate) range: Range,
+    pub(crate) type_name: Option<String>,
 }
 
 #[derive(Debug, Clone)]
-pub(super) struct IndexedFunctionEntry {
-    pub(super) uri: Url,
-    pub(super) is_open: bool,
-    pub(super) name: String,
-    pub(super) return_type_display: Option<String>,
-    pub(super) location: Location,
-    pub(super) is_program_instruction: bool,
-    pub(super) calls: Vec<String>,
-    pub(super) cpi_program_usages: Vec<AccountUsage>,
-    pub(super) signer_usages: Vec<AccountUsage>,
-    pub(super) signer_checks: Vec<AccountUsage>,
-    pub(super) arguments: Vec<IndexedFunctionArgument>,
+pub(crate) struct IndexedFunctionEntry {
+    pub(crate) uri: Url,
+    pub(crate) is_open: bool,
+    pub(crate) name: String,
+    pub(crate) context_name: Option<String>,
+    pub(crate) return_type_display: Option<String>,
+    pub(crate) location: Location,
+    pub(crate) is_program_instruction: bool,
+    pub(crate) calls: Vec<String>,
+    pub(crate) cpi_program_usages: Vec<AccountUsage>,
+    pub(crate) signer_usages: Vec<AccountUsage>,
+    pub(crate) signer_checks: Vec<AccountUsage>,
+    pub(crate) account_key_comparisons: Vec<AccountKeyComparison>,
+    pub(crate) arguments: Vec<IndexedFunctionArgument>,
 }
 
 impl IndexedFunctionEntry {
@@ -157,6 +164,7 @@ impl IndexedFunctionEntry {
             uri: uri.clone(),
             is_open,
             name: function.name.clone(),
+            context_name: function.context_name.clone(),
             return_type_display: function.return_type_display.clone(),
             location: Location {
                 uri: uri.clone(),
@@ -167,6 +175,7 @@ impl IndexedFunctionEntry {
             cpi_program_usages: function.cpi_program_usages.clone(),
             signer_usages: function.signer_usages.clone(),
             signer_checks: function.signer_checks.clone(),
+            account_key_comparisons: function.account_key_comparisons.clone(),
             arguments: function.arguments.clone(),
         }
     }
@@ -210,6 +219,7 @@ fn indexed_function(
         cpi_program_usages: function.cpi_program_usages.clone(),
         signer_usages: function.signer_usages.clone(),
         signer_checks: function.signer_checks.clone(),
+        account_key_comparisons: function.account_key_comparisons.clone(),
         arguments: function
             .arguments
             .iter()
@@ -276,6 +286,7 @@ pub(super) fn indexed_accounts_structs(
                     .map(|field| WorkspaceAccountField {
                         name: field.name.clone(),
                         type_name: field.type_name.clone(),
+                        type_signature: field.type_signature.clone(),
                         generic_type_names: field.generic_type_names.clone(),
                         is_optional: field.is_optional,
                         account_constraints: field.account_constraints.clone(),
@@ -287,18 +298,49 @@ pub(super) fn indexed_accounts_structs(
         .collect()
 }
 
+pub(super) fn indexed_account_data_structs(
+    document: &ParsedDocument,
+    uri: &Url,
+    is_open: bool,
+) -> Vec<IndexedAccountDataStruct> {
+    document
+        .symbols()
+        .account_data_structs
+        .values()
+        .cloned()
+        .map(|symbol| WorkspaceAccountDataStruct {
+            uri: uri.clone(),
+            is_open,
+            symbol,
+        })
+        .collect()
+}
+
 fn indexed_symbols(document: &ParsedDocument) -> Vec<IndexedSymbol> {
     let mut symbols = Vec::with_capacity(32); // Pre-allocate for typical Anchor program (Pass 4)
 
     if let Some(declared) = document.symbols().declared_program_id.as_ref() {
         symbols.push(IndexedSymbol {
-            name: "declare_id!".to_string(),
+            name: idioms::DECLARE_ID_MACRO_INVOCATION.to_string(),
             kind: SymbolKind::CONSTANT,
             selection_range: declared.range,
             container_name: Some(declared.value.clone()),
             type_display: None,
         });
     }
+    symbols.extend(
+        document
+            .symbols()
+            .constants
+            .iter()
+            .map(|constant| IndexedSymbol {
+                name: constant.name.clone(),
+                kind: SymbolKind::CONSTANT,
+                selection_range: constant.range,
+                container_name: Some("const".to_string()),
+                type_display: None,
+            }),
+    );
 
     symbols.extend(
         document

@@ -5,11 +5,15 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-type JsonObject = Record<string, unknown>;
+import { type JsonRecord } from "./json-utils.ts";
+import { seagrassServerCommand } from "./seagrass-server-command.ts";
+
+type JsonObject = JsonRecord;
 
 const SERVER_EXIT_TIMEOUT_MILLIS = 5_000;
 const LSP_REQUEST_TIMEOUT_MILLIS = 45_000;
 const MIN_ANCHOR_TUTORIAL_SMOKE_FIXTURES = 3;
+const NATIVE_DEPLOY_ARTIFACT_SUFFIX = "target/deploy/native_counter_program.so";
 
 type LspMessage = {
   jsonrpc?: "2.0";
@@ -50,7 +54,7 @@ type Diagnostic = {
       range?: Range;
     };
   }[];
-  data?: JsonObject;
+  data?: JsonRecord;
 };
 
 type DiagnosticReport = {
@@ -113,10 +117,10 @@ type CompletionProvider = {
 
 type AnalysisReport = {
   uri?: string;
-  project?: JsonObject | null;
+  project?: JsonRecord | null;
   evidence?: unknown;
   diagnostics?: unknown[];
-  focus?: JsonObject | null;
+  focus?: JsonRecord | null;
 };
 
 type DocumentSymbol = {
@@ -132,7 +136,7 @@ type SymbolInformation = {
 type DocumentLink = {
   target?: string;
   tooltip?: string;
-  data?: JsonObject;
+  data?: JsonRecord;
 };
 
 type DocumentHighlight = {
@@ -167,7 +171,7 @@ type CodeLens = {
     command?: string;
     arguments?: unknown[];
   };
-  data?: JsonObject;
+  data?: JsonRecord;
 };
 
 type Location = {
@@ -1104,19 +1108,6 @@ function receive(message: LspMessage): void {
   notifications.push(message);
 }
 
-function seagrassServerCommand(): [string, string[]] {
-  if (process.env.SEAGRASS_SERVER_BINARY) {
-    return [process.env.SEAGRASS_SERVER_BINARY, []];
-  }
-  if (process.env.SEAGRASS_HOTPATH === "1") {
-    return [
-      "cargo",
-      ["run", "-p", "seagrass-cli", "--features", "hotpath", "--release", "--quiet"],
-    ];
-  }
-  return ["cargo", ["run", "-p", "seagrass-cli", "--quiet"]];
-}
-
 async function waitForServerExit(): Promise<void> {
   await Promise.race([
     serverExit,
@@ -1229,6 +1220,14 @@ function completionItems(response: CompletionResponse | null | undefined): Compl
   return Array.isArray(response) ? response : (response.items ?? []);
 }
 
+function formattingEditsIncludeRustfmtOutput(edits: TextEdit[] | null | undefined): boolean {
+  const formattedText = edits?.[0]?.newText;
+  return (
+    formattedText?.includes("pub fn formatting_smoke()") === true &&
+    formattedText.includes("let value = 1;")
+  );
+}
+
 function anchorErrorsByName(diagnostics: DiagnosticReport): Map<string, JsonObject> {
   const errors = new Map<string, JsonObject>();
   for (const diagnostic of diagnostics.items ?? []) {
@@ -1274,6 +1273,10 @@ function documentSymbolsInclude(symbols: DocumentSymbol[] | null | undefined, pa
     return tail.length === 0 || documentSymbolsInclude(symbol.children, tail);
   }
   return false;
+}
+
+function pathEndsWith(path: string, suffix: string): boolean {
+  return path.replaceAll("\\", "/").endsWith(suffix);
 }
 
 function sourceFixture(name: string, relativePath: string, source: string): SmokeFixture {
@@ -1580,15 +1583,30 @@ try {
   }
 
   notify("initialized", {});
-
-  openDocument(formattingUri, formattingSmokeSource);
-  const formattingEdits = await request<TextEdit[] | null>("textDocument/formatting", {
-    textDocument: { uri: formattingUri },
-    options: {
-      tabSize: 4,
-      insertSpaces: true,
+  notify("workspace/didChangeConfiguration", {
+    settings: {
+      seagrass: {
+        diagnostics: {
+          artifacts: {
+            enabled: true,
+          },
+        },
+      },
     },
   });
+
+  openDocument(formattingUri, formattingSmokeSource);
+  const formattingEdits = await requestWithRetries(
+    () =>
+      request<TextEdit[] | null>("textDocument/formatting", {
+        textDocument: { uri: formattingUri },
+        options: {
+          tabSize: 4,
+          insertSpaces: true,
+        },
+      }),
+    formattingEditsIncludeRustfmtOutput,
+  );
   const formattedText = formattingEdits?.[0]?.newText;
   if (
     !formattedText?.includes("pub fn formatting_smoke()") ||
@@ -2590,7 +2608,7 @@ try {
     nativeProgram?.kind !== "native" ||
     nativeDeploy?.status !== "invalid" ||
     typeof nativeDeployPath !== "string" ||
-    !nativeDeployPath.endsWith("target/deploy/native_counter_program.so")
+    !pathEndsWith(nativeDeployPath, NATIVE_DEPLOY_ARTIFACT_SUFFIX)
   ) {
     throw new Error(`native Solana artifacts command returned wrong evidence: ${JSON.stringify(nativeReport)}`);
   }

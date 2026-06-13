@@ -1,44 +1,50 @@
-# Unchecked Arithmetic
+# Solana Code Quality Unchecked Arithmetic
 
 Topic: `seagrass/solana.code-quality.unchecked-arithmetic`
-
-Rule: `unchecked-arithmetic`
 
 Source: `seagrass`
 
 ## What It Catches
 
-Unchecked `+`, `-`, and `*` binary expressions where either side contains a
-balance-like identifier such as `amount`, `fee`, `lamport`, `stake`, `supply`,
-`total`, `value`, or `withdraw`.
+Unchecked `+`, `-`, `*`, `/`, `%`, `+=`, `-=`, `*=`, `/=`, and `%=` operations when at least one
+operand is proven from parsed syntax to be a lamports value or an SPL token
+account amount.
 
-Example:
+The diagnostic requires semantic evidence from the current function:
 
-```rust
-fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    Ok(amount - fee)
-}
-```
+- `ctx.accounts.<account>.to_account_info().lamports()` or another parsed
+  lamports accessor on a current `Context<T>` account
+- `ctx.accounts.<token_account>.amount` where `<token_account>` is a parsed
+  `Account<'info, TokenAccount>` or `InterfaceAccount<'info, TokenAccount>`
+  field on the current `Context<T>`
+- local aliases derived from either of the above
 
 ## What It Does Not Catch
 
-- unary deref, such as `*ptr`
-- `#[account(...)]` attribute arguments
-- doc comments and string literals
-- identifiers that only contain `token`, such as `token_mint_a`
-- checked, saturating, or wrapping arithmetic
-- broken Rust documents where `syn` cannot prove an expression
+- arithmetic on identifiers that merely contain words such as `amount`,
+  `balance`, `fee`, or `total`
+- `.amount` fields on non-token account data types
+- arithmetic expressed through checked methods such as `checked_add`,
+  `checked_sub`, `checked_mul`, `checked_div`, or `checked_rem`
+- comments, doc comments, string literals, or unrelated attribute text
+
+The editor quick fix rewrites supported expressions to the matching checked
+method and returns `ProgramError::ArithmeticOverflow` through a fully qualified
+path, without adding imports.
 
 ## False-Positive Matrix
 
 | fixture | expected |
 | --- | --- |
-| `#[account(address = *token_mint_a.to_account_info().owner)]` | no diagnostic |
-| `Ok(*ptr)` | no diagnostic |
-| `let message = "token - fee";` | no diagnostic |
-| `token_mint_a - other` | no diagnostic |
-| `amount.checked_sub(fee)` | no diagnostic |
-| `amount - fee` | diagnostic |
+| `total_amount + step` where both values are ordinary instruction arguments | no diagnostic |
+| `ctx.accounts.counter.amount + step` where `counter` is `Account<CounterState>` | no diagnostic |
+| `counter_ctx.accounts.vault.amount + step` where another context has a token `vault` | no diagnostic |
+| `ctx.accounts.vault.amount.checked_sub(fee)` | no diagnostic |
+| `ctx.accounts.vault.amount - fee` where `vault` is `Account<TokenAccount>` | diagnostic |
+| `ctx.accounts.vault.amount / divisor` where `vault` is `Account<TokenAccount>` | diagnostic |
+| `ctx.accounts.vault.amount % divisor` where `vault` is `Account<TokenAccount>` | diagnostic |
+| `let amount = vault.amount; amount - fee` where `vault` aliases `ctx.accounts.vault: Account<TokenAccount>` | diagnostic |
+| `ctx.accounts.vault.to_account_info().lamports() + extra` | diagnostic |
 
 ## Suppression
 
@@ -56,6 +62,12 @@ File suppression:
 // seagrass-allow-file: seagrass/solana.code-quality.unchecked-arithmetic
 ```
 
+Whole-file suppression (all Seagrass diagnostics, leading file comment only):
+
+```rust
+// seagrass-ignore-file
+```
+
 Item or block suppression:
 
 ```rust
@@ -70,6 +82,13 @@ Workspace suppression in `Seagrass.toml`:
 ```toml
 [lints]
 allow = ["seagrass/solana.code-quality.unchecked-arithmetic"]
+```
+
+Project suppression in `Cargo.toml` (all Seagrass diagnostics):
+
+```toml
+[package.metadata.seagrass]
+suppress = true
 ```
 
 Prefer fixing the underlying Anchor or Solana invariant when the diagnostic has

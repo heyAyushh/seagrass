@@ -1,0 +1,187 @@
+# External corpus manifest — committed; source trees are NOT committed.
+#
+# Each entry pins a real Anchor/native/Pinocchio program at an exact commit
+# SHA.  The fetch script (scripts/fetch-corpus.sh) materialises the source
+# trees into corpus/programs/<name>/, which is gitignored.
+#
+# Fields
+# ------
+# name    – unique slug used as the directory name under corpus/programs/
+# repo    – HTTPS clone URL
+# sha     – exact commit SHA — repin when bumping Anchor version
+# subpath – (optional) sparse path to clone; omit to clone the whole repo
+# license – SPDX identifier, "unlicensed" (public repo, no stated license),
+#           or non-SPDX (CC-BY-NC-4.0)
+#
+# Staleness policy: entries marked [STALE] have not been updated in >1 year.
+# Repin or drop on next Anchor version bump.
+
+# ---------------------------------------------------------------------------
+# Active mainnet protocols (pushed within last 90 days as of 2026-06-10)
+# ---------------------------------------------------------------------------
+
+# Orca Whirlpools — concentrated liquidity AMM, Token-2022, heavy CPI
+# Last push: 2026-06-05
+[[program]]
+name    = "orca-whirlpools"
+repo    = "https://github.com/orca-so/whirlpools"
+sha     = "baea6f945eebc7293cf44938a717338a62cfe9e6"
+license = "unlicensed"
+
+# Kamino Lending — lending/borrowing, complex account validation
+# Last push: 2026-06-03
+[[program]]
+name    = "kamino-lending"
+repo    = "https://github.com/Kamino-Finance/klend"
+sha     = "23b9f2b54530784ef1d9d0e08c5256e1eafe4a04"
+license = "unlicensed"
+
+# Light Protocol — ZK compression, complex PDA/CPI patterns
+# Last push: 2026-06-08
+[[program]]
+name    = "light-protocol"
+repo    = "https://github.com/Lightprotocol/light-protocol"
+sha     = "5d58e11cf8f333dbfb249cf3be87fdf2362f9fdd"
+license = "Apache-2.0"
+
+# marginfi-v2 — borrow/lend, dense constraint surface
+# Last push: 2026-06-09
+[[program]]
+name    = "marginfi-v2"
+repo    = "https://github.com/mrgnlabs/marginfi-v2"
+sha     = "4d57e2c234a41a868c519b722a6cce1c0431a699"
+license = "Apache-2.0"
+
+# Drift protocol v2 — perpetuals, largest single-file instruction count
+# Last push: 2026-05-25
+[[program]]
+name    = "drift"
+repo    = "https://github.com/drift-labs/protocol-v2"
+sha     = "0ae3e3b1db782a6765c3525b3dec38ad4d9d3a62"
+subpath = "programs/drift"
+license = "Apache-2.0"
+
+# Raydium CLMM — concentrated liquidity
+# Last push: 2026-05-29
+[[program]]
+name    = "raydium-clmm"
+repo    = "https://github.com/raydium-io/raydium-clmm"
+sha     = "6dcdd5610492888b12ffe083c2943c0b8b0abe62"
+license = "Apache-2.0"
+
+# Squads v4 — multisig, live mainnet, AGPL-3.0
+# Last push: 2026-06-10
+[[program]]
+name    = "squads-v4"
+repo    = "https://github.com/Squads-Protocol/v4"
+sha     = "edbca83427b10cbe58bf65fc9b597e8eb7b17cc1"
+license = "AGPL-3.0"
+
+# Ondo Global Markets — Token-2022 extensions, oracle, role-based access
+# Last push: 2026-02-20
+[[program]]
+name    = "ondo-global-markets"
+repo    = "https://github.com/ondoprotocol/global-markets-solana"
+sha     = "138bce37d7aa30e94abaef1d80b7158b6acfe487"
+license = "unlicensed"
+
+# mpl-token-metadata — Metaplex NFT standard
+# Last push: 2026-03-27
+[[program]]
+name    = "mpl-token-metadata"
+repo    = "https://github.com/metaplex-foundation/mpl-token-metadata"
+sha     = "349e061053c6fc5b6b815e03e896e4db57012893"
+license = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# [STALE] — last push >1 year ago; keep for regression but repin on next bump
+# ---------------------------------------------------------------------------
+
+# OpenBook v2 — CLOB, last push 2024-07-15
+[[program]]
+name    = "openbook-v2"
+repo    = "https://github.com/openbook-dex/openbook-v2"
+sha     = "47807da4b81fe473ebde23964cb0d6c39969b479"
+license = "unlicensed"
+
+# Mango v4 — margin trading, last push 2025-04-01
+[[program]]
+name    = "mango-v4"
+repo    = "https://github.com/blockworks-foundation/mango-v4"
+sha     = "2e8b475038c5f43d2d1d51eeddbc3ba4bfe3a686"
+license = "unlicensed"
+
+# Tensor AMM — last push 2025-06-26
+[[program]]
+name    = "tensor-amm"
+repo    = "https://github.com/tensor-foundation/amm"
+sha     = "f6aab5e5b7ad20b0085561321eb1ebf484fe076d"
+license = "Apache-2.0"
+
+# SPL token-swap — verified at 264ca72: token/program is absent; token-swap/program exists.
+# Last push: 2025-03-11  [STALE]
+[[program]]
+name    = "spl-token"
+repo    = "https://github.com/solana-labs/solana-program-library"
+sha     = "264ca72de06b0c2b45c0b15d298000fe3f82db2e"
+subpath = "token-swap/program"
+license = "Apache-2.0"
+
+# ---------------------------------------------------------------------------
+# Educational breadth — Anchor + native + Pinocchio + Quasar patterns
+# ---------------------------------------------------------------------------
+
+# Inline programs (escrow, vault, PDA, AMM, SPL, NFT, CPI, merkle tree,
+# collateral stablecoin); quasar-* subdirectories pruned at fetch time.
+# CC BY-NC 4.0 — fetch-at-test-time only.
+# Last push: 2026-03-29
+[[program]]
+name    = "solana-programs-list"
+repo    = "https://github.com/aarjn/solana-programs-list"
+sha     = "587f5fc3b00c533d024222519f4d58b770d9ecef"
+license = "CC-BY-NC-4.0"
+
+# solana-developers official examples
+[[program]]
+name    = "program-examples"
+repo    = "https://github.com/solana-developers/program-examples"
+sha     = "203b246141d15d54ce8a782749b901d76a4e7c51"
+license = "MIT"
+
+# ---------------------------------------------------------------------------
+# Submodule repos from solana-programs-list (unlicensed public repos;
+# fetch-at-test-time only)
+# ---------------------------------------------------------------------------
+
+[[program]]
+name    = "anchor-dual-signing"
+repo    = "https://github.com/4rjunc/solana-dual-signing"
+sha     = "a16bbb9eab43b223ab4eb6db75a1839a47d3445e"
+license = "unlicensed"
+
+[[program]]
+name    = "pinocchio-vault"
+repo    = "https://github.com/4rjunc/pinocchio-vault"
+sha     = "7c1f9a258d930673e2fab637c4aecfe5e0d7e44e"
+license = "unlicensed"
+
+[[program]]
+name    = "pinocchio-amm"
+repo    = "https://github.com/AvhiMaz/pinocchio-amm"
+sha     = "783ba9a2ad1a192d56af88c84e4a92b3aabdb73d"
+license = "unlicensed"
+
+[[program]]
+name    = "anchor-lending-protocol"
+repo    = "https://github.com/AllenGeorge08/Meridian_Protocol"
+sha     = "2f7ba7fe4cf4e668dab4f158a2de00f14f664716"
+license = "unlicensed"
+
+[[program]]
+name    = "anchor-amm"
+repo    = "https://github.com/subhdotsol/AMM-Sandbox"
+sha     = "8e8471f10fee280715396cf0f2ab014e034e2dcb"
+license = "unlicensed"
+
+# Quasar entries removed intentionally — Quasar coverage is out of scope.
+# fetch-corpus.sh also prunes quasar-* directories inside collections.

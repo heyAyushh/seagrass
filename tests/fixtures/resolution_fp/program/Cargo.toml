@@ -1,0 +1,16 @@
+[package]
+name = "resolution-fp-program"
+version = "0.1.0"
+edition = "2021"
+
+[features]
+anchor-debug = []
+
+[dependencies]
+anchor-lang.workspace = true
+
+[package.lints.rust.unexpected_cfgs]
+level = "warn"
+check-cfg = [
+    'cfg(target_os, values("solana"))',
+]

@@ -315,7 +315,7 @@ fn type_argument_prefix(after_colon: &str) -> Option<String> {
     let raw_prefix = after_open[prefix_start..].trim_start();
     let end = raw_prefix
         .char_indices()
-        .find_map(|(idx, ch)| (!is_ident_char(ch)).then_some(idx))
+        .find_map(|(idx, ch)| (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx))
         .unwrap_or(raw_prefix.len());
 
     Some(raw_prefix[..end].to_string())
@@ -333,21 +333,22 @@ fn field_type_prefix(after_colon: &str) -> String {
     let trimmed = after_colon.trim_start();
     let end = trimmed
         .char_indices()
-        .find_map(|(idx, ch)| (!is_ident_char(ch)).then_some(idx))
+        .find_map(|(idx, ch)| (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx))
         .unwrap_or(trimmed.len());
     trimmed[..end].to_string()
 }
 
 fn identifier_before(text: &str) -> Option<String> {
     let trimmed = text.trim_end();
-    let end = trimmed
-        .char_indices()
-        .rev()
-        .find_map(|(idx, ch)| is_ident_char(ch).then_some(idx + ch.len_utf8()))?;
+    let end = trimmed.char_indices().rev().find_map(|(idx, ch)| {
+        crate::syntax::is_ascii_identifier_char(ch).then_some(idx + ch.len_utf8())
+    })?;
     let start = trimmed[..end]
         .char_indices()
         .rev()
-        .find_map(|(idx, ch)| (!is_ident_char(ch)).then_some(idx + ch.len_utf8()))
+        .find_map(|(idx, ch)| {
+            (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx + ch.len_utf8())
+        })
         .unwrap_or(0);
     Some(trimmed[start..end].to_string())
 }
@@ -413,10 +414,7 @@ fn top_level_char_offsets(text: &str, target: char) -> impl Iterator<Item = usiz
 }
 
 pub(super) fn matches_prefix(label: &str, prefix: &str) -> bool {
-    !prefix.is_empty()
-        && label
-            .to_ascii_lowercase()
-            .starts_with(&prefix.to_ascii_lowercase())
+    !prefix.is_empty() && super::super::matches_completion_prefix(label, prefix)
 }
 
 pub(super) fn prefix_starts_like_rust_type(prefix: &str) -> bool {
@@ -428,10 +426,6 @@ pub(super) fn prefix_starts_like_rust_type(prefix: &str) -> bool {
 
 pub(super) fn prefix_is_specific_generic_query(prefix: &str) -> bool {
     prefix_starts_like_rust_type(prefix) && prefix.chars().count() >= 2
-}
-
-fn is_ident_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
 }
 
 fn byte_offset_for_character(line: &str, character: usize) -> Option<usize> {

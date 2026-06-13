@@ -10,18 +10,30 @@ use {
 
 const LINE_ALLOW_MARKER: &str = "seagrass-allow:";
 const FILE_ALLOW_MARKER: &str = "seagrass-allow-file:";
+const FILE_IGNORE_MARKER: &str = "seagrass-ignore-file";
 const LINE_IGNORE_MARKER: &str = "seagrass-ignore";
 const LINE_COMMENT_DELIMITER: &str = "//";
 const ANY_SUPPRESSION_PATTERN: &str = "*";
 const NEXT_LINE_OFFSET: u32 = 1;
 const CODE_RULE_SEPARATOR: &str = ".";
+const PACKAGE_SUPPRESS_PATH: &[&str] = &["package", "metadata", "seagrass", "suppress"];
+const WORKSPACE_SUPPRESS_PATH: &[&str] = &["workspace", "metadata", "seagrass", "suppress"];
+#[allow(dead_code)] // Consumed by scripts/check-seagrass-toml-contract.ts as the TOML key canon.
+pub const SEAGRASS_TOML_KEY_PATHS: &[&str] = &["lints.allow"];
 
-pub(super) fn filter(
+#[derive(Clone, Copy, Default)]
+pub(crate) struct SuppressionConfig<'a> {
+    pub(crate) seagrass_toml: Option<&'a str>,
+    pub(crate) manifest: Option<&'a str>,
+    pub(crate) workspace_manifest: Option<&'a str>,
+}
+
+pub(crate) fn filter(
     document: &ParsedDocument,
-    seagrass_toml: Option<&str>,
+    config: SuppressionConfig<'_>,
     diagnostics: Vec<Diagnostic>,
 ) -> Vec<Diagnostic> {
-    let index = SuppressionIndex::from_document(document, seagrass_toml);
+    let index = SuppressionIndex::from_document(document, config);
     diagnostics
         .into_iter()
         .filter(|diagnostic| !index.suppresses(diagnostic))
@@ -53,9 +65,9 @@ struct RangeSuppression {
 }
 
 impl SuppressionIndex {
-    fn from_document(document: &ParsedDocument, seagrass_toml: Option<&str>) -> Self {
+    fn from_document(document: &ParsedDocument, config: SuppressionConfig<'_>) -> Self {
         let mut index = Self::default();
-        index.collect_workspace_suppressions(seagrass_toml);
+        index.collect_workspace_suppressions(config);
         index.collect_comment_suppressions(document.source());
         index.collect_attribute_suppressions(document.syntax());
         index
@@ -84,9 +96,14 @@ impl SuppressionIndex {
         self.line_patterns.get(&line).into_iter().flatten()
     }
 
-    fn collect_workspace_suppressions(&mut self, seagrass_toml: Option<&str>) {
+    fn collect_workspace_suppressions(&mut self, config: SuppressionConfig<'_>) {
         self.file_patterns
-            .extend(workspace_allow_patterns(seagrass_toml));
+            .extend(workspace_allow_patterns(config.seagrass_toml));
+        if cargo_manifest_suppresses_all(config.manifest)
+            || cargo_manifest_suppresses_all(config.workspace_manifest)
+        {
+            self.file_patterns.push(ANY_SUPPRESSION_PATTERN.to_string());
+        }
     }
 
     fn collect_comment_suppressions(&mut self, source: &str) {
@@ -100,6 +117,11 @@ impl SuppressionIndex {
             if let Some(patterns) = comment_patterns(comment, FILE_ALLOW_MARKER) {
                 self.file_patterns.extend(patterns);
             }
+            if comment_has_marker(comment, FILE_IGNORE_MARKER)
+                && is_leading_file_comment(source, line_number)
+            {
+                self.file_patterns.push(ANY_SUPPRESSION_PATTERN.to_string());
+            }
             if let Some(patterns) = comment_patterns(comment, LINE_ALLOW_MARKER) {
                 self.line_patterns
                     .entry(line_number)
@@ -110,7 +132,9 @@ impl SuppressionIndex {
                     .or_default()
                     .extend(patterns);
             }
-            if comment_has_marker(comment, LINE_IGNORE_MARKER) {
+            if comment_has_marker(comment, LINE_IGNORE_MARKER)
+                && !comment_has_marker(comment, FILE_IGNORE_MARKER)
+            {
                 self.line_patterns
                     .entry(line_number)
                     .or_default()
@@ -199,6 +223,24 @@ fn workspace_allow_patterns(seagrass_toml: Option<&str>) -> Vec<String> {
         .collect()
 }
 
+fn cargo_manifest_suppresses_all(manifest: Option<&str>) -> bool {
+    let Some(manifest) = manifest else {
+        return false;
+    };
+    let Ok(value) = toml::from_str::<toml::Value>(manifest) else {
+        return false;
+    };
+    toml_bool_at_path(&value, PACKAGE_SUPPRESS_PATH)
+        || toml_bool_at_path(&value, WORKSPACE_SUPPRESS_PATH)
+}
+
+fn toml_bool_at_path(value: &toml::Value, path: &[&str]) -> bool {
+    path.iter()
+        .try_fold(value, |current, key| current.get(*key))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(false)
+}
+
 fn normalized_config_pattern(pattern: String) -> Option<String> {
     let pattern = pattern.trim();
     (!pattern.is_empty()).then(|| pattern.to_string())
@@ -245,6 +287,23 @@ fn comment_patterns(comment: &str, marker: &str) -> Option<Vec<String>> {
 
 fn comment_has_marker(comment: &str, marker: &str) -> bool {
     comment.contains(marker)
+}
+
+fn is_leading_file_comment(source: &str, line_number: u32) -> bool {
+    let Ok(line_count) = usize::try_from(line_number) else {
+        return false;
+    };
+    source.split('\n').take(line_count).all(is_header_line)
+}
+
+fn is_header_line(line: &str) -> bool {
+    let trimmed = line.trim_start();
+    trimmed.is_empty()
+        || trimmed.starts_with("//")
+        || trimmed.starts_with("/*")
+        || trimmed.starts_with('*')
+        || trimmed.starts_with("*/")
+        || trimmed.starts_with("#![")
 }
 
 fn suppression_patterns(text: &str) -> Vec<String> {
@@ -362,8 +421,8 @@ mod tests {
             r#"
 [lints]
 allow = [
-  "seagrass/solana.code-quality.unchecked-arithmetic",
-  "unchecked-arithmetic",
+  "seagrass/solana.code-quality.unsafe-unwrap",
+  "unsafe-unwrap",
 ]
 "#,
         ));
@@ -371,8 +430,8 @@ allow = [
         assert_eq!(
             patterns,
             vec![
-                "seagrass/solana.code-quality.unchecked-arithmetic".to_string(),
-                "unchecked-arithmetic".to_string()
+                "seagrass/solana.code-quality.unsafe-unwrap".to_string(),
+                "unsafe-unwrap".to_string()
             ]
         );
     }
@@ -383,11 +442,58 @@ allow = [
     }
 
     #[test]
+    fn cargo_package_metadata_suppresses_all_diagnostics() {
+        let manifest = r#"
+[package]
+name = "demo"
+version = "0.1.0"
+
+[package.metadata.seagrass]
+suppress = true
+"#;
+
+        assert!(cargo_manifest_suppresses_all(Some(manifest)));
+    }
+
+    #[test]
+    fn cargo_workspace_metadata_suppresses_all_diagnostics() {
+        let manifest = r#"
+[workspace]
+members = ["programs/demo"]
+
+[workspace.metadata.seagrass]
+suppress = true
+"#;
+
+        assert!(cargo_manifest_suppresses_all(Some(manifest)));
+    }
+
+    #[test]
+    fn cargo_metadata_requires_boolean_suppress() {
+        let manifest = r#"
+[package.metadata.seagrass]
+suppress = "true"
+"#;
+
+        assert!(!cargo_manifest_suppresses_all(Some(manifest)));
+    }
+
+    #[test]
+    fn seagrass_toml_key_paths_are_sorted_and_unique() {
+        for pair in SEAGRASS_TOML_KEY_PATHS.windows(2) {
+            assert!(
+                pair[0] < pair[1],
+                "Seagrass.toml key paths must be sorted and unique: {SEAGRASS_TOML_KEY_PATHS:?}"
+            );
+        }
+    }
+
+    #[test]
     fn suppression_matches_code_rule_pattern() {
         assert!(suppression_matches(
-            "solana-code-quality.unchecked-arithmetic",
-            Some("seagrass/solana.code-quality.unchecked-arithmetic"),
-            Some("unchecked-arithmetic"),
+            "solana-code-quality.unsafe-unwrap",
+            Some("seagrass/solana.code-quality.unsafe-unwrap"),
+            Some("unsafe-unwrap"),
             Some("solana-code-quality"),
         ));
     }
@@ -397,34 +503,12 @@ allow = [
         let source = r#"
 fn handler() {
     // seagrass-ignore
-    let amount = 1 - 2;
+    let value = maybe_value().unwrap();
 }
 "#;
         let document = ParsedDocument::parse(source).unwrap();
-        let index = SuppressionIndex::from_document(&document, None);
-        let diagnostic = Diagnostic {
-            range: Range {
-                start: tower_lsp::lsp_types::Position {
-                    line: 3,
-                    character: 8,
-                },
-                end: tower_lsp::lsp_types::Position {
-                    line: 3,
-                    character: 14,
-                },
-            },
-            severity: None,
-            code: Some(NumberOrString::String("solana-code-quality".to_string())),
-            code_description: None,
-            source: None,
-            message: "unchecked arithmetic".to_string(),
-            related_information: None,
-            tags: None,
-            data: Some(serde_json::json!({
-                "topic": "seagrass/solana.code-quality.unchecked-arithmetic",
-                "rule": "unchecked-arithmetic",
-            })),
-        };
+        let index = SuppressionIndex::from_document(&document, SuppressionConfig::default());
+        let diagnostic = unsafe_unwrap_diagnostic(3);
 
         assert!(index.suppresses(&diagnostic));
     }
@@ -434,19 +518,49 @@ fn handler() {
         let source = r#"
 fn handler() {
     let marker = "// seagrass-ignore";
-    let amount = 1 - 2;
+    let value = maybe_value().unwrap();
 }
 "#;
         let document = ParsedDocument::parse(source).unwrap();
-        let index = SuppressionIndex::from_document(&document, None);
-        let diagnostic = Diagnostic {
+        let index = SuppressionIndex::from_document(&document, SuppressionConfig::default());
+        let diagnostic = unsafe_unwrap_diagnostic(3);
+
+        assert!(!index.suppresses(&diagnostic));
+    }
+
+    #[test]
+    fn seagrass_ignore_file_suppresses_only_from_header_comment() {
+        let header_source = r#"
+// seagrass-ignore-file
+fn handler() {
+    let value = maybe_value().unwrap();
+}
+"#;
+        let header_document = ParsedDocument::parse(header_source).unwrap();
+        let header_index =
+            SuppressionIndex::from_document(&header_document, SuppressionConfig::default());
+
+        assert!(header_index.suppresses(&unsafe_unwrap_diagnostic(3)));
+
+        let body_source = r#"
+fn handler() {
+    // seagrass-ignore-file
+    let value = maybe_value().unwrap();
+}
+"#;
+        let body_document = ParsedDocument::parse(body_source).unwrap();
+        let body_index =
+            SuppressionIndex::from_document(&body_document, SuppressionConfig::default());
+
+        assert!(!body_index.suppresses(&unsafe_unwrap_diagnostic(3)));
+    }
+
+    fn unsafe_unwrap_diagnostic(line: u32) -> Diagnostic {
+        Diagnostic {
             range: Range {
-                start: tower_lsp::lsp_types::Position {
-                    line: 3,
-                    character: 8,
-                },
+                start: tower_lsp::lsp_types::Position { line, character: 8 },
                 end: tower_lsp::lsp_types::Position {
-                    line: 3,
+                    line,
                     character: 14,
                 },
             },
@@ -454,15 +568,13 @@ fn handler() {
             code: Some(NumberOrString::String("solana-code-quality".to_string())),
             code_description: None,
             source: None,
-            message: "unchecked arithmetic".to_string(),
+            message: "unsafe unwrap".to_string(),
             related_information: None,
             tags: None,
             data: Some(serde_json::json!({
-                "topic": "seagrass/solana.code-quality.unchecked-arithmetic",
-                "rule": "unchecked-arithmetic",
+                "topic": "seagrass/solana.code-quality.unsafe-unwrap",
+                "rule": "unsafe-unwrap",
             })),
-        };
-
-        assert!(!index.suppresses(&diagnostic));
+        }
     }
 }

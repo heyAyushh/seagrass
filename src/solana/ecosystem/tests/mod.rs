@@ -1,6 +1,6 @@
 use {
     super::*,
-    crate::{project, solana_project::SolanaProjectKind},
+    crate::{project, solana::artifact_paths, solana_project::SolanaProjectKind},
     std::{
         env, fs,
         time::{SystemTime, UNIX_EPOCH},
@@ -83,7 +83,7 @@ fn does_not_report_missing_codama_idl_from_package_marker_only() {
 #[test]
 fn detects_shank_from_dependency_and_idl() {
     let root = unique_temp_dir("seagrass-shank-ecosystem");
-    fs::create_dir_all(root.join("target/idl")).unwrap();
+    fs::create_dir_all(artifact_paths::idl_dir(&root)).unwrap();
     fs::write(
         root.join("Cargo.toml"),
         r#"
@@ -99,7 +99,7 @@ shank = "0.4"
     )
     .unwrap();
     fs::write(
-            root.join("target/idl/demo.json"),
+            artifact_paths::idl_file(&root, "demo"),
             r#"{"version":"0.1.0","name":"demo","metadata":{"address":"Demo111111111111111111111111111111111"},"instructions":[],"accounts":[],"types":[]}"#,
         )
         .unwrap();

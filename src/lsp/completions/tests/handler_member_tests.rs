@@ -2,7 +2,10 @@ use {
     super::{completions, position_after},
     crate::{
         document::ParsedDocument,
-        lsp::completions::{proptest_support::rust_identifier, should_offer_completion},
+        lsp::completions::{
+            proptest_support::{rust_identifier, rust_type_identifier},
+            should_offer_completion,
+        },
         workspace::WorkspaceIndex,
     },
     proptest::prelude::*,
@@ -542,7 +545,7 @@ proptest! {
     #[test]
     fn completes_generated_typed_handler_members(
         local in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(local != field);
@@ -576,7 +579,7 @@ pub struct {owner} {{
     fn completes_generated_block_item_members_declared_after_cursor(
         declaration in prop_oneof![Just("const"), Just("static")],
         local in "[A-Z][A-Z0-9_]{1,10}",
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         let prefix = field.chars().next().unwrap_or_default().to_string();
@@ -613,7 +616,7 @@ pub struct {owner} {{
     fn completes_generated_typed_handler_alias_members(
         local in rust_identifier(),
         alias in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(local != alias);
@@ -650,7 +653,7 @@ pub struct {owner} {{
     fn completes_generated_context_account_alias_members(
         account_field in rust_identifier(),
         alias in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(account_field != alias);
@@ -694,7 +697,7 @@ pub struct {owner} {{
     fn completes_generated_accounts_alias_field_members(
         account_field in rust_identifier(),
         accounts_alias in rust_identifier(),
-        owner in "[A-Z][A-Za-z0-9_]{1,10}",
+        owner in rust_type_identifier(),
         field in rust_identifier(),
     ) {
         prop_assume!(account_field != accounts_alias);

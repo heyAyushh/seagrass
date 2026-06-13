@@ -1,8 +1,14 @@
 #!/usr/bin/env bun
 
-import { readFileSync, readdirSync, statSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  isInsideRoot,
+  isProductionDiagnosticSourcePath,
+  rustFiles,
+} from "./script-paths.ts";
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(scriptDir, "..");
@@ -642,31 +648,6 @@ function sourceTopicsFromText(text: string): string[] {
       ),
     ),
   ].sort(compareStrings);
-}
-
-function isProductionDiagnosticSourcePath(root: string, path: string): boolean {
-  const sourcePath = relative(root, path).replaceAll("\\", "/");
-  return (
-    sourcePath.endsWith(".rs") &&
-    !sourcePath.endsWith("_tests.rs") &&
-    !sourcePath.endsWith("/tests.rs") &&
-    !sourcePath.includes("/tests/")
-  );
-}
-
-function rustFiles(root: string): string[] {
-  return readdirSync(root)
-    .map((name) => resolve(root, name))
-    .flatMap((path) => {
-      if (statSync(path).isDirectory()) {
-        return rustFiles(path);
-      }
-      return path.endsWith(".rs") ? [path] : [];
-    });
-}
-
-function isInsideRoot(root: string, path: string): boolean {
-  return path === root || path.startsWith(`${root}${sep}`);
 }
 
 function compareStrings(left: string, right: string): number {

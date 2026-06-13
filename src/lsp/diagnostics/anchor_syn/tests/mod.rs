@@ -1,5 +1,7 @@
 use super::*;
 
+mod capability_registry;
+
 #[test]
 fn reports_program_handler_missing_return_type_without_raw_parser_message() {
     let document = ParsedDocument::parse(
@@ -286,6 +288,42 @@ pub struct CollectFeesV2<'info> {
             .and_then(|data| data.get("expected"))
             .and_then(|value| value.as_str()),
         Some("InterfaceAccount<'info, Mint>")
+    );
+}
+
+#[test]
+fn accepts_import_alias_for_interface_account_generic() {
+    let document = ParsedDocument::parse(
+        r#"
+use anchor_spl::{
+    token_2022::Token2022,
+    token_interface::{
+        Mint as MintAccount,
+    },
+};
+
+#[derive(Accounts)]
+pub struct ChangeMode<'info> {
+    #[account(mut, mint::token_program = token_program)]
+    pub mint: InterfaceAccount<'info, MintAccount>,
+    pub token_program: Program<'info, Token2022>,
+}
+"#,
+    )
+    .unwrap();
+
+    let diagnostics = collect(&document);
+
+    assert!(
+        !diagnostics.iter().any(|diagnostic| {
+            diagnostic
+                .data
+                .as_ref()
+                .and_then(|data| data.get("reason"))
+                .and_then(|value| value.as_str())
+                == Some("unresolved-generic-account-type")
+        }),
+        "import alias for a known Anchor account type must not be reported as unresolved"
     );
 }
 

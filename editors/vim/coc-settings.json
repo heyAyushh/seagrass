@@ -1,0 +1,51 @@
+{
+  "languageserver": {
+    "seagrass": {
+      "command": "seagrass",
+      "args": [],
+      "filetypes": ["rust"],
+      "rootPatterns": ["Anchor.toml", "Seagrass.toml", "Cargo.toml"],
+      "initializationOptions": {
+        "seagrass": {
+          "agent": {
+            "mode": false
+          },
+          "diagnostics": {
+            "transport": "push"
+          },
+          "editor": {
+            "client": "vim",
+            "inlineValues": {
+              "enabled": false
+            }
+          },
+          "telemetry": {
+            "completion": {
+              "enabled": true
+            },
+            "diagnostics": {
+              "enabled": true
+            }
+          }
+        }
+      },
+      "settings": {
+        "seagrass": {
+          "agent.mode": false,
+          "diagnostics.artifacts.enabled": false,
+          "diagnostics.security.enabled": true,
+          "diagnostics.experimental.enabled": true,
+          "security.strictNative.enabled": true,
+          "diagnostics.transport": "push",
+          "diagnostics.coldPath": "idle",
+          "editor.client": "vim",
+          "editor.inlineValues.enabled": false,
+          "telemetry.completion.enabled": true,
+          "telemetry.diagnostics.enabled": true,
+          "workspaceIndex.enabled": true,
+          "trace.server": false
+        }
+      }
+    }
+  }
+}

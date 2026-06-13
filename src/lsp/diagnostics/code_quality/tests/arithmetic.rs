@@ -1,174 +1,374 @@
 use super::*;
 
-#[test]
-fn reports_unchecked_balance_arithmetic() {
-    let source = r#"
-use pinocchio::program_error::ProgramError;
-
-fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    Ok(amount - fee)
-}
-"#;
-    let document = ParsedDocument::parse_or_empty(source);
-    let diagnostics = collect(&document);
-
-    assert!(diagnostics
-        .iter()
-        .any(|diagnostic| diagnostic.message.contains("Use checked arithmetic")));
-}
+const UNCHECKED_ARITHMETIC_TOPIC: &str = "seagrass/solana.code-quality.unchecked-arithmetic";
 
 #[test]
-fn ignores_deref_in_account_attribute() {
+fn reports_unchecked_token_amount_arithmetic() {
     let source = r#"
 use anchor_lang::prelude::*;
-use anchor_spl::token_interface::{Interface, TokenInterface};
+use anchor_spl::token::TokenAccount;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn withdraw(ctx: Context<Withdraw>, fee: u64) -> Result<()> {
+        let next = ctx.accounts.vault.amount - fee;
+        Ok(())
+    }
+}
 
 #[derive(Accounts)]
-pub struct Initialize<'info> {
-    #[account(address = *token_mint_a.to_account_info().owner)]
-    pub token_program_a: Interface<'info, TokenInterface>,
-    #[account(address = *token_mint_b.to_account_info().owner)]
-    pub token_program_b: Interface<'info, TokenInterface>,
+pub struct Withdraw<'info> {
+    pub vault: Account<'info, TokenAccount>,
 }
 "#;
-    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
 
-    assert_no_checked_arithmetic_diagnostic(&document);
+    let diagnostic = unchecked_arithmetic_diagnostic(&diagnostics);
+    assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
+    assert_eq!(evidence_source(diagnostic), Some("token-account-amount"));
 }
 
 #[test]
-fn ignores_unary_deref_in_executable_body() {
+fn reports_unchecked_token_amount_arithmetic_through_aliases() {
     let source = r#"
-use solana_program::program_error::ProgramError;
+use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
 
-fn read(ptr: &u64) -> Result<u64, ProgramError> {
-    Ok(*ptr)
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn withdraw(ctx: Context<Withdraw>, fee: u64) -> Result<()> {
+        let vault = &ctx.accounts.vault;
+        let amount = vault.amount;
+        let next = amount - fee;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    pub vault: Account<'info, TokenAccount>,
 }
 "#;
-    let document = ParsedDocument::parse_or_empty(source);
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
 
-    assert_no_checked_arithmetic_diagnostic(&document);
-}
-
-#[test]
-fn ignores_token_word_inside_unrelated_identifier() {
-    let source = r#"
-use solana_program::program_error::ProgramError;
-
-fn process(token_mint_a: u64, other: u64) -> Result<(), ProgramError> {
-    let _difference = token_mint_a - other;
-    Ok(())
-}
-"#;
-    let document = ParsedDocument::parse_or_empty(source);
-
-    assert_no_checked_arithmetic_diagnostic(&document);
-}
-
-#[test]
-fn ignores_arithmetic_text_in_comments_and_strings() {
-    let source = r#"
-use solana_program::program_error::ProgramError;
-
-/// amount - fee is checked by caller.
-fn process() -> Result<(), ProgramError> {
-    let message = "token - fee";
-    Ok(())
-}
-"#;
-    let document = ParsedDocument::parse_or_empty(source);
-
-    assert_no_checked_arithmetic_diagnostic(&document);
-}
-
-#[test]
-fn diagnostic_source_is_seagrass() {
-    let source = r#"
-use pinocchio::program_error::ProgramError;
-
-fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    Ok(amount - fee)
-}
-"#;
-    let document = ParsedDocument::parse_or_empty(source);
-    let diagnostic = collect(&document)
-        .into_iter()
-        .find(|diagnostic| diagnostic.message.contains("Use checked arithmetic"))
-        .expect("expected unchecked arithmetic diagnostic");
-
-    assert_eq!(diagnostic.source.as_deref(), Some("seagrass"));
-    let data = diagnostic.data.as_ref().expect("expected diagnostic data");
-    assert_eq!(data["rule"], "unchecked-arithmetic");
-    assert_eq!(data["confidence"], "heuristic");
     assert_eq!(
-        data["topic"],
-        "seagrass/solana.code-quality.unchecked-arithmetic"
+        evidence_source(unchecked_arithmetic_diagnostic(&diagnostics)),
+        Some("derived-local")
     );
-    assert_eq!(data["applicability"], "Unspecified");
 }
 
 #[test]
-fn resolved_framework_context_drives_code_quality_without_rescanning_imports() {
+fn reports_unchecked_token_amount_arithmetic_through_accounts_alias() {
     let source = r#"
-fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    Ok(amount - fee)
+use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn withdraw(ctx: Context<Withdraw>, fee: u64) -> Result<()> {
+        let accounts = &ctx.accounts;
+        let vault = &accounts.vault;
+        let amount = vault.amount;
+        let next = amount - fee;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    pub vault: Account<'info, TokenAccount>,
 }
 "#;
-    let document = ParsedDocument::parse_or_empty(source);
-    let diagnostics = collect_with_framework(
-        &document,
-        crate::solana::frameworks::FrameworkContext::new(
-            crate::solana::frameworks::FrameworkId::Pinocchio,
-        ),
-    );
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
 
-    let diagnostic = diagnostics
+    assert_eq!(
+        evidence_source(unchecked_arithmetic_diagnostic(&diagnostics)),
+        Some("derived-local")
+    );
+}
+
+#[test]
+fn reports_unchecked_token_amount_compound_assignment() {
+    let source = r#"
+use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn withdraw(ctx: Context<Withdraw>, fee: u64) -> Result<()> {
+        let mut amount = ctx.accounts.vault.amount;
+        amount -= fee;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    pub vault: Account<'info, TokenAccount>,
+}
+"#;
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
+
+    assert_eq!(
+        evidence_source(unchecked_arithmetic_diagnostic(&diagnostics)),
+        Some("derived-local")
+    );
+}
+
+#[test]
+fn reports_unchecked_lamports_arithmetic() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn top_up(ctx: Context<TopUp>, extra: u64) -> Result<()> {
+        let current = ctx.accounts.vault.to_account_info().lamports();
+        let next = current + extra;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct TopUp<'info> {
+    pub vault: SystemAccount<'info>,
+}
+"#;
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
+
+    assert_eq!(
+        evidence_source(unchecked_arithmetic_diagnostic(&diagnostics)),
+        Some("derived-local")
+    );
+}
+
+#[test]
+fn ignores_shadowed_token_amount_alias() {
+    let source = r#"
+use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn withdraw(ctx: Context<Withdraw>, fee: u64) -> Result<()> {
+        let amount = ctx.accounts.vault.amount;
+        let amount = fee;
+        let next = amount - 1;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    pub vault: Account<'info, TokenAccount>,
+}
+"#;
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
+
+    assert_no_unchecked_arithmetic(&diagnostics);
+}
+
+#[test]
+fn ignores_name_only_amount_arithmetic() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn count(ctx: Context<Count>, total_amount: u64, step: u64) -> Result<()> {
+        let next = total_amount + step;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Count<'info> {
+    pub authority: Signer<'info>,
+}
+"#;
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
+
+    assert_no_unchecked_arithmetic(&diagnostics);
+}
+
+#[test]
+fn ignores_non_token_account_amount_field() {
+    let source = r#"
+use anchor_lang::prelude::*;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn count(ctx: Context<Count>, step: u64) -> Result<()> {
+        let next = ctx.accounts.counter.amount + step;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Count<'info> {
+    pub counter: Account<'info, CounterState>,
+}
+
+#[account]
+pub struct CounterState {
+    pub amount: u64,
+}
+"#;
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
+
+    assert_no_unchecked_arithmetic(&diagnostics);
+}
+
+#[test]
+fn ignores_same_field_name_on_non_token_context() {
+    let source = r#"
+use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn count(token_ctx: Context<TokenVault>, counter_ctx: Context<CounterVault>, step: u64) -> Result<()> {
+        let next = counter_ctx.accounts.vault.amount + step;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct TokenVault<'info> {
+    pub vault: Account<'info, TokenAccount>,
+}
+
+#[derive(Accounts)]
+pub struct CounterVault<'info> {
+    pub vault: Account<'info, CounterState>,
+}
+
+#[account]
+pub struct CounterState {
+    pub amount: u64,
+}
+"#;
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
+
+    assert_no_unchecked_arithmetic(&diagnostics);
+}
+
+#[test]
+fn ignores_same_field_name_through_non_token_accounts_alias() {
+    let source = r#"
+use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn count(token_ctx: Context<TokenVault>, counter_ctx: Context<CounterVault>, step: u64) -> Result<()> {
+        let accounts = &counter_ctx.accounts;
+        let next = accounts.vault.amount + step;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct TokenVault<'info> {
+    pub vault: Account<'info, TokenAccount>,
+}
+
+#[derive(Accounts)]
+pub struct CounterVault<'info> {
+    pub vault: Account<'info, CounterState>,
+}
+
+#[account]
+pub struct CounterState {
+    pub amount: u64,
+}
+"#;
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
+
+    assert_no_unchecked_arithmetic(&diagnostics);
+}
+
+#[test]
+fn ignores_checked_token_amount_arithmetic() {
+    let source = r#"
+use anchor_lang::prelude::*;
+use anchor_spl::token::TokenAccount;
+
+#[program]
+pub mod demo {
+    use super::*;
+
+    pub fn withdraw(ctx: Context<Withdraw>, fee: u64) -> Result<()> {
+        let next = ctx.accounts.vault.amount.checked_sub(fee).ok_or(ErrorCode::Overflow)?;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+    pub vault: Account<'info, TokenAccount>,
+}
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("overflow")]
+    Overflow,
+}
+"#;
+    let diagnostics = collect(&ParsedDocument::parse_or_empty(source));
+
+    assert_no_unchecked_arithmetic(&diagnostics);
+}
+
+fn unchecked_arithmetic_diagnostic(diagnostics: &[Diagnostic]) -> &Diagnostic {
+    diagnostics
         .iter()
-        .find(|diagnostic| diagnostic.message.contains("Use checked arithmetic"))
-        .expect("expected unchecked arithmetic diagnostic from resolved framework context");
+        .find(|diagnostic| has_unchecked_arithmetic_topic(diagnostic))
+        .unwrap_or_else(|| panic!("expected unchecked arithmetic diagnostic: {diagnostics:#?}"))
+}
 
-    assert_eq!(
-        diagnostic
-            .data
-            .as_ref()
-            .and_then(|data| data.get("programKind")),
-        Some(&serde_json::json!("pinocchio"))
+fn assert_no_unchecked_arithmetic(diagnostics: &[Diagnostic]) {
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !has_unchecked_arithmetic_topic(diagnostic)),
+        "unexpected unchecked arithmetic diagnostic: {diagnostics:#?}"
     );
 }
 
-#[test]
-fn unchecked_arithmetic_declares_lint_contract() {
-    assert_eq!(
-        unchecked_arithmetic_scope(),
-        &[
-            crate::diagnostics::lint::Region::InstructionBody,
-            crate::diagnostics::lint::Region::HelperFnBody,
-        ]
-    );
-    assert_eq!(unchecked_arithmetic_confidence().as_str(), "heuristic");
-    assert_eq!(unchecked_arithmetic_applicability().as_str(), "Unspecified");
-    assert_eq!(
-        unchecked_arithmetic_topic(),
-        "seagrass/solana.code-quality.unchecked-arithmetic"
-    );
+fn has_unchecked_arithmetic_topic(diagnostic: &Diagnostic) -> bool {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("topic"))
+        .and_then(|value| value.as_str())
+        == Some(UNCHECKED_ARITHMETIC_TOPIC)
 }
 
-#[test]
-fn ignores_checked_balance_arithmetic() {
-    let source = r#"
-use pinocchio::program_error::ProgramError;
-
-fn withdraw(amount: u64, fee: u64) -> Result<u64, ProgramError> {
-    amount.checked_sub(fee).ok_or(ProgramError::InvalidArgument)
-}
-"#;
-    let document = ParsedDocument::parse_or_empty(source);
-
-    assert!(collect(&document).is_empty());
-}
-
-fn assert_no_checked_arithmetic_diagnostic(document: &ParsedDocument) {
-    assert!(!collect(document)
-        .iter()
-        .any(|diagnostic| diagnostic.message.contains("Use checked arithmetic")));
+fn evidence_source(diagnostic: &Diagnostic) -> Option<&str> {
+    diagnostic
+        .data
+        .as_ref()
+        .and_then(|data| data.get("evidenceSource"))
+        .and_then(|value| value.as_str())
 }

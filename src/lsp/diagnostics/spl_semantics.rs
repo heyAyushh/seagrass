@@ -1,9 +1,11 @@
 use {
     crate::{
+        anchor::extractor,
         constraint_catalog::{self, ConstraintFamily},
         diagnostics::{diagnostic_from_range, registry::AnchorDiagnosticKind},
         document::ParsedDocument,
         evidence::{AccountSetEvidence, ConstraintEvidence, EvidenceGraph, FieldEvidence},
+        semantic::{AccountType, SemanticModel},
     },
     tower_lsp::lsp_types::{Diagnostic, Range},
 };
@@ -15,14 +17,18 @@ enum TokenProgramKind {
     Interface,
 }
 
+const TOKEN_PROGRAM_EXPECTED_TYPE: &str = "Program<'info, Token>, Program<'info, Token2022>, Program<'info, TokenInterface>, or Interface<'info, TokenInterface>";
+
 pub fn collect(document: &ParsedDocument) -> Vec<Diagnostic> {
+    let semantic_model = extractor::extract(document);
+    let semantic_model = &semantic_model;
     EvidenceGraph::from_document(document)
         .account_sets()
         .iter()
         .flat_map(|accounts| {
             accounts.fields().iter().flat_map(move |field| {
                 field.constraints().iter().flat_map(move |constraint| {
-                    constraint_diagnostics(document, accounts, field, constraint)
+                    constraint_diagnostics(document, accounts, field, constraint, semantic_model)
                 })
             })
         })
@@ -34,16 +40,23 @@ fn constraint_diagnostics(
     accounts: &AccountSetEvidence<'_>,
     field: &FieldEvidence<'_>,
     constraint: &ConstraintEvidence<'_>,
+    semantic_model: &SemanticModel,
 ) -> Vec<Diagnostic> {
     let mut diagnostics = Vec::new();
     diagnostics.extend(mint_reference_diagnostics(
         document, accounts, field, constraint,
     ));
-    diagnostics.extend(target_container_diagnostic(field, constraint));
+    diagnostics.extend(target_container_diagnostic(document, field, constraint));
     diagnostics.extend(token_program_override_diagnostics(
+        document,
+        accounts,
+        field,
+        constraint,
+        semantic_model,
+    ));
+    diagnostics.extend(token2022_extension_diagnostics(
         document, accounts, field, constraint,
     ));
-    diagnostics.extend(token2022_extension_diagnostics(accounts, field, constraint));
     diagnostics.extend(mint_decimals_argument_diagnostic(
         document, accounts, constraint,
     ));
@@ -64,7 +77,7 @@ fn mint_reference_diagnostics(
         .filter_map(|key| {
             let name = constraint.simple_identifier_value(key)?;
             let mint_field = account_field(accounts, name)?;
-            if is_mint_data_field(mint_field) {
+            if is_mint_data_field(document, mint_field) {
                 return None;
             }
             Some(diagnostic_from_range(
@@ -87,10 +100,11 @@ fn mint_reference_diagnostics(
 }
 
 fn target_container_diagnostic(
+    document: &ParsedDocument,
     field: &FieldEvidence<'_>,
     constraint: &ConstraintEvidence<'_>,
 ) -> Option<Diagnostic> {
-    if uses_token_constraints(constraint) && !is_token_account_data_field(field) {
+    if uses_token_constraints(constraint) && !is_token_account_data_field(document, field) {
         return Some(type_diagnostic(
             field,
             "token account constraints",
@@ -98,7 +112,7 @@ fn target_container_diagnostic(
             "token-target-type",
         ));
     }
-    if uses_mint_constraints(constraint) && !is_mint_data_field(field) {
+    if uses_mint_constraints(constraint) && !is_mint_data_field(document, field) {
         return Some(type_diagnostic(
             field,
             "mint constraints",
@@ -114,6 +128,7 @@ fn token_program_override_diagnostics(
     accounts: &AccountSetEvidence<'_>,
     field: &FieldEvidence<'_>,
     constraint: &ConstraintEvidence<'_>,
+    semantic_model: &SemanticModel,
 ) -> Vec<Diagnostic> {
     ["token::token_program", "associated_token::token_program", "mint::token_program"]
         .into_iter()
@@ -121,13 +136,9 @@ fn token_program_override_diagnostics(
             let name = constraint.simple_identifier_value(key)?;
             let program = account_field(accounts, name)?;
             let program_kind = token_program_kind(program);
-            let target_uses_interface_account = is_interface_token_or_mint_field(field);
-            let valid = if target_uses_interface_account {
-                program_kind == Some(TokenProgramKind::Interface)
-            } else {
-                program_kind.is_some()
-            };
-            if valid {
+            if program_kind.is_some()
+                || semantic_token_program_candidate(semantic_model, &accounts.accounts.name, name)
+            {
                 return None;
             }
             Some(diagnostic_from_range(
@@ -140,11 +151,7 @@ fn token_program_override_diagnostics(
                     "account": field.field.name,
                     "reference": name,
                     "constraint": key,
-                    "expected": if target_uses_interface_account {
-                        "Interface<'info, TokenInterface>"
-                    } else {
-                        "Program<'info, Token>, Program<'info, Token2022>, or Interface<'info, TokenInterface>"
-                    },
+                    "expected": TOKEN_PROGRAM_EXPECTED_TYPE,
                     "reason": "token-program-type",
                 })),
             ))
@@ -152,7 +159,26 @@ fn token_program_override_diagnostics(
         .collect()
 }
 
+fn semantic_token_program_candidate(
+    semantic_model: &SemanticModel,
+    accounts_struct_name: &str,
+    name: &str,
+) -> bool {
+    semantic_model
+        .all_fields_for_struct(accounts_struct_name)
+        .into_iter()
+        .any(|field| {
+            field.name == name
+                && field.token_interface_candidate
+                && matches!(
+                    field.account_type,
+                    AccountType::Interface | AccountType::Program
+                )
+        })
+}
+
 fn token2022_extension_diagnostics(
+    document: &ParsedDocument,
     accounts: &AccountSetEvidence<'_>,
     field: &FieldEvidence<'_>,
     constraint: &ConstraintEvidence<'_>,
@@ -189,7 +215,7 @@ fn token2022_extension_diagnostics(
     }
 
     if field.type_name() == Some("Account")
-        && (field.has_generic_type("Mint") || field.has_generic_type("TokenAccount"))
+        && (is_mint_data_field(document, field) || is_token_account_data_field(document, field))
     {
         diagnostics.push(diagnostic_from_range(
             field
@@ -348,28 +374,30 @@ fn account_field<'a>(
         .find(|field| field.field.name == name)
 }
 
-fn is_token_account_data_field(field: &FieldEvidence<'_>) -> bool {
-    is_data_field(field, "TokenAccount")
+fn is_token_account_data_field(document: &ParsedDocument, field: &FieldEvidence<'_>) -> bool {
+    is_data_field(document, field, "TokenAccount")
 }
 
-fn is_mint_data_field(field: &FieldEvidence<'_>) -> bool {
-    is_data_field(field, "Mint")
+fn is_mint_data_field(document: &ParsedDocument, field: &FieldEvidence<'_>) -> bool {
+    is_data_field(document, field, "Mint")
 }
 
-fn is_data_field(field: &FieldEvidence<'_>, generic: &str) -> bool {
+fn is_data_field(document: &ParsedDocument, field: &FieldEvidence<'_>, generic: &str) -> bool {
     matches!(field.type_name(), Some("Account" | "InterfaceAccount"))
-        && field.has_generic_type(generic)
-}
-
-fn is_interface_token_or_mint_field(field: &FieldEvidence<'_>) -> bool {
-    field.type_name() == Some("InterfaceAccount")
-        && (field.has_generic_type("TokenAccount") || field.has_generic_type("Mint"))
+        && field.field.generic_type_names.iter().any(|name| {
+            // Triage 2026-06-10: program-examples transfer-hook aliases
+            // `anchor_spl::token_interface::Mint` as `MintAccount`. Import
+            // aliases are single-file syntax evidence, so resolve them
+            // before deciding whether InterfaceAccount<MintAccount> is a mint.
+            document.symbols().resolve_type_alias(name) == generic
+        })
 }
 
 fn token_program_kind(field: &FieldEvidence<'_>) -> Option<TokenProgramKind> {
     match field.type_name()? {
         "Program" if field.has_generic_type("Token") => Some(TokenProgramKind::Token),
         "Program" if field.has_generic_type("Token2022") => Some(TokenProgramKind::Token2022),
+        "Program" if field.has_generic_type("TokenInterface") => Some(TokenProgramKind::Interface),
         "Interface" if field.has_generic_type("TokenInterface") => {
             Some(TokenProgramKind::Interface)
         }
@@ -530,6 +558,112 @@ pub struct Create<'info> {
 
 pub fn create(ctx: Context<Create>, decimals: u8) -> Result<()> {
     Ok(())
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect(&document);
+
+        assert!(!has_code(&diagnostics, "anchor-spl-token-interface"));
+    }
+
+    #[test]
+    fn accepts_token2022_program_for_interface_account_pair() {
+        let document = ParsedDocument::parse(
+            r#"
+use anchor_lang::prelude::*;
+use anchor_spl::{token_2022::Token2022, token_interface::Mint};
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(
+        init,
+        payer = payer,
+        mint::decimals = decimals,
+        mint::authority = payer,
+        mint::token_program = token_program
+    )]
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program: Program<'info, Token2022>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
+    pub system_program: Program<'info, System>,
+}
+
+pub fn create(ctx: Context<Create>, decimals: u8) -> Result<()> {
+    Ok(())
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect(&document);
+
+        assert!(!has_code(&diagnostics, "anchor-spl-token-interface"));
+    }
+
+    #[test]
+    fn no_false_positive_for_program_token2022_on_mint_constraint() {
+        let document = ParsedDocument::parse(
+            r#"
+use anchor_lang::prelude::*;
+use anchor_spl::{token_2022::Token2022, token_interface::Mint};
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(mint::authority = payer, mint::token_program = token_program)]
+    pub mint: InterfaceAccount<'info, Mint>,
+    pub token_program: Program<'info, Token2022>,
+    pub payer: Signer<'info>,
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect(&document);
+
+        assert!(!has_reason(&diagnostics, "token-program-type"));
+    }
+
+    #[test]
+    fn no_false_positive_for_program_token_on_token_account_constraint() {
+        let document = ParsedDocument::parse(
+            r#"
+use anchor_lang::prelude::*;
+use anchor_spl::{token::Token, token_interface::TokenAccount};
+
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(token::authority = payer, token::token_program = token_program)]
+    pub token: InterfaceAccount<'info, TokenAccount>,
+    pub token_program: Program<'info, Token>,
+    pub payer: Signer<'info>,
+}
+"#,
+        )
+        .unwrap();
+
+        let diagnostics = collect(&document);
+
+        assert!(!has_reason(&diagnostics, "token-program-type"));
+    }
+
+    #[test]
+    fn accepts_import_alias_for_interface_account_mint() {
+        let document = ParsedDocument::parse(
+            r#"
+use anchor_lang::prelude::*;
+use anchor_spl::{
+    token_2022::Token2022,
+    token_interface::Mint as MintAccount,
+};
+
+#[derive(Accounts)]
+pub struct ChangeMode<'info> {
+    #[account(mut, mint::token_program = token_program)]
+    pub mint: InterfaceAccount<'info, MintAccount>,
+    pub token_program: Program<'info, Token2022>,
 }
 "#,
         )

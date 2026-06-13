@@ -25,12 +25,12 @@ use {
     std::collections::HashSet,
     syn::{
         visit::{self, Visit},
-        Expr, ExprField, ExprMethodCall, ItemFn, ItemMod,
+        Expr, ExprField, ExprMethodCall, ImplItemFn, ItemFn, ItemMod,
     },
     tower_lsp::lsp_types::{Diagnostic, Position, Range},
 };
 
-const TOPIC: &str = "seagrass/anchor.account.usage";
+const TOPIC: &str = AnchorDiagnosticKind::AnchorMissingAccountReference.topic();
 const REASON: &str = "unknown-handler-member";
 const EVIDENCE_SOURCE: &str = "parsed-anchor-handler-local-types";
 
@@ -225,6 +225,18 @@ impl<'ast> Visit<'ast> for HandlerMemberVisitor<'_> {
         if self.in_program_module || item_fn_has_anchor_context_arg(node) {
             self.visit_anchor_function(node);
         }
+    }
+
+    /// Scope impl-block methods correctly so that the method's own parameters
+    /// are declared before the body is visited. Without this override syn's
+    /// default recursion enters the method body while the method's params are
+    /// absent from the scope stack, causing false "unknown member" positives
+    /// when e.g. a typed parameter is accessed inside the method.
+    fn visit_impl_item_fn(&mut self, node: &'ast ImplItemFn) {
+        self.scopes.push();
+        self.declare_impl_method_inputs(node);
+        self.visit_block(&node.block);
+        self.scopes.pop();
     }
 
     fn visit_block(&mut self, node: &'ast syn::Block) {
@@ -651,12 +663,12 @@ fn parse_identifier_at(line: &str, start: usize) -> Option<(String, usize)> {
     let tail = line.get(start..)?;
     let mut chars = tail.char_indices();
     let (_, first) = chars.next()?;
-    if !is_identifier_start(first) {
+    if !crate::syntax::is_ascii_identifier_start(first) {
         return None;
     }
     let mut end = start + first.len_utf8();
     for (relative_idx, ch) in chars {
-        if !is_identifier_char(ch) {
+        if !crate::syntax::is_ascii_identifier_char(ch) {
             break;
         }
         end = start + relative_idx + ch.len_utf8();
@@ -667,8 +679,8 @@ fn parse_identifier_at(line: &str, start: usize) -> Option<(String, usize)> {
 fn is_member_access_boundary(line: &str, start: usize, end: usize) -> bool {
     let before = line[..start].chars().next_back();
     let after = line[end..].chars().next();
-    before.is_none_or(|ch| !is_identifier_char(ch) && ch != '.')
-        && after.is_none_or(|ch| !is_identifier_char(ch) && ch != '.')
+    before.is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch) && ch != '.')
+        && after.is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch) && ch != '.')
 }
 
 fn line_code_before_comment(line: &str) -> &str {
@@ -706,14 +718,6 @@ fn next_char_boundary(line: &str, idx: usize) -> usize {
         .chars()
         .next()
         .map_or(line.len(), |ch| idx + ch.len_utf8())
-}
-
-fn is_identifier_start(ch: char) -> bool {
-    ch == '_' || ch.is_ascii_alphabetic()
-}
-
-fn is_identifier_char(ch: char) -> bool {
-    ch == '_' || ch.is_ascii_alphanumeric()
 }
 
 #[cfg(test)]
@@ -767,6 +771,10 @@ mod macro_tests;
 #[cfg(test)]
 #[path = "handler_members/block_item_tests.rs"]
 mod block_item_tests;
+
+#[cfg(test)]
+#[path = "handler_members/impl_method_tests.rs"]
+mod impl_method_tests;
 
 #[cfg(test)]
 mod tests;

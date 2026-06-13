@@ -1,13 +1,13 @@
 #![allow(deprecated)]
 
 use {
-    crate::{range::range_from_span, syntax::RustSyntax},
+    crate::{anchor::idioms, range::range_from_span, syntax::RustSyntax},
     proc_macro2::Span,
     quote::ToTokens,
     std::collections::{HashMap, HashSet},
     syn::{
-        spanned::Spanned, Attribute, FnArg, GenericArgument, Item, ItemFn, ItemStruct, PatType,
-        Path, PathArguments, Token, Type, Visibility,
+        spanned::Spanned, Attribute, Fields, FnArg, GenericArgument, Item, ItemEnum, ItemFn,
+        ItemStruct, PatType, Path, PathArguments, Token, Type, Visibility,
     },
     tower_lsp::lsp_types::{Position, Range},
 };
@@ -20,11 +20,12 @@ mod error_codes;
 mod field_types;
 mod imports;
 mod symbols;
+mod types;
 
 use {
     account_field_type::account_field_type,
     field_types::{generic_type_ranges, type_name, type_range},
-    imports::collect_imported_names,
+    imports::{collect_imported_names, has_glob_in_use_tree, has_local_glob_in_use_tree},
 };
 
 pub use {
@@ -32,6 +33,12 @@ pub use {
     associated_values::{is_generated_init_space_value, AssociatedValueKind, AssociatedValueRange},
     error_codes::ErrorCodeEnum,
     symbols::document_symbols,
+    types::{
+        AccountConstraint, AccountDataFieldUsage, AccountFieldTypeSummary, AccountKeyComparison,
+        AccountKeyOperand, AccountPathUsage, AccountUsage, ContextReference, DeclaredProgramId,
+        FunctionCall, InstructionArgument, InstructionAttributeArgument, InstructionSymbol,
+        NamedRange, PdaBump, PdaConstraint, PdaSeeds, SymbolRange,
+    },
 };
 
 #[derive(Debug)]
@@ -109,10 +116,23 @@ impl ParsedDocument {
 #[derive(Debug, Default)]
 pub struct AnchorSymbols {
     pub all_structs: HashMap<String, SymbolRange>,
+    pub enums: HashMap<String, SymbolRange>,
     pub accounts_structs: HashMap<String, SymbolRange>,
     pub account_data_structs: HashMap<String, SymbolRange>,
     pub constants: Vec<NamedRange>,
     pub imported_names: Vec<NamedRange>,
+    /// Maps an imported leaf name or alias to the root used path segment, e.g.
+    /// `Clock -> solana_clock` for `use solana_clock::Clock`.
+    pub import_origins: HashMap<String, String>,
+    /// True when the file contains at least one glob `use` (`use foo::*;`),
+    /// meaning names are in scope that seagrass cannot enumerate.
+    /// Diagnostics that assert "name X does not exist" must suppress when this
+    /// flag is set, unless the workspace index provides stronger evidence.
+    pub has_glob_import: bool,
+    /// True when a glob `use` can bring project-local names into scope. External
+    /// preludes like `anchor_lang::prelude::*` are tracked by `has_glob_import`
+    /// but do not make local absence claims ambiguous.
+    pub has_local_glob_import: bool,
     /// Maps a `use Original as Alias` rename to the original terminal ident, so
     /// `Alias::CONST` resolves against `Original`'s associated values.
     pub import_aliases: HashMap<String, String>,
@@ -129,6 +149,15 @@ pub struct AnchorSymbols {
 impl AnchorSymbols {
     fn from_items(items: &[Item]) -> Self {
         let mut symbols = Self::default();
+        let local_module_names = items
+            .iter()
+            .filter_map(|item| {
+                let Item::Mod(item_mod) = item else {
+                    return None;
+                };
+                Some(item_mod.ident.to_string())
+            })
+            .collect::<HashSet<_>>();
 
         for item in items {
             match item {
@@ -195,9 +224,20 @@ impl AnchorSymbols {
                         &item_use.tree,
                         &mut symbols.imported_names,
                         &mut symbols.import_aliases,
+                        &mut symbols.import_origins,
                     );
+                    if has_glob_in_use_tree(&item_use.tree) {
+                        symbols.has_glob_import = true;
+                    }
+                    if has_local_glob_in_use_tree(&item_use.tree, &local_module_names) {
+                        symbols.has_local_glob_import = true;
+                    }
                 }
                 Item::Enum(item_enum) => {
+                    symbols.enums.insert(
+                        item_enum.ident.to_string(),
+                        SymbolRange::from_enum(item_enum),
+                    );
                     if let Some(error_code) = error_codes::error_code_enum(item_enum) {
                         symbols.error_codes.push(error_code);
                     }
@@ -209,7 +249,10 @@ impl AnchorSymbols {
                     );
                 }
                 Item::Macro(item_macro)
-                    if path_last_is_ident(&item_macro.mac.path, "declare_id") =>
+                    if path_last_is_any_ident(
+                        &item_macro.mac.path,
+                        idioms::PROGRAM_DECLARATION_MACROS,
+                    ) =>
                 {
                     if let Some(declared) = declared_program_id(item_macro) {
                         symbols.declared_program_id = Some(declared);
@@ -259,30 +302,6 @@ fn item_fn_range(item_fn: &ItemFn) -> NamedRange {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct SymbolRange {
-    pub name: String,
-    pub range: Range,
-    pub selection_range: Range,
-    pub fields: Vec<SymbolRange>,
-    pub type_name: Option<String>,
-    pub type_range: Option<Range>,
-    pub generic_type_names: Vec<String>,
-    pub generic_type_ranges: Vec<NamedRange>,
-    pub is_optional: bool,
-    pub account_constraints: Vec<AccountConstraint>,
-    pub pda_constraint: Option<PdaConstraint>,
-    pub instruction_arguments: Vec<InstructionAttributeArgument>,
-    pub derive_accounts_range: Option<Range>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountFieldTypeSummary {
-    pub type_name: Option<String>,
-    pub generic_type_names: Vec<String>,
-    pub is_optional: bool,
-}
-
 impl SymbolRange {
     fn from_struct(item_struct: &ItemStruct) -> Self {
         Self {
@@ -290,15 +309,69 @@ impl SymbolRange {
             range: range_from_span(item_struct.span()),
             selection_range: range_from_span(item_struct.ident.span()),
             fields: field_symbols(item_struct),
+            variants: Vec::new(),
             type_name: None,
             type_range: None,
+            type_signature: None,
             generic_type_names: Vec::new(),
             generic_type_ranges: Vec::new(),
             is_optional: false,
+            max_len_args: Vec::new(),
             account_constraints: Vec::new(),
             pda_constraint: None,
             instruction_arguments: instruction_attribute_arguments(&item_struct.attrs),
+            derive_attribute_range: derive_attribute_range(&item_struct.attrs),
             derive_accounts_range: derive_accounts_range(&item_struct.attrs),
+            derive_init_space_range: derive_init_space_range(&item_struct.attrs),
+            is_zero_copy: is_zero_copy_struct(&item_struct.attrs),
+        }
+    }
+
+    fn from_enum(item_enum: &ItemEnum) -> Self {
+        Self {
+            name: item_enum.ident.to_string(),
+            range: range_from_span(item_enum.span()),
+            selection_range: range_from_span(item_enum.ident.span()),
+            fields: Vec::new(),
+            variants: item_enum
+                .variants
+                .iter()
+                .map(|variant| SymbolRange {
+                    name: variant.ident.to_string(),
+                    range: range_from_span(variant.span()),
+                    selection_range: range_from_span(variant.ident.span()),
+                    fields: symbols_from_fields(&variant.fields, &HashMap::new()),
+                    variants: Vec::new(),
+                    type_name: None,
+                    type_range: None,
+                    type_signature: None,
+                    generic_type_names: Vec::new(),
+                    generic_type_ranges: Vec::new(),
+                    is_optional: false,
+                    max_len_args: Vec::new(),
+                    account_constraints: Vec::new(),
+                    pda_constraint: None,
+                    instruction_arguments: Vec::new(),
+                    derive_attribute_range: None,
+                    derive_accounts_range: None,
+                    derive_init_space_range: None,
+                    is_zero_copy: false,
+                })
+                .collect(),
+            type_name: None,
+            type_range: None,
+            type_signature: None,
+            generic_type_names: Vec::new(),
+            generic_type_ranges: Vec::new(),
+            is_optional: false,
+            max_len_args: Vec::new(),
+            account_constraints: Vec::new(),
+            pda_constraint: None,
+            instruction_arguments: Vec::new(),
+            derive_attribute_range: derive_attribute_range(&item_enum.attrs),
+            derive_accounts_range: None,
+            derive_init_space_range: derive_init_space_range(&item_enum.attrs),
+            is_zero_copy: false,
         }
     }
 }
@@ -315,131 +388,14 @@ pub fn summarize_account_field_type(ty: &Type) -> AccountFieldTypeSummary {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct NamedRange {
-    pub name: String,
-    pub range: Range,
-}
-
-#[derive(Debug, Clone)]
-pub struct AccountConstraint {
-    pub text: String,
-    pub range: Range,
-    pub pda: Option<PdaConstraint>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PdaConstraint {
-    pub is_init: bool,
-    pub seeds: PdaSeeds,
-    pub bump: PdaBump,
-    pub program_seed: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PdaSeeds {
-    List(Vec<String>),
-    Expr(String),
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum PdaBump {
-    Canonical,
-    Explicit(String),
-    Missing,
-}
-
-#[derive(Debug, Clone)]
-pub struct InstructionAttributeArgument {
-    pub name: String,
-    pub range: Range,
-    pub type_name: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-pub struct InstructionSymbol {
-    pub name: String,
-    pub range: Range,
-    pub selection_range: Range,
-    pub context: Option<ContextReference>,
-    pub arguments: Vec<InstructionArgument>,
-    pub function_calls: Vec<FunctionCall>,
-    pub account_usages: Vec<AccountUsage>,
-    pub account_data_field_usages: Vec<AccountDataFieldUsage>,
-    pub account_path_usages: Vec<AccountPathUsage>,
-    pub cpi_program_usages: Vec<AccountUsage>,
-    pub signer_usages: Vec<AccountUsage>,
-    pub signer_checks: Vec<AccountUsage>,
-    pub account_key_comparisons: Vec<AccountKeyComparison>,
-    pub token_account_unpack_usages: Vec<AccountUsage>,
-}
-
-#[derive(Debug, Clone)]
-pub struct ContextReference {
-    pub name: String,
-    pub range: Range,
-}
-
-#[derive(Debug, Clone)]
-pub struct InstructionArgument {
-    pub name: String,
-    pub range: Range,
-    /// Last path segment of the type (e.g. `Pubkey`, `Vec`) — used for the
-    /// common scalar seed cases and member resolution.
-    pub type_name: Option<String>,
-    /// Whitespace-normalized full type (e.g. `Vec<u8>`, `[u8;32]`, `&[u8]`).
-    /// Needed to distinguish byte containers that share a head segment.
-    pub type_signature: Option<String>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionCall {
-    pub name: String,
-    pub range: Range,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountUsage {
-    pub name: String,
-    pub range: Range,
-    pub mutable: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountDataFieldUsage {
-    pub account: String,
-    pub source_account: String,
-    pub field: String,
-    pub range: Range,
-    pub mutable: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountPathUsage {
-    pub segments: Vec<NamedRange>,
-    pub mutable: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AccountKeyComparison {
-    pub left: String,
-    pub right: String,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DeclaredProgramId {
-    pub value: String,
-    pub range: Range,
-}
-
 pub fn has_attr(attrs: &[Attribute], name: &str) -> bool {
     attrs.iter().any(|attr| attr.path().is_ident(name))
 }
 
-fn path_last_is_ident(path: &Path, name: &str) -> bool {
+fn path_last_is_any_ident(path: &Path, names: &[&str]) -> bool {
     path.segments
         .last()
-        .is_some_and(|segment| segment.ident == name)
+        .is_some_and(|segment| idioms::ident_is_any(&segment.ident, names))
 }
 
 pub fn derives_accounts(attrs: &[Attribute]) -> bool {
@@ -447,6 +403,14 @@ pub fn derives_accounts(attrs: &[Attribute]) -> bool {
 }
 
 fn derive_accounts_range(attrs: &[Attribute]) -> Option<Range> {
+    derive_path_range(attrs, "Accounts")
+}
+
+fn derive_init_space_range(attrs: &[Attribute]) -> Option<Range> {
+    derive_path_range(attrs, "InitSpace")
+}
+
+fn derive_path_range(attrs: &[Attribute], name: &str) -> Option<Range> {
     attrs
         .iter()
         .filter(|attr| attr.path().is_ident("derive"))
@@ -458,9 +422,16 @@ fn derive_accounts_range(attrs: &[Attribute]) -> Option<Range> {
                 .ok()?;
             paths
                 .iter()
-                .find(|path| path.is_ident("Accounts"))
+                .find(|path| path.is_ident(name))
                 .map(|path| range_from_span(path.span()))
         })
+}
+
+fn derive_attribute_range(attrs: &[Attribute]) -> Option<Range> {
+    attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("derive"))
+        .map(|attr| range_from_span(attr.span()))
 }
 
 fn instruction_symbol(item_fn: &ItemFn) -> InstructionSymbol {
@@ -489,44 +460,81 @@ fn is_anchor_helper_function(item_fn: &ItemFn) -> bool {
 }
 
 fn field_symbols(item_struct: &ItemStruct) -> Vec<SymbolRange> {
-    let syn::Fields::Named(fields) = &item_struct.fields else {
-        return Vec::new();
-    };
     let parser_pdas = parser_pda_constraints(item_struct);
+    symbols_from_fields(&item_struct.fields, &parser_pdas)
+}
 
-    fields
-        .named
-        .iter()
-        .filter_map(|field| {
-            let ident = field.ident.as_ref()?;
-            let (field_ty, is_optional) = account_field_type(&field.ty);
-            let generic_type_ranges = generic_type_ranges(field_ty);
-            let account_constraints = account_constraints(&field.attrs);
-            let pda_constraint = parser_pdas.get(&ident.to_string()).cloned().or_else(|| {
-                account_constraints
-                    .iter()
-                    .find_map(|constraint| constraint.pda.clone())
-            });
-            Some(SymbolRange {
-                name: ident.to_string(),
-                range: range_from_span(field.span()),
-                selection_range: range_from_span(ident.span()),
-                fields: Vec::new(),
-                type_name: type_name(field_ty),
-                type_range: type_range(field_ty),
-                generic_type_names: generic_type_ranges
-                    .iter()
-                    .map(|range| range.name.clone())
-                    .collect(),
-                generic_type_ranges,
-                is_optional,
-                account_constraints,
-                pda_constraint,
-                instruction_arguments: Vec::new(),
-                derive_accounts_range: None,
+fn symbols_from_fields(
+    fields: &Fields,
+    parser_pdas: &HashMap<String, PdaConstraint>,
+) -> Vec<SymbolRange> {
+    match fields {
+        Fields::Named(fields) => fields
+            .named
+            .iter()
+            .enumerate()
+            .map(|(index, field)| {
+                let ident = field
+                    .ident
+                    .as_ref()
+                    .map(ToString::to_string)
+                    .unwrap_or_else(|| index.to_string());
+                field_symbol(&ident, field, parser_pdas)
             })
-        })
-        .collect()
+            .collect(),
+        Fields::Unnamed(fields) => fields
+            .unnamed
+            .iter()
+            .enumerate()
+            .map(|(index, field)| field_symbol(&index.to_string(), field, parser_pdas))
+            .collect(),
+        Fields::Unit => Vec::new(),
+    }
+}
+
+fn field_symbol(
+    field_name: &str,
+    field: &syn::Field,
+    parser_pdas: &HashMap<String, PdaConstraint>,
+) -> SymbolRange {
+    let (field_ty, is_optional) = account_field_type(&field.ty);
+    let generic_type_ranges = generic_type_ranges(field_ty);
+    let account_constraints = account_constraints(&field.attrs);
+    let pda_constraint = parser_pdas.get(field_name).cloned().or_else(|| {
+        account_constraints
+            .iter()
+            .find_map(|constraint| constraint.pda.clone())
+    });
+    SymbolRange {
+        name: field_name.to_string(),
+        range: range_from_span(field.span()),
+        selection_range: field
+            .ident
+            .as_ref()
+            .map(|ident| range_from_span(ident.span()))
+            .unwrap_or_else(|| range_from_span(field.span())),
+        fields: Vec::new(),
+        variants: Vec::new(),
+        type_name: type_name(field_ty),
+        type_range: type_range(field_ty),
+        type_signature: Some(normalize_token_text(
+            &field.ty.to_token_stream().to_string(),
+        )),
+        generic_type_names: generic_type_ranges
+            .iter()
+            .map(|range| range.name.clone())
+            .collect(),
+        generic_type_ranges,
+        is_optional,
+        max_len_args: max_len_args(&field.attrs),
+        account_constraints,
+        pda_constraint,
+        instruction_arguments: Vec::new(),
+        derive_attribute_range: None,
+        derive_accounts_range: None,
+        derive_init_space_range: None,
+        is_zero_copy: false,
+    }
 }
 
 fn parser_pda_constraints(item_struct: &ItemStruct) -> HashMap<String, PdaConstraint> {
@@ -591,6 +599,34 @@ fn account_constraints(attrs: &[Attribute]) -> Vec<AccountConstraint> {
             pda: pda_constraint(attr),
         })
         .collect()
+}
+
+fn max_len_args(attrs: &[Attribute]) -> Vec<String> {
+    attrs
+        .iter()
+        .find(|attr| attr.path().is_ident("max_len"))
+        .and_then(|attr| {
+            attr.parse_args_with(
+                syn::punctuated::Punctuated::<syn::Expr, Token![,]>::parse_terminated,
+            )
+            .ok()
+        })
+        .map(|args| {
+            args.into_iter()
+                .map(|expr| normalize_token_text(&expr.to_token_stream().to_string()))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_zero_copy_struct(attrs: &[Attribute]) -> bool {
+    has_attr(attrs, "zero_copy")
+        || attrs
+            .iter()
+            .filter(|attr| attr.path().is_ident("account"))
+            .any(|attr| {
+                normalize_token_text(&attr.meta.to_token_stream().to_string()).contains("zero_copy")
+            })
 }
 
 fn pda_constraint(attr: &Attribute) -> Option<PdaConstraint> {

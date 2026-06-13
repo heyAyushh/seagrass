@@ -1,4 +1,5 @@
 use {
+    crate::solana::artifact_paths,
     std::{
         fs,
         path::{Path, PathBuf},
@@ -35,7 +36,7 @@ pub(super) fn cargo_manifest_paths(root: &Path) -> Vec<PathBuf> {
 
 pub(super) fn idl_paths(root: &Path) -> Vec<PathBuf> {
     let mut paths = Vec::new();
-    for relative in ["target/idl", "idls", "idl", ".anchor/idl"] {
+    for relative in [artifact_paths::TARGET_IDL_DIR, "idls", "idl", ".anchor/idl"] {
         let dir = root.join(relative);
         let Ok(entries) = fs::read_dir(dir) else {
             continue;

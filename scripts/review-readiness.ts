@@ -3,6 +3,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
+import { nonEmpty as baseNonEmpty, requiredArgValue } from "./cli-args.ts";
 import {
   elapsedDays,
   expectedGithubRepoSlug,
@@ -184,14 +185,6 @@ function parseCliOptions(args: string[]): CliOptions {
   return options as CliOptions;
 }
 
-function requiredArgValue(args: string[], index: number, flag: string): string {
-  const value = args[index + 1];
-  if (!value || value.startsWith("--")) {
-    throw new Error(`${flag} requires a value`);
-  }
-  return value;
-}
-
 function parseMode(value: string): ReviewMode {
   if (value === "paid" || value === "community") {
     return value;
@@ -200,10 +193,7 @@ function parseMode(value: string): ReviewMode {
 }
 
 function nonEmpty(value: string, field: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) {
-    throw new Error(`${field} must not be empty`);
-  }
+  const trimmed = baseNonEmpty(value, field);
   if (RESERVED_EVIDENCE_SENTINELS.has(trimmed.toLowerCase())) {
     throw new Error(`${field} must name a reviewer`);
   }

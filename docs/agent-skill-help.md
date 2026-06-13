@@ -36,6 +36,8 @@ Update the skill help surface when any of these change:
 - a file under `skills/seagrass-*`
 - `skills/README.md`
 - diagnostic JSON, SARIF, suppression syntax, or exit-code behavior
+- suppression surfaces, including comments, attributes, `Seagrass.toml`, or
+  `Cargo.toml` metadata such as `[package.metadata.seagrass] suppress = true`
 - lint topics, docs URLs, or `docs/lints/`
 - `seagrass analyze`, `seagrass diagnostics`, or other agent-facing CLI output
 - editor workflow commands that a skill tells an agent to use

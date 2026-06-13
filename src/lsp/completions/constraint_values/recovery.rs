@@ -102,6 +102,7 @@ fn field_symbol_from_document_symbol(symbol: DocumentSymbol) -> SymbolRange {
         range: symbol.range,
         selection_range: symbol.selection_range,
         type_name: field_type.type_name,
+        type_signature: symbol.detail,
         generic_type_names: field_type.generic_type_names,
         is_optional: field_type.is_optional,
         ..SymbolRangeParts::default()
@@ -172,7 +173,7 @@ fn recover_account_field_from_line(
     let declaration_start = line_start + leading + trimmed.len().saturating_sub(declaration.len());
     let colon = declaration.find(':')?;
     let name = declaration[..colon].trim();
-    if !is_identifier(name) {
+    if !crate::syntax::is_ascii_identifier(name) {
         return None;
     }
 
@@ -274,12 +275,14 @@ fn recovered_field_type_from_text(type_text: &str) -> RecoveredFieldType {
     let wrapper = type_text
         .split(['<', ' ', '\t'])
         .next()
-        .filter(|name| is_identifier(name))
+        .filter(|name| crate::syntax::is_ascii_identifier(name))
         .map(str::to_string);
     let generic_type_names = type_text
         .split(['<', '>', ','])
         .map(str::trim)
-        .filter(|part| is_identifier(part) && part.as_bytes().first() != Some(&b'\''))
+        .filter(|part| {
+            crate::syntax::is_ascii_identifier(part) && part.as_bytes().first() != Some(&b'\'')
+        })
         .skip(1)
         .map(str::to_string)
         .collect();
@@ -298,6 +301,7 @@ struct SymbolRangeParts {
     selection_range: Range,
     type_name: Option<String>,
     type_range: Option<Range>,
+    type_signature: Option<String>,
     generic_type_names: Vec<String>,
     is_optional: bool,
     fields: Vec<SymbolRange>,
@@ -310,6 +314,7 @@ fn empty_symbol_range(parts: SymbolRangeParts) -> SymbolRange {
         selection_range,
         type_name,
         type_range,
+        type_signature,
         generic_type_names,
         is_optional,
         fields,
@@ -319,8 +324,10 @@ fn empty_symbol_range(parts: SymbolRangeParts) -> SymbolRange {
         range,
         selection_range,
         fields,
+        variants: Vec::new(),
         type_name,
         type_range,
+        type_signature,
         generic_type_ranges: generic_type_names
             .iter()
             .map(|name| NamedRange {
@@ -330,10 +337,14 @@ fn empty_symbol_range(parts: SymbolRangeParts) -> SymbolRange {
             .collect(),
         generic_type_names,
         is_optional,
+        max_len_args: Vec::new(),
         account_constraints: Vec::new(),
         pda_constraint: None,
         instruction_arguments: Vec::new(),
+        derive_attribute_range: None,
         derive_accounts_range: None,
+        derive_init_space_range: None,
+        is_zero_copy: false,
     }
 }
 
@@ -353,10 +364,10 @@ fn word_has_boundary(source: &str, start: usize, len: usize) -> bool {
     let previous = source[..start].chars().next_back();
     let next = source[start + len..].chars().next();
     previous
-        .map(is_identifier_char)
+        .map(crate::syntax::is_ascii_identifier_char)
         .is_none_or(|is_ident| !is_ident)
         && next
-            .map(is_identifier_char)
+            .map(crate::syntax::is_ascii_identifier_char)
             .is_none_or(|is_ident| !is_ident)
 }
 
@@ -369,28 +380,15 @@ fn skip_whitespace(source: &str, start: usize) -> Option<usize> {
 fn identifier_end(source: &str, start: usize) -> Option<usize> {
     let mut end = start;
     for (idx, ch) in source[start..].char_indices() {
-        if idx == 0 && !is_identifier_start(ch) {
+        if idx == 0 && !crate::syntax::is_ascii_identifier_start(ch) {
             return None;
         }
-        if !is_identifier_char(ch) {
+        if !crate::syntax::is_ascii_identifier_char(ch) {
             break;
         }
         end = start + idx + ch.len_utf8();
     }
     (end > start).then_some(end)
-}
-
-fn is_identifier(name: &str) -> bool {
-    let mut chars = name.chars();
-    chars.next().is_some_and(is_identifier_start) && chars.all(is_identifier_char)
-}
-
-fn is_identifier_start(ch: char) -> bool {
-    ch == '_' || ch.is_ascii_alphabetic()
-}
-
-fn is_identifier_char(ch: char) -> bool {
-    is_identifier_start(ch) || ch.is_ascii_digit()
 }
 
 fn matching_close_brace(source: &str, open_brace: usize) -> Option<usize> {

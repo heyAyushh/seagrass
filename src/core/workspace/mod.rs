@@ -1,7 +1,8 @@
 use {
     crate::{
+        collections::Trie,
         definition_bridge::{self, BridgeSymbol},
-        document::{AccountConstraint, InstructionAttributeArgument, ParsedDocument},
+        document::{AccountConstraint, InstructionAttributeArgument, ParsedDocument, SymbolRange},
         file_text,
     },
     std::{
@@ -12,22 +13,29 @@ use {
 };
 
 mod associated_values;
+mod call_graph;
 mod file_updates;
 mod files;
 mod function_returns;
 mod indexing;
 mod instruction_arguments;
+mod module_paths;
+mod qualified_paths;
 mod sorting;
 mod type_names;
 
 pub use associated_values::WorkspaceAssociatedValue;
+pub(crate) use call_graph::MAX_REACHABILITY_DEPTH;
+pub(crate) use indexing::IndexedFunctionEntry;
 
 use {
+    call_graph::CallGraph,
     files::anchor_rust_files,
     indexing::{
-        document_indexed_references, document_indexed_symbols, indexed_accounts_structs,
-        indexed_functions, IndexedAccountsStruct, IndexedFunction, IndexedFunctionEntry,
-        IndexedReference, IndexedReferenceEntry, IndexedSymbol, IndexedSymbolEntry,
+        document_indexed_references, document_indexed_symbols, indexed_account_data_structs,
+        indexed_accounts_structs, indexed_functions, IndexedAccountDataStruct,
+        IndexedAccountsStruct, IndexedFunction, IndexedReference, IndexedReferenceEntry,
+        IndexedSymbol, IndexedSymbolEntry,
     },
     instruction_arguments::{
         instruction_argument_names_match, instruction_argument_ranges_in_constraint,
@@ -44,6 +52,9 @@ use files::is_anchor_source_file;
 pub type SymbolName = Arc<str>;
 const ACCOUNT_DATA_CONTAINER: &str = "#[account]";
 
+/// The `crate` pseudo-segment that anchors every in-crate module path.
+const CRATE_ROOT_SEGMENT: &str = "crate";
+
 #[derive(Debug, Default, Clone)]
 pub struct WorkspaceIndex {
     documents: HashSet<Url>,
@@ -51,7 +62,20 @@ pub struct WorkspaceIndex {
     references_by_name: HashMap<SymbolName, Vec<IndexedReferenceEntry>>,
     functions_by_name: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
     functions_by_context: HashMap<SymbolName, Vec<IndexedFunctionEntry>>,
+    call_graph: CallGraph,
     accounts_by_name: HashMap<SymbolName, Vec<IndexedAccountsStruct>>,
+    account_data_by_name: HashMap<SymbolName, Vec<IndexedAccountDataStruct>>,
+    /// Maps `["crate", "module", …]` path segments to the file URI that
+    /// implements that module.  Used by `symbol_exists_at_qualified_path` to
+    /// resolve multi-segment `crate::module::Symbol` references without a
+    /// false-positive absence claim when the symbol lives in another file.
+    module_path_trie: Trie<String, Url>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WorkspaceReachabilityPolicy {
+    AllowAmbiguous,
+    RequireUnambiguous,
 }
 
 #[derive(Debug, Clone)]
@@ -62,6 +86,7 @@ pub(crate) struct WorkspaceDocumentUpdate {
     references: Vec<IndexedReference>,
     functions: Vec<IndexedFunction>,
     accounts_structs: Vec<IndexedAccountsStruct>,
+    account_data_structs: Vec<IndexedAccountDataStruct>,
 }
 
 impl WorkspaceDocumentUpdate {
@@ -72,6 +97,7 @@ impl WorkspaceDocumentUpdate {
             references: document_indexed_references(document),
             functions: indexed_functions(document),
             accounts_structs: indexed_accounts_structs(document, &uri, true),
+            account_data_structs: indexed_account_data_structs(document, &uri, true),
             uri,
         }
     }
@@ -104,6 +130,13 @@ pub struct WorkspaceAccountsStruct {
     pub instruction_arguments: Vec<InstructionAttributeArgument>,
 }
 
+#[derive(Debug, Clone)]
+pub struct WorkspaceAccountDataStruct {
+    pub uri: Url,
+    pub is_open: bool,
+    pub symbol: SymbolRange,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct WorkspaceInstructionSummary {
     pub name: String,
@@ -115,6 +148,7 @@ pub struct WorkspaceInstructionSummary {
 pub struct WorkspaceAccountField {
     pub name: String,
     pub type_name: Option<String>,
+    pub type_signature: Option<String>,
     pub generic_type_names: Vec<String>,
     pub is_optional: bool,
     pub account_constraints: Vec<AccountConstraint>,
@@ -138,6 +172,8 @@ macro_rules! prune_uri_entries {
         $self.$map.retain(|_, entries| !entries.is_empty());
     };
 }
+
+mod entries;
 
 impl WorkspaceIndex {
     pub fn build(roots: &[Url], open_documents: impl IntoIterator<Item = (Url, String)>) -> Self {
@@ -335,6 +371,10 @@ impl WorkspaceIndex {
             .map(|entry| &entry.accounts)
     }
 
+    pub fn account_data_struct(&self, name: &str) -> Option<&WorkspaceAccountDataStruct> {
+        self.account_data_by_name.get(name)?.first()
+    }
+
     pub fn accounts_struct_names(&self) -> Vec<String> {
         let mut names: Vec<String> = self
             .accounts_by_name
@@ -454,26 +494,107 @@ impl WorkspaceIndex {
             return None;
         }
 
-        let mut changed = true;
-        while changed {
-            changed = false;
-            let called_names = functions
-                .iter()
-                .filter(|function| reachable.contains(&function.name))
-                .flat_map(|function| function.calls.iter())
-                .cloned()
-                .collect::<HashSet<_>>();
-            for function in functions {
-                if !function.is_program_instruction
-                    && called_names.contains(&function.name)
-                    && reachable.insert(function.name.clone())
-                {
-                    changed = true;
+        for instruction in functions
+            .iter()
+            .filter(|function| function.is_program_instruction)
+        {
+            reachable.extend(self.call_graph.reachable_from(&instruction.name).names);
+        }
+
+        Some(reachable)
+    }
+
+    pub(crate) fn reachable_function_entries(
+        &self,
+        from: &str,
+    ) -> (Vec<&IndexedFunctionEntry>, bool) {
+        let reachability = self.call_graph.reachable_from(from);
+        (
+            self.function_entries_for_reachable_names(&reachability.names),
+            reachability.truncated,
+        )
+    }
+
+    pub(crate) fn unambiguous_reachable_function_entries(
+        &self,
+        from: &str,
+    ) -> (Vec<&IndexedFunctionEntry>, bool) {
+        let reachability = self.call_graph.unambiguous_reachable_from(from);
+        (
+            self.function_entries_for_reachable_names(&reachability.names),
+            reachability.truncated,
+        )
+    }
+
+    pub(crate) fn reachable_function_entries_for_context(
+        &self,
+        context_name: &str,
+    ) -> Option<(Vec<&IndexedFunctionEntry>, bool)> {
+        self.reachable_function_entries_for_context_with_filter(
+            context_name,
+            WorkspaceReachabilityPolicy::AllowAmbiguous,
+            |entry| entry.context_name.as_deref() == Some(context_name),
+        )
+    }
+
+    pub(crate) fn reachable_function_entries_for_context_matching(
+        &self,
+        context_name: &str,
+        include_reachable_entry: impl Fn(&IndexedFunctionEntry) -> bool,
+    ) -> Option<(Vec<&IndexedFunctionEntry>, bool)> {
+        self.reachable_function_entries_for_context_with_filter(
+            context_name,
+            WorkspaceReachabilityPolicy::AllowAmbiguous,
+            include_reachable_entry,
+        )
+    }
+
+    pub(crate) fn unambiguous_reachable_function_entries_for_context(
+        &self,
+        context_name: &str,
+    ) -> Option<(Vec<&IndexedFunctionEntry>, bool)> {
+        self.reachable_function_entries_for_context_with_filter(
+            context_name,
+            WorkspaceReachabilityPolicy::RequireUnambiguous,
+            |entry| entry.context_name.as_deref() == Some(context_name),
+        )
+    }
+
+    fn reachable_function_entries_for_context_with_filter(
+        &self,
+        context_name: &str,
+        reachability_policy: WorkspaceReachabilityPolicy,
+        include_reachable_entry: impl Fn(&IndexedFunctionEntry) -> bool,
+    ) -> Option<(Vec<&IndexedFunctionEntry>, bool)> {
+        let functions = self.functions_by_context.get(context_name)?;
+        let instructions = functions
+            .iter()
+            .filter(|function| function.is_program_instruction)
+            .collect::<Vec<_>>();
+        if instructions.is_empty() {
+            return None;
+        }
+
+        let mut entries = instructions.clone();
+        let mut truncated = false;
+        for instruction in instructions {
+            let (reachable_entries, was_truncated) = match reachability_policy {
+                WorkspaceReachabilityPolicy::AllowAmbiguous => {
+                    self.reachable_function_entries(&instruction.name)
+                }
+                WorkspaceReachabilityPolicy::RequireUnambiguous => {
+                    self.unambiguous_reachable_function_entries(&instruction.name)
+                }
+            };
+            truncated |= was_truncated;
+            for entry in reachable_entries {
+                if include_reachable_entry(entry) {
+                    push_unique_function_entry(&mut entries, entry);
                 }
             }
         }
 
-        Some(reachable)
+        Some((entries, truncated))
     }
 
     pub fn reachable_cpi_program_usage_names_for_context(
@@ -644,133 +765,20 @@ impl WorkspaceIndex {
             })
             .collect()
     }
+}
 
-    fn insert_parsed_document(&mut self, uri: Url, document: &ParsedDocument, is_open: bool) {
-        let accounts_structs = indexed_accounts_structs(document, &uri, is_open);
-        let functions = indexed_functions(document);
-        let references = document_indexed_references(document);
-        let symbols = document_indexed_symbols(document);
-        self.insert_indexed_document(WorkspaceDocumentUpdate {
-            uri,
-            is_open,
-            symbols,
-            references,
-            functions,
-            accounts_structs,
-        });
+fn push_unique_function_entry<'a>(
+    entries: &mut Vec<&'a IndexedFunctionEntry>,
+    entry: &'a IndexedFunctionEntry,
+) {
+    if entries.iter().any(|existing| {
+        existing.name == entry.name
+            && existing.uri == entry.uri
+            && existing.location.range == entry.location.range
+    }) {
+        return;
     }
-
-    fn insert_indexed_document(&mut self, update: WorkspaceDocumentUpdate) {
-        let WorkspaceDocumentUpdate {
-            uri,
-            is_open,
-            symbols,
-            references,
-            functions,
-            accounts_structs,
-        } = update;
-
-        self.remove_index_entries_for_uri(&uri);
-        self.index_document_parts(
-            &uri,
-            is_open,
-            symbols,
-            references,
-            functions,
-            accounts_structs,
-        );
-        self.documents.insert(uri);
-    }
-
-    fn remove_index_entries_for_uri(&mut self, uri: &Url) {
-        self.documents.remove(uri);
-        prune_uri_entries!(self, symbols_by_name, location, uri);
-        prune_uri_entries!(self, references_by_name, location, uri);
-        prune_uri_entries!(self, functions_by_name, direct, uri);
-        prune_uri_entries!(self, functions_by_context, direct, uri);
-        prune_uri_entries!(self, accounts_by_name, direct, uri);
-    }
-
-    fn index_document_parts(
-        &mut self,
-        uri: &Url,
-        is_open: bool,
-        symbols: Vec<IndexedSymbol>,
-        references: Vec<IndexedReference>,
-        functions: Vec<IndexedFunction>,
-        accounts_structs: Vec<IndexedAccountsStruct>,
-    ) {
-        // Pre-allocate based on typical sizes for better performance (Pass 4)
-        self.symbols_by_name.reserve(symbols.len());
-        self.references_by_name.reserve(references.len());
-        self.functions_by_name.reserve(functions.len());
-        self.functions_by_context.reserve(functions.len());
-        self.accounts_by_name.reserve(accounts_structs.len());
-
-        for symbol in &symbols {
-            // Use Arc<str> key for zero-cost clones in hot lookup paths (Pass 4)
-            self.symbols_by_name
-                .entry(Arc::from(symbol.name.as_str()))
-                .or_default()
-                .push(IndexedSymbolEntry::from_symbol(uri, is_open, symbol));
-        }
-        for reference in &references {
-            self.references_by_name
-                .entry(Arc::from(reference.name.as_str()))
-                .or_default()
-                .push(IndexedReferenceEntry::from_reference(
-                    uri, is_open, reference,
-                ));
-        }
-        for function in &functions {
-            let entry = IndexedFunctionEntry::from_function(uri, is_open, function);
-            self.functions_by_name
-                .entry(Arc::from(function.name.as_str()))
-                .or_default()
-                .push(entry.clone());
-            let Some(context_name) = function.context_name.clone() else {
-                continue;
-            };
-            self.functions_by_context
-                .entry(Arc::from(context_name.as_str()))
-                .or_default()
-                .push(entry);
-        }
-        for accounts in &accounts_structs {
-            self.accounts_by_name
-                .entry(Arc::from(accounts.accounts.name.as_str()))
-                .or_default()
-                .push(accounts.clone());
-        }
-        self.sort_open_entries_first();
-    }
-
-    fn insert_bridge_symbols(&mut self, symbols: Vec<BridgeSymbol>) {
-        self.symbols_by_name.reserve(symbols.len());
-        for symbol in symbols {
-            self.symbols_by_name
-                .entry(Arc::from(symbol.name.as_str()))
-                .or_default()
-                .push(IndexedSymbolEntry::from_bridge_symbol(symbol));
-        }
-        self.sort_open_entries_first();
-    }
-
-    fn symbol_entries_in_container<'a>(
-        &'a self,
-        name: &str,
-        kinds: &'a [SymbolKind],
-        container_name: &'a str,
-    ) -> impl Iterator<Item = &'a IndexedSymbolEntry> {
-        self.symbols_by_name
-            .get(name)
-            .into_iter()
-            .flat_map(|entries| entries.iter())
-            .filter(move |entry| {
-                kinds.contains(&entry.kind)
-                    && entry.container_name.as_deref() == Some(container_name)
-            })
-    }
+    entries.push(entry);
 }
 
 #[cfg(test)]

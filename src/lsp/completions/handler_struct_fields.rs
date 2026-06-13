@@ -2,7 +2,7 @@ use {
     crate::{account_members, document::ParsedDocument, workspace::WorkspaceIndex},
     std::collections::HashSet,
     tower_lsp::lsp_types::{
-        CompletionItem, CompletionItemKind, CompletionTextEdit, Position, Range, TextEdit,
+        CompletionItem, CompletionItemKind, CompletionTextEdit, Position, TextEdit,
     },
 };
 
@@ -41,13 +41,13 @@ pub(super) fn completions(
         .iter()
         .map(String::as_str)
         .collect::<HashSet<_>>();
-    let replacement_range = prefix_replacement_range(position, &context.prefix);
+    let replacement_range = super::prefix_replacement_range(position, &context.prefix);
     let mut items =
         account_members::resolved_struct_members(document, workspace_index, &context.type_name)?
             .members
             .iter()
             .filter(|member| member.completion_kind == CompletionItemKind::FIELD)
-            .filter(|member| matches_prefix(&member.name, &context.prefix))
+            .filter(|member| super::matches_completion_prefix(&member.name, &context.prefix))
             .filter(|member| !used_fields.contains(member.name.as_str()))
             .map(|member| CompletionItem {
                 label: member.name.clone(),
@@ -307,30 +307,12 @@ fn struct_type_before_open_brace(source: &str, open_brace: usize) -> Option<Stri
         .unwrap_or(0);
     let path = before.get(path_start..)?.trim_start_matches("::");
     let type_name = path.rsplit("::").next()?.trim();
-    (is_type_identifier(type_name) && path_segments_are_identifiers(path))
+    (crate::syntax::is_ascii_type_identifier(type_name) && path_segments_are_identifiers(path))
         .then(|| type_name.to_string())
 }
 
-fn is_type_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first == '_' || first.is_ascii_uppercase())
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-}
-
 fn path_segments_are_identifiers(path: &str) -> bool {
-    path.split("::").all(is_path_identifier)
-}
-
-fn is_path_identifier(value: &str) -> bool {
-    let mut chars = value.chars();
-    let Some(first) = chars.next() else {
-        return false;
-    };
-    (first == '_' || first.is_ascii_alphabetic())
-        && chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    path.split("::").all(crate::syntax::is_ascii_identifier)
 }
 
 fn literal_field_name(segment: &str) -> Option<String> {
@@ -358,22 +340,4 @@ fn has_top_level_colon(segment: &str) -> bool {
         scanner.observe(ch);
     }
     false
-}
-
-fn matches_prefix(candidate: &str, prefix: &str) -> bool {
-    candidate
-        .to_ascii_lowercase()
-        .starts_with(&prefix.to_ascii_lowercase())
-}
-
-fn prefix_replacement_range(position: Position, prefix: &str) -> Range {
-    Range {
-        start: Position {
-            line: position.line,
-            character: position
-                .character
-                .saturating_sub(prefix.chars().count() as u32),
-        },
-        end: position,
-    }
 }

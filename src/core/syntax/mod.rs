@@ -12,11 +12,21 @@ use {
 #[cfg(test)]
 use tree_sitter::{InputEdit, Point};
 
+mod identifiers;
 mod query;
 mod recovery;
 mod symbols;
+mod syn_utils;
 
+pub use identifiers::{
+    is_ascii_identifier, is_ascii_identifier_byte, is_ascii_identifier_char,
+    is_ascii_identifier_path, is_ascii_identifier_prefix, is_ascii_identifier_start,
+    is_ascii_type_identifier, is_ascii_type_path,
+};
 pub use recovery::RecoveredContextType;
+pub(crate) use syn_utils::{
+    expr_path_ends_with, expr_path_last_ident, member_is_named, member_name,
+};
 
 #[derive(Debug)]
 pub struct RustSyntax {

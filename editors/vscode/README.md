@@ -1,6 +1,6 @@
 # Seagrass for VS Code
 
-This is the local VS Code client for `seagrass`. It uses Bun for dependency management, typechecking, and building the generated extension entrypoint.
+This is the VS Code client for `seagrass`. It uses Bun for dependency management, typechecking, and building the generated extension entrypoint.
 
 The shared editor surface is defined in [`../UI_CONTRACT.md`](../UI_CONTRACT.md). Command labels, settings semantics, diagnostics transport, and startup logs should match the Zed extension.
 
@@ -13,6 +13,15 @@ code .
 ```
 
 Then launch `Run Seagrass Extension` from VS Code. The launch task runs `bun run build` before opening the extension development host.
+
+## Server Binary Resolution
+
+By default the extension first uses a matching `seagrass` binary on `PATH`. If
+the PATH binary is missing or is for a different version, it downloads the
+matching prebuilt server from the GitHub Release, verifies the `.sha256` file,
+and caches the binary under VS Code global storage. Set
+`seagrass.serverCommand` for a custom binary, or enable
+`seagrass.dev.useCargoFromCheckout` for local checkout development.
 
 ## Capabilities
 

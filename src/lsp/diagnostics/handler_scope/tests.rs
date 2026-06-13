@@ -188,6 +188,81 @@ pub fn close() -> Result<()> {
     );
 }
 
+#[test]
+fn accepts_impl_method_parameters_on_accounts_struct() {
+    // Regression: helper methods on an `#[derive(Accounts)]` struct declare
+    // their own parameters, which must not be reported as unresolved.
+    let diagnostics = collect(
+        &ParsedDocument::parse(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Make<'info> {
+    pub maker: Signer<'info>,
+}
+
+impl<'info> Make<'info> {
+    fn populate_escrow(&mut self, seed: u64, amount: u64, bump: u8) -> Result<()> {
+        self.escrow.set_inner(Escrow {
+            seed,
+            receive: amount,
+            bump,
+        });
+        Ok(())
+    }
+}
+"#,
+        )
+        .unwrap(),
+    );
+
+    assert!(
+        diagnostics.is_empty(),
+        "impl-method parameters should resolve in their own scope: {diagnostics:#?}"
+    );
+}
+
+#[test]
+fn reports_unresolved_identifier_in_impl_method() {
+    // True positives inside impl methods must still fire even though the
+    // method's own parameters are now scoped.
+    let diagnostics = collect(
+        &ParsedDocument::parse(
+            r#"
+use anchor_lang::prelude::*;
+
+#[derive(Accounts)]
+pub struct Make<'info> {
+    pub maker: Signer<'info>,
+}
+
+impl<'info> Make<'info> {
+    fn populate_escrow(&mut self, seed: u64) -> Result<()> {
+        let scoped = seed;
+        scoped = missing_value;
+        Ok(())
+    }
+}
+"#,
+        )
+        .unwrap(),
+    );
+
+    assert!(
+        diagnostics.iter().any(|diagnostic| diagnostic
+            .message
+            .contains("`missing_value` does not resolve")),
+        "unresolved identifier in impl method should still be reported: {diagnostics:#?}"
+    );
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("`seed` does not resolve")),
+        "impl-method parameter should stay quiet: {diagnostics:#?}"
+    );
+}
+
 proptest! {
     #[test]
     fn reports_generated_unresolved_handler_identifiers(

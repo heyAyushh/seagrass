@@ -100,6 +100,18 @@ const steps = [
     args: ["test", "scripts/check-lint-catalog.test.ts"],
   },
   {
+    name: "Generated Anchor support integrity",
+    cwd: repoRoot,
+    command: "bun",
+    args: ["scripts/check-generated-support.ts"],
+  },
+  {
+    name: "Generated Anchor support integrity tests",
+    cwd: repoRoot,
+    command: "bun",
+    args: ["test", "scripts/check-generated-support.test.ts"],
+  },
+  {
     name: "Lint docs index freshness",
     cwd: repoRoot,
     command: "bun",

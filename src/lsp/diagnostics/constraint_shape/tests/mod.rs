@@ -6,7 +6,7 @@ use {
         ANCHOR_SECURITY_UNCHECKED_ACCOUNT_CODE,
     },
     crate::workspace::WorkspaceIndex,
-    tower_lsp::lsp_types::{NumberOrString, Url},
+    tower_lsp::lsp_types::{DiagnosticSeverity, NumberOrString, Url},
 };
 
 mod catalog_tests;

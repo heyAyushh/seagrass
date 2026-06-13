@@ -1,4 +1,4 @@
-use {super::*, std::fs};
+use {super::*, crate::solana::artifact_paths, std::fs};
 
 #[test]
 fn parses_relevant_dependency_names_without_toml_dependency() {
@@ -46,9 +46,9 @@ spl-token = { version = "4", path = "../spl-token" }
 #[test]
 fn collects_idl_definitions_from_existing_json() {
     let root = unique_temp_dir("seagrass-bridge-idl");
-    fs::create_dir_all(root.join("target").join("idl")).unwrap();
+    fs::create_dir_all(artifact_paths::idl_dir(&root)).unwrap();
     fs::write(
-        root.join("target").join("idl").join("demo.json"),
+        artifact_paths::idl_file(&root, "demo"),
         r#"{
   "instructions": [{
     "name": "makeOffer",
@@ -156,20 +156,12 @@ fn collects_codama_program_node_definitions_from_existing_json() {
 #[test]
 fn collects_generated_artifact_bridge_symbols_without_parsing_binaries() {
     let root = unique_temp_dir("seagrass-bridge-artifacts");
-    fs::create_dir_all(root.join("target").join("deploy")).unwrap();
-    fs::create_dir_all(root.join("target").join("types")).unwrap();
+    fs::create_dir_all(artifact_paths::deploy_dir(&root)).unwrap();
+    fs::create_dir_all(artifact_paths::types_dir(&root)).unwrap();
+    fs::write(artifact_paths::deploy_file(&root, "demo"), [0_u8; 4]).unwrap();
+    fs::write(artifact_paths::keypair_file(&root, "demo"), "[]").unwrap();
     fs::write(
-        root.join("target").join("deploy").join("demo.so"),
-        [0_u8; 4],
-    )
-    .unwrap();
-    fs::write(
-        root.join("target").join("deploy").join("demo-keypair.json"),
-        "[]",
-    )
-    .unwrap();
-    fs::write(
-        root.join("target").join("types").join("demo.ts"),
+        artifact_paths::typescript_file(&root, "demo"),
         "export type Demo = {};",
     )
     .unwrap();

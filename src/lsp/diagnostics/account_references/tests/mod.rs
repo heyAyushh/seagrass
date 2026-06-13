@@ -18,7 +18,8 @@ pub struct Create<'info> {
     );
 
     let diagnostic = missing_reference_diagnostic(&diagnostics);
-    assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::ERROR));
+    // AnchorMissingAccountReference is WholeProgram provability, so it defaults to WARNING.
+    assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::WARNING));
     assert_eq!(diagnostic.range.start.line, 3);
     assert_eq!(
         diagnostic.range.end.character - diagnostic.range.start.character,
@@ -57,6 +58,66 @@ pub struct Create<'info> {
     assert!(diagnostics
         .iter()
         .all(|diagnostic| !has_missing_reference_code(diagnostic)));
+}
+
+#[test]
+fn no_missing_reference_for_account_in_composite_sub_struct() {
+    let diagnostics = collect(
+        &ParsedDocument::parse(
+            r#"
+#[derive(Accounts)]
+pub struct SharedSigners<'info> {
+    pub authority: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct Update<'info> {
+    #[account(has_one = authority)]
+    pub record: Account<'info, Record>,
+    pub signers: SharedSigners<'info>,
+}
+"#,
+        )
+        .unwrap(),
+    );
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !diagnostic.message.contains("authority")),
+        "account in composite sub-struct must not be flagged as missing reference"
+    );
+}
+
+#[test]
+fn no_false_positive_for_composite_struct_payer() {
+    let diagnostics = collect(
+        &ParsedDocument::parse(
+            r#"
+#[derive(Accounts)]
+pub struct Trade<'info> {
+    #[account(mut)]
+    pub taker: Signer<'info>,
+    pub escrow: Account<'info, Escrow>,
+}
+
+#[derive(Accounts)]
+pub struct CloseEscrow<'info> {
+    pub trade: Trade<'info>,
+    #[account(init, payer = trade.taker, space = 8)]
+    pub new_acc: Account<'info, State>,
+}
+"#,
+        )
+        .unwrap(),
+    );
+
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| !has_missing_reference_code(diagnostic)),
+        "got unexpected diagnostics: {diagnostics:?}"
+    );
 }
 
 #[test]

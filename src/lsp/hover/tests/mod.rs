@@ -318,6 +318,55 @@ pub struct NeedsSigner<'info> {
     assert!(markup.contains("Generated from"));
 }
 
+#[test]
+fn hovers_account_data_struct_space_breakdown() {
+    let source = r#"
+#[account]
+pub struct Vault {
+    pub authority: Pubkey,
+    pub amount: u64,
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let markup = hover_markup(&document, position_of(source, "struct Vault", "Vault"));
+
+    assert!(markup.contains("### Space"));
+    assert!(markup.contains("| `authority` | `Pubkey` | `32` |"));
+    assert!(markup.contains("| `amount` | `u64` | `8` |"));
+    assert!(markup.contains("8 (discriminator) + 40 = 48 bytes"));
+}
+
+#[test]
+fn hovers_space_literal_without_judgment_language() {
+    let source = r#"
+#[derive(Accounts)]
+pub struct Create<'info> {
+    #[account(init, payer = payer, space = 64)]
+    pub vault: Account<'info, Vault>,
+    pub payer: Signer<'info>,
+}
+
+#[account]
+pub struct Vault {
+    pub authority: Pubkey,
+    pub amount: u64,
+}
+"#;
+
+    let document = ParsedDocument::parse(source).unwrap();
+    let markup = hover_markup(&document, position_of(source, "space = 64", "64"));
+
+    assert!(markup.contains("Computed: `8 (discriminator) + 40 = 48 bytes`."));
+    assert!(markup.contains("Declared literal: `64 bytes`; computed requirement: `48 bytes`."));
+    for banned in ["wrong", "should", "error"] {
+        assert!(
+            !markup.to_ascii_lowercase().contains(banned),
+            "space hover must stay informational: {markup}"
+        );
+    }
+}
+
 fn hover_markup(document: &ParsedDocument, position: Position) -> String {
     let hover = hover(document, position).unwrap();
     let HoverContents::Markup(markup) = hover.contents else {

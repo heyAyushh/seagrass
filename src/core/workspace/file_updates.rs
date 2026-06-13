@@ -1,7 +1,7 @@
 use {
     super::{
-        document_indexed_references, document_indexed_symbols, files, indexed_accounts_structs,
-        indexed_functions, WorkspaceDocumentUpdate,
+        document_indexed_references, document_indexed_symbols, files, indexed_account_data_structs,
+        indexed_accounts_structs, indexed_functions, WorkspaceDocumentUpdate,
     },
     crate::{document::ParsedDocument, file_text},
     tower_lsp::lsp_types::Url,
@@ -22,6 +22,7 @@ pub(super) fn update_for_workspace_file(
     let source = file_text::read_limited_text(&path).ok().flatten()?;
     let document = ParsedDocument::parse_or_empty(source);
     let accounts_structs = indexed_accounts_structs(&document, &uri, false);
+    let account_data_structs = indexed_account_data_structs(&document, &uri, false);
     Some(WorkspaceDocumentUpdate {
         uri,
         is_open: false,
@@ -29,5 +30,6 @@ pub(super) fn update_for_workspace_file(
         references: document_indexed_references(&document),
         functions: indexed_functions(&document),
         accounts_structs,
+        account_data_structs,
     })
 }

@@ -1,0 +1,38 @@
+*seagrass-vim* Seagrass for Vim
+
+Seagrass registers the `seagrass` language server with vim-lsp for Rust buffers.
+It expects the `seagrass` binary to be installed or configured with:
+>
+  let g:seagrass_command = '/path/to/seagrass'
+<
+
+Options:
+>
+  g:seagrass_command       Server command. Default: "seagrass"
+  g:seagrass_args          Extra server args. Default: []
+  g:seagrass_cli_command   CLI command for quickfix/report commands. Default: g:seagrass_command
+  g:seagrass_cli_args      Extra CLI args. Default: []
+  g:seagrass_root_markers  Root markers. Default: Anchor.toml, Seagrass.toml, Cargo.toml
+  g:seagrass_settings      Server settings sent through vim-lsp workspace_config
+<
+
+Commands:
+>
+  :SeagrassInfo            Show the command, root markers, and transport.
+  :SeagrassStatus          Request seagrass/status from the language server.
+  :SeagrassAnalyze         Request seagrass/analyze for the current Rust buffer.
+  :SeagrassArtifacts       Request seagrass/artifacts for the current Rust buffer.
+  :SeagrassProgramReport   Request seagrass/programReport.
+  :SeagrassErrorCoverage   Request seagrass/errorCoverage.
+  :SeagrassSupportMatrix   Request seagrass/supportMatrix.
+  :SeagrassGeneratorProfile
+                           Request seagrass/generatorProfile.
+  :SeagrassLogs            Request seagrass/logs.
+  :SeagrassProjectCoverage Request seagrass/projectCoverage.
+  :SeagrassFeedback        Request seagrass/feedback.
+  :SeagrassRestart         Restart through vim-lsp when supported.
+  :SeagrassDiagnostics     Run CLI diagnostics and fill the quickfix list.
+  :SeagrassAnalyzeCli      Run CLI analyze and show the JSON report.
+<
+
+vim:tw=78:ts=2:sw=2:et:ft=help:norl:

@@ -1,7 +1,7 @@
 use {
     crate::{
         document::ParsedDocument, evidence::AccountSetEvidence,
-        lsp::scope::is_const_like_identifier, workspace::WorkspaceIndex,
+        lsp::scope::is_const_like_identifier, solana::runtime_catalog, workspace::WorkspaceIndex,
     },
     std::collections::BTreeSet,
     syn::ExprPath,
@@ -13,8 +13,8 @@ const DECLARED_PROGRAM_ID_VALUE: &str = "ID";
 const ASSOCIATED_VALUE_PATH_SEGMENTS: usize = 2;
 const LOCAL_PATH_ROOTS: &[&str] = &["crate", "self", "super"];
 const BUILTIN_ASSOCIATED_PATH_ROOTS: &[&str] = &[
-    "Clock", "None", "Option", "Pubkey", "Rent", "Some", "System", "Sysvar", "Vec", "bool", "core",
-    "i8", "i16", "i32", "i64", "i128", "isize", "std", "u8", "u16", "u32", "u64", "u128", "usize",
+    "None", "Option", "Pubkey", "Some", "System", "Sysvar", "Vec", "bool", "core", "i8", "i16",
+    "i32", "i64", "i128", "isize", "std", "u8", "u16", "u32", "u64", "u128", "usize",
 ];
 
 pub(super) fn unresolved_path_identifier(
@@ -26,10 +26,23 @@ pub(super) fn unresolved_path_identifier(
     if path.qself.is_some() {
         return None;
     }
+    if glob_import_makes_resolution_incomplete(document, workspace_index) {
+        return None;
+    }
     let segments = path_segments(path);
     match segments.as_slice() {
         [] => None,
         [identifier] if identifier_resolves(document, accounts, identifier) => None,
+        [identifier]
+            if glob_imported_identifier_resolves(
+                document,
+                workspace_index,
+                identifier,
+                &[SymbolKind::CONSTANT, SymbolKind::FUNCTION],
+            ) =>
+        {
+            None
+        }
         [identifier] => Some(identifier.to_string()),
         _ if path_resolves(document, workspace_index, &segments) => None,
         _ => Some(segments.join(PATH_SEPARATOR)),
@@ -45,10 +58,23 @@ pub(super) fn unresolved_call_identifier(
     if path.qself.is_some() {
         return None;
     }
+    if glob_import_makes_resolution_incomplete(document, workspace_index) {
+        return None;
+    }
     let segments = path_segments(path);
     match segments.as_slice() {
         [] => None,
         [identifier] if call_identifier_resolves(document, accounts, identifier) => None,
+        [identifier]
+            if glob_imported_identifier_resolves(
+                document,
+                workspace_index,
+                identifier,
+                &[SymbolKind::FUNCTION],
+            ) =>
+        {
+            None
+        }
         [identifier] => Some(identifier.to_string()),
         _ if path_resolves(document, workspace_index, &segments) => None,
         _ => Some(segments.join(PATH_SEPARATOR)),
@@ -91,6 +117,29 @@ fn path_segments(path: &ExprPath) -> Vec<String> {
         .collect()
 }
 
+fn glob_import_makes_resolution_incomplete(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+) -> bool {
+    // Open-world: a glob import can place names in scope that this file's
+    // syntax model cannot enumerate. Without workspace evidence, silence.
+    document.symbols().has_local_glob_import && workspace_index.is_none()
+}
+
+fn glob_imported_identifier_resolves(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    identifier: &str,
+    kinds: &[SymbolKind],
+) -> bool {
+    document.symbols().has_local_glob_import
+        && workspace_index.is_some_and(|index| {
+            !index
+                .symbol_locations_with_kinds(identifier, kinds)
+                .is_empty()
+        })
+}
+
 fn identifier_resolves(
     document: &ParsedDocument,
     accounts: &AccountSetEvidence<'_>,
@@ -100,7 +149,7 @@ fn identifier_resolves(
         || accounts.has_instruction_argument(identifier)
         || document_has_value_item(document, identifier)
         || document_has_imported_const_like_name(document, identifier)
-        || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&identifier)
+        || is_builtin_associated_path_root(identifier)
 }
 
 fn call_identifier_resolves(
@@ -125,23 +174,48 @@ fn path_resolves(
     }
 
     if LOCAL_PATH_ROOTS.contains(&first) {
-        return local_path_value_resolves(document, segments);
+        return local_path_value_resolves(document, workspace_index, segments);
     }
-    if document_has_imported_name(document, first) || BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&first)
-    {
+    if document_has_imported_name(document, first) || is_builtin_associated_path_root(first) {
         return true;
     }
     segments.len() == ASSOCIATED_VALUE_PATH_SEGMENTS
         && associated_path_value_resolves(document, workspace_index, segments)
 }
 
-fn local_path_value_resolves(document: &ParsedDocument, segments: &[String]) -> bool {
+fn is_builtin_associated_path_root(identifier: &str) -> bool {
+    BUILTIN_ASSOCIATED_PATH_ROOTS.contains(&identifier)
+        || runtime_catalog::by_type_ident(identifier).is_some()
+}
+
+/// Resolve a `crate::…` / `self::…` / `super::…` qualified path.
+///
+/// Three resolution strategies are attempted in order:
+///
+/// 1. **Same-file value item** — the leaf symbol is declared in this file.
+/// 2. **Declared program-id constant** — the path ends in `ID` and this file
+///    has a `declare_id!`.
+/// 3. **Same-file associated value** — `Type::CONST` where `Type` is in this
+///    file (checked without workspace context to avoid widening scope).
+/// 4. **Trie-based cross-file lookup** — the workspace module-path trie maps
+///    the module prefix to the file that declares the leaf symbol; this handles
+///    paths like `crate::state::Escrow::INIT_SPACE` where `Escrow` lives in
+///    `src/state.rs`.
+fn local_path_value_resolves(
+    document: &ParsedDocument,
+    workspace_index: Option<&WorkspaceIndex>,
+    segments: &[String],
+) -> bool {
     let Some(name) = segments.last().map(String::as_str) else {
         return false;
     };
     document_has_value_item(document, name)
         || (name == DECLARED_PROGRAM_ID_VALUE && document.symbols().declared_program_id.is_some())
         || associated_path_value_resolves(document, None, segments)
+        // Cross-file resolution: the trie maps module-path prefixes to the
+        // file that declares the symbol, resolving `crate::module::Symbol`
+        // paths without emitting a false-positive absence claim.
+        || workspace_index.is_some_and(|index| index.symbol_exists_at_qualified_path(segments))
 }
 
 fn associated_path_value_resolves(

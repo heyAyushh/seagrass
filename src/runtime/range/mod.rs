@@ -176,12 +176,12 @@ pub fn word_range_at_position(text: &str, position: Position) -> Option<Range> {
 
     let cursor = character.min(chars.len().saturating_sub(1));
     let mut start = cursor;
-    while start > 0 && is_ident_char(chars[start.saturating_sub(1)]) {
+    while start > 0 && crate::syntax::is_ascii_identifier_char(chars[start.saturating_sub(1)]) {
         start -= 1;
     }
 
     let mut end = cursor;
-    while end < chars.len() && is_ident_char(chars[end]) {
+    while end < chars.len() && crate::syntax::is_ascii_identifier_char(chars[end]) {
         end += 1;
     }
 
@@ -229,14 +229,12 @@ fn find_word_offsets(chars: &[char], word: &str) -> Vec<usize> {
                 && start
                     .checked_sub(1)
                     .and_then(|idx| chars.get(idx))
-                    .is_none_or(|ch| !is_ident_char(*ch))
-                && chars.get(end).is_none_or(|ch| !is_ident_char(*ch))
+                    .is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(*ch))
+                && chars
+                    .get(end)
+                    .is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(*ch))
         })
         .collect()
-}
-
-fn is_ident_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
 }
 
 fn offset_at(text: &str, position: Position) -> Option<usize> {

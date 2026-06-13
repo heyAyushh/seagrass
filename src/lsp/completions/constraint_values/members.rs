@@ -83,7 +83,7 @@ pub(super) fn expression_member_items_with_type(
 
 pub(super) fn member_access_prefix(value_prefix: &str) -> Option<MemberAccessPrefix<'_>> {
     let (receiver_expression, member_prefix) = value_prefix.rsplit_once('.')?;
-    if !is_identifier_prefix(member_prefix) {
+    if !crate::syntax::is_ascii_identifier_prefix(member_prefix) {
         return None;
     }
 
@@ -102,7 +102,7 @@ pub(super) fn member_access_prefix(value_prefix: &str) -> Option<MemberAccessPre
     let mut segments = receiver_expression.split('.');
     let receiver = segments
         .next()
-        .filter(|segment| is_identifier_prefix(segment))?;
+        .filter(|segment| crate::syntax::is_ascii_identifier_prefix(segment))?;
     Some(MemberAccessPrefix {
         receiver,
         member_chain: segments.map(str::to_string).collect(),
@@ -139,7 +139,7 @@ fn parsed_receiver<'a>(receiver: &'a str, member_chain: &str) -> Option<ParsedRe
     receiver
         .split('.')
         .next()
-        .filter(|name| is_identifier_prefix(name))
+        .filter(|name| crate::syntax::is_ascii_identifier_prefix(name))
         .map(|name| ParsedReceiver {
             name,
             member_chain: member_chain
@@ -169,11 +169,8 @@ fn member_item(
 }
 
 fn is_identifier_path(value: &str) -> bool {
-    !value.is_empty() && value.split('.').all(is_identifier_prefix)
-}
-
-fn is_identifier_prefix(value: &str) -> bool {
-    value
-        .chars()
-        .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+    !value.is_empty()
+        && value
+            .split('.')
+            .all(crate::syntax::is_ascii_identifier_prefix)
 }

@@ -178,6 +178,7 @@ pub struct Vault<'info> {
             )
         })
         .expect("static PDA diagnostic");
+    assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::HINT));
     assert_eq!(
         diagnostic
             .data
@@ -209,6 +210,7 @@ pub struct Vault<'info> {
             )
         })
         .expect("static PDA diagnostic");
+    assert_eq!(diagnostic.severity, Some(DiagnosticSeverity::HINT));
     assert_eq!(
         diagnostic
             .data

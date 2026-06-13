@@ -1,8 +1,11 @@
 use {
-    crate::{document::ParsedDocument, file_text, project, solana::frameworks::FrameworkId},
+    crate::{
+        anchor::idioms, document::ParsedDocument, file_text, project,
+        solana::frameworks::FrameworkId,
+    },
     cargo_toml::{DepsSet, Manifest},
     std::{
-        collections::HashSet,
+        collections::{HashMap, HashSet},
         fs,
         path::{Path, PathBuf},
     },
@@ -10,6 +13,8 @@ use {
 };
 
 const MAX_MANIFEST_DEPTH: usize = 5;
+const ANCHOR_LANG_DEPENDENCY: &str = "anchor-lang";
+const ANCHOR_PROGRAM_ATTRIBUTE: &str = "program";
 const PINOCCHIO_DEPENDENCIES: &[&str] = &[
     "pinocchio",
     "pinocchio-associated-token-account",
@@ -91,7 +96,44 @@ struct CargoManifest {
     name: Option<String>,
     lib_name: Option<String>,
     lib_crate_types: Vec<String>,
-    dependencies: HashSet<String>,
+    dependencies: CargoManifestDeps,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CargoManifestDeps {
+    names: HashSet<String>,
+    import_roots: HashMap<String, String>,
+}
+
+impl CargoManifestDeps {
+    pub fn contains_crate(&self, crate_name: &str) -> bool {
+        let expected = normalize_dependency_name(crate_name);
+        self.names
+            .iter()
+            .any(|name| normalize_dependency_name(name) == expected)
+    }
+
+    pub fn import_root_matches_crate(&self, import_root: &str, crate_name: &str) -> bool {
+        let normalized_root = normalize_dependency_name(import_root);
+        let expected_crate = normalize_dependency_name(crate_name);
+        self.import_roots
+            .get(&normalized_root)
+            .is_some_and(|dependency_package| dependency_package == &expected_crate)
+    }
+
+    fn insert_dependency(&mut self, import_root: String, package_name: Option<String>) {
+        let dependency_package = package_name.unwrap_or_else(|| import_root.clone());
+        self.names.insert(import_root.clone());
+        self.names.insert(dependency_package.clone());
+        self.import_roots.insert(
+            normalize_dependency_name(&import_root),
+            normalize_dependency_name(&dependency_package),
+        );
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &String> {
+        self.names.iter()
+    }
 }
 
 pub fn detect_for_document(uri: &Url, document: &ParsedDocument) -> Option<SolanaProgram> {
@@ -125,8 +167,10 @@ pub fn detect_for_roots(roots: &[Url]) -> Vec<SolanaProgram> {
 
 fn detect_anchor_for_document(uri: &Url, document: &ParsedDocument) -> Option<SolanaProgram> {
     let (anchor_toml_uri, anchor_toml_text) = project::nearest_anchor_toml(uri)?;
-    let program = project::preferred_program_id(uri, &anchor_toml_text)?;
     let root = anchor_toml_uri.to_file_path().ok()?.parent()?.to_path_buf();
+    let Some(program) = project::preferred_program_id(uri, &anchor_toml_text) else {
+        return detect_anchor_from_manifest(uri, document, anchor_toml_uri, root);
+    };
     Some(SolanaProgram {
         kind: SolanaProjectKind::Anchor,
         source_root: program_source_root(&root, &program.name),
@@ -141,6 +185,40 @@ fn detect_anchor_for_document(uri: &Url, document: &ParsedDocument) -> Option<So
         cluster: Some(program.cluster),
         metadata_uri: anchor_toml_uri,
         metadata_range: program.range,
+    })
+}
+
+fn detect_anchor_from_manifest(
+    uri: &Url,
+    document: &ParsedDocument,
+    anchor_toml_uri: Url,
+    root: PathBuf,
+) -> Option<SolanaProgram> {
+    let manifest_path = nearest_manifest_path(uri)?;
+    let text = file_text::read_limited_text(&manifest_path)
+        .ok()
+        .flatten()?;
+    let manifest = parse_cargo_manifest(&text)?;
+    if !manifest_is_program_library(&manifest)
+        || !manifest_or_source_declares_anchor(&manifest, document)
+    {
+        return None;
+    }
+    let package_root = manifest_path.parent()?.to_path_buf();
+    let raw_name = manifest.lib_name.as_ref().or(manifest.name.as_ref())?;
+    Some(SolanaProgram {
+        kind: SolanaProjectKind::Anchor,
+        root,
+        source_root: Some(package_root.join("src")).filter(|path| path.is_dir()),
+        name: project::normalize_program_name(raw_name),
+        id: document
+            .symbols()
+            .declared_program_id
+            .as_ref()
+            .map(|declared| declared.value.clone()),
+        cluster: None,
+        metadata_uri: anchor_toml_uri,
+        metadata_range: Range::default(),
     })
 }
 
@@ -224,11 +302,7 @@ fn detect_manifest_program(
 }
 
 fn classify_program(manifest: &CargoManifest, source_text: &str) -> Option<SolanaProjectKind> {
-    if !manifest
-        .lib_crate_types
-        .iter()
-        .any(|crate_type| crate_type == "cdylib")
-    {
+    if !manifest_is_program_library(manifest) {
         return None;
     }
 
@@ -254,7 +328,7 @@ fn classify_program(manifest: &CargoManifest, source_text: &str) -> Option<Solan
     });
     let has_native_entrypoint = source_text.contains("entrypoint!")
         || source_text.contains("process_instruction")
-        || source_text.contains("declare_id!");
+        || source_text.contains(idioms::DECLARE_ID_MACRO_INVOCATION);
     if (has_native_dependency && has_native_entrypoint)
         || source_text.contains("solana_program::entrypoint")
     {
@@ -268,17 +342,41 @@ pub fn classify_manifest_text(manifest_text: &str, source_text: &str) -> Option<
     classify_program(&manifest, source_text)
 }
 
+fn manifest_is_program_library(manifest: &CargoManifest) -> bool {
+    manifest
+        .lib_crate_types
+        .iter()
+        .any(|crate_type| crate_type == "cdylib")
+}
+
+fn manifest_or_source_declares_anchor(manifest: &CargoManifest, document: &ParsedDocument) -> bool {
+    manifest.dependencies.contains_crate(ANCHOR_LANG_DEPENDENCY)
+        || document.syntax().items.iter().any(|item| {
+            matches!(
+                item,
+                syn::Item::Mod(item_mod)
+                    if item_mod
+                        .attrs
+                        .iter()
+                        .any(|attr| attr.path().is_ident(ANCHOR_PROGRAM_ATTRIBUTE))
+            )
+        })
+}
+
+pub fn parse_manifest_deps(manifest_text: &str) -> CargoManifestDeps {
+    Manifest::from_str(manifest_text)
+        .map(|manifest| {
+            let mut dependencies = CargoManifestDeps::default();
+            extend_all_dependency_names(&manifest, &mut dependencies);
+            dependencies
+        })
+        .unwrap_or_default()
+}
+
 fn parse_cargo_manifest(text: &str) -> Option<CargoManifest> {
     let manifest = Manifest::from_str(text).ok()?;
-    let mut dependencies = HashSet::new();
-    extend_dependency_names(&manifest.dependencies, &mut dependencies);
-    extend_dependency_names(&manifest.dev_dependencies, &mut dependencies);
-    extend_dependency_names(&manifest.build_dependencies, &mut dependencies);
-    for target in manifest.target.values() {
-        extend_dependency_names(&target.dependencies, &mut dependencies);
-        extend_dependency_names(&target.dev_dependencies, &mut dependencies);
-        extend_dependency_names(&target.build_dependencies, &mut dependencies);
-    }
+    let mut dependencies = CargoManifestDeps::default();
+    extend_all_dependency_names(&manifest, &mut dependencies);
 
     Some(CargoManifest {
         name: manifest
@@ -299,16 +397,29 @@ fn parse_cargo_manifest(text: &str) -> Option<CargoManifest> {
     })
 }
 
-fn extend_dependency_names(dependencies: &DepsSet, names: &mut HashSet<String>) {
+fn extend_all_dependency_names(manifest: &Manifest, dependencies: &mut CargoManifestDeps) {
+    extend_dependency_names(&manifest.dependencies, dependencies);
+    extend_dependency_names(&manifest.dev_dependencies, dependencies);
+    extend_dependency_names(&manifest.build_dependencies, dependencies);
+    for target in manifest.target.values() {
+        extend_dependency_names(&target.dependencies, dependencies);
+        extend_dependency_names(&target.dev_dependencies, dependencies);
+        extend_dependency_names(&target.build_dependencies, dependencies);
+    }
+}
+
+fn extend_dependency_names(dependencies: &DepsSet, names: &mut CargoManifestDeps) {
     for (name, dependency) in dependencies {
-        names.insert(name.clone());
-        if let Some(package) = dependency
+        let package = dependency
             .detail()
             .and_then(|detail| detail.package.as_ref())
-        {
-            names.insert(package.clone());
-        }
+            .cloned();
+        names.insert_dependency(name.clone(), package);
     }
+}
+
+fn normalize_dependency_name(name: &str) -> String {
+    name.replace('_', "-")
 }
 
 pub fn nearest_manifest(uri: &Url) -> Option<(Url, String)> {
@@ -316,6 +427,31 @@ pub fn nearest_manifest(uri: &Url) -> Option<(Url, String)> {
     let text = file_text::read_limited_text(&path).ok().flatten()?;
     let uri = Url::from_file_path(path).ok()?;
     Some((uri, text))
+}
+
+/// Locates the nearest workspace-root `Cargo.toml` for the package that owns
+/// `uri`. This mirrors package manifest lookup, but only returns manifests with
+/// a `[workspace]` section.
+pub fn nearest_workspace_manifest(uri: &Url) -> Option<(Url, String)> {
+    let mut path = uri.to_file_path().ok()?;
+    if path.is_file() {
+        path.pop();
+    }
+
+    loop {
+        let manifest_path = path.join("Cargo.toml");
+        if manifest_path.is_file() {
+            if let Some(text) = file_text::read_limited_text(&manifest_path).ok().flatten() {
+                if Manifest::from_str(&text).is_ok_and(|manifest| manifest.workspace.is_some()) {
+                    let uri = Url::from_file_path(manifest_path).ok()?;
+                    return Some((uri, text));
+                }
+            }
+        }
+        if !path.pop() {
+            return None;
+        }
+    }
 }
 
 fn nearest_manifest_path(uri: &Url) -> Option<PathBuf> {
@@ -435,140 +571,4 @@ fn should_skip_dir(path: &Path) -> bool {
 }
 
 #[cfg(test)]
-mod tests {
-    use {
-        super::*,
-        crate::document::ParsedDocument,
-        std::{
-            env, fs,
-            time::{SystemTime, UNIX_EPOCH},
-        },
-    };
-
-    #[test]
-    fn detects_pinocchio_from_manifest_dependency() {
-        let root = unique_temp_dir("seagrass-pinocchio-project");
-        fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(
-            root.join("Cargo.toml"),
-            r#"
-[package]
-name = "pinocchio-demo"
-
-[lib]
-crate-type = ["cdylib", "lib"]
-
-[dependencies]
-pinocchio = "0.8"
-"#,
-        )
-        .unwrap();
-        let source = r#"
-use pinocchio::{entrypoint, ProgramResult};
-entrypoint!(process_instruction);
-fn process_instruction() -> ProgramResult { Ok(()) }
-"#;
-        let lib = root.join("src/lib.rs");
-        fs::write(&lib, source).unwrap();
-        let document = ParsedDocument::parse(source).unwrap();
-        let uri = Url::from_file_path(lib).unwrap();
-
-        let program = detect_for_document(&uri, &document).unwrap();
-
-        assert_eq!(program.kind, SolanaProjectKind::Pinocchio);
-        assert_eq!(program.name, "pinocchio_demo");
-        assert_eq!(program.root, root);
-    }
-
-    #[test]
-    fn detects_pinocchio_from_split_account_view_manifest_dependency() {
-        let root = unique_temp_dir("seagrass-pinocchio-view-project");
-        fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(
-            root.join("Cargo.toml"),
-            r#"
-[package]
-name = "pinocchio-view-demo"
-
-[lib]
-crate-type = ["cdylib", "lib"]
-
-[dependencies]
-solana-account-view = "3"
-solana-instruction-view = "3"
-solana-program-error = "3"
-"#,
-        )
-        .unwrap();
-        let source = r#"
-use {
-    solana_account_view::AccountView,
-    solana_address::Address,
-    solana_program_error::ProgramResult,
-};
-
-fn process_instruction(
-    program_id: &Address,
-    accounts: &mut [AccountView],
-    instruction_data: &[u8],
-) -> ProgramResult {
-    let _ = (program_id, accounts, instruction_data);
-    Ok(())
-}
-"#;
-        let lib = root.join("src/lib.rs");
-        fs::write(&lib, source).unwrap();
-        let document = ParsedDocument::parse(source).unwrap();
-        let uri = Url::from_file_path(lib).unwrap();
-
-        let program = detect_for_document(&uri, &document).unwrap();
-
-        assert_eq!(program.kind, SolanaProjectKind::Pinocchio);
-        assert_eq!(program.name, "pinocchio_view_demo");
-    }
-
-    #[test]
-    fn detects_native_solana_from_manifest_dependency() {
-        let root = unique_temp_dir("seagrass-native-project");
-        fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(
-            root.join("Cargo.toml"),
-            r#"
-[package]
-name = "native-demo"
-
-[lib]
-name = "native_sbf"
-crate-type = ["cdylib", "lib"]
-
-[dependencies]
-solana-program = "3"
-"#,
-        )
-        .unwrap();
-        let source = r#"
-use solana_program::entrypoint;
-entrypoint!(process_instruction);
-fn process_instruction() {}
-"#;
-        let lib = root.join("src/lib.rs");
-        fs::write(&lib, source).unwrap();
-        let document = ParsedDocument::parse(source).unwrap();
-        let uri = Url::from_file_path(lib).unwrap();
-
-        let program = detect_for_document(&uri, &document).unwrap();
-
-        assert_eq!(program.kind, SolanaProjectKind::NativeSolana);
-        assert_eq!(program.name, "native_sbf");
-    }
-
-    fn unique_temp_dir(name: &str) -> PathBuf {
-        let nonce = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap()
-            .as_nanos();
-        let path = env::temp_dir().join(format!("{name}-{nonce}"));
-        fs::create_dir_all(&path).unwrap();
-        path
-    }
-}
+mod tests;

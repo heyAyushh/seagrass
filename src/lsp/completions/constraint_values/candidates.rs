@@ -30,7 +30,7 @@ pub(super) fn value_items_for_slot(
         ConstraintValueKind::ProgramReference => {
             let mut items = program_reference_items(accounts, current_field, slot.key);
             if slot.key == "seeds::program" {
-                items.extend(program_ids::well_known_address_items());
+                items.extend(program_ids::well_known_address_items(document));
             }
             items
         }
@@ -76,7 +76,7 @@ pub(super) fn value_items_for_slot(
                 let mut items =
                     expression_scope::expression_scope_items(document, workspace_index, accounts);
                 if matches!(slot.key, "address" | "owner") {
-                    items.extend(program_ids::well_known_address_items());
+                    items.extend(program_ids::well_known_address_items(document));
                 }
                 items
             }

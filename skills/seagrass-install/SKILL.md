@@ -1,9 +1,9 @@
 ---
 name: seagrass-install
-description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
+description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/vim/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
 user-invocable: true
 license: MIT
-compatibility: Requires Rust 1.89.0, cargo, and one of VS Code, Zed, Helix, or a Neovim LSP client.
+compatibility: Uses a prebuilt Seagrass binary, or Rust 1.89.0 and cargo for source installs, plus one of VS Code, Zed, Vim with vim-lsp or CoC, the checked-in Neovim package, Helix, or CLI-only classic vi.
 metadata:
   author: Seagrass Maintainers
   version: 1.0.0
@@ -49,20 +49,27 @@ available unless the user has provided or configured that runtime data source.
 
 ### 1. Install the binary
 
-From a Seagrass checkout:
+Recommended prebuilt install, no Rust required:
 
 ```bash
-rustup toolchain install 1.89.0 --profile minimal --component clippy rustfmt
-cargo install --path crates/seagrass --locked
+curl -fsSL https://raw.githubusercontent.com/heyAyushh/seagrass/main/scripts/install.sh | sh
+# or manually download from https://github.com/heyAyushh/seagrass/releases
 ```
 
-From an already-published crates.io CLI package:
+From an already-published crates.io CLI package, requires Rust 1.89.0:
 
 ```bash
 cargo install seagrass-cli --locked
 ```
 
-Both commands install the user-facing binary as `seagrass`.
+From a Seagrass checkout, requires Rust 1.89.0:
+
+```bash
+rustup toolchain install 1.89.0 --profile minimal
+cargo install --path crates/seagrass --locked
+```
+
+All paths install the user-facing binary as `seagrass`.
 
 Confirm:
 
@@ -71,7 +78,7 @@ seagrass --version
 ```
 
 If crates.io install fails because the CLI package is not published yet, use the
-source-checkout install above.
+prebuilt binary or source-checkout install above.
 
 ### 2. Configure the editor
 
@@ -81,20 +88,31 @@ Pick the user's editor and apply the relevant block. Default to VSCode if unknow
 
 Install the extension. Two paths:
 
-- **Marketplace** (when published):
+- **Marketplace** (primary once published):
+  ```bash
+  # TODO: replace seagrass-local with confirmed publisher ID once Step 1 is unblocked
+  code --install-extension seagrass-local.seagrass-vscode
   ```
-  ext install seagrass-local.seagrass-vscode
+  The extension downloads the matching server binary automatically on first
+  activation; no manual server install is required when using the Marketplace
+  extension.
+
+- **VSIX from GitHub Release** (offline or pinned-version installs):
+  ```bash
+  # Download seagrass-vscode-<version>.vsix from the GitHub Release page
+  code --install-extension seagrass-vscode-<version>.vsix
   ```
+  The same automatic server download applies.
 
 - **Local development** (from a checkout of the seagrass repo):
   ```bash
-  cd editors/vscode
-  bun install
-  bun run build
+  cd editors/vscode && bun install && bun run build
   ```
-  Then point the server at the local binary. Release VSIX packaging is owned by
-  the root `scripts/package-release.ts --vscode` command; do not invent an
-  editor-local package script.
+  Then launch the VS Code extension host with F5. Set
+  `seagrass.serverCommand` to point at the local binary if the PATH binary is
+  stale. Release VSIX packaging is owned by the root
+  `scripts/package-release.ts --vscode` command; do not invent an editor-local
+  package script.
 
 Settings (`.vscode/settings.json`):
 
@@ -114,7 +132,9 @@ Settings (`.vscode/settings.json`):
 
 #### Zed
 
-`~/.config/zed/extensions.json` — add the seagrass extension. Or install via Zed's extensions panel ("Seagrass").
+Zed registry submission is not done yet. Install as a dev extension from a
+Seagrass checkout: run `zed: extensions`, choose `Install Dev Extension`, and
+select `editors/zed`.
 
 Project settings (`.zed/settings.json`):
 
@@ -146,22 +166,69 @@ name = "rust"
 language-servers = [{ name = "seagrass" }, { name = "rust-analyzer" }]
 ```
 
-#### Neovim (nvim-lspconfig)
+#### Vim
+
+Vim does not ship a built-in LSP client. Use the repo package with `vim-lsp`:
+
+```bash
+mkdir -p ~/.vim/pack/seagrass/start
+ln -sfn /path/to/seagrass/editors/vim ~/.vim/pack/seagrass/start/seagrass
+```
+
+Then install `vim-lsp` with the user's Vim plugin manager. The package registers
+`seagrass` for Rust buffers on vim-lsp's setup event. For a custom binary:
+
+```vim
+let g:seagrass_command = '/path/to/seagrass'
+```
+
+For CoC users, copy `editors/vim/coc-settings.json` into the user's CoC settings
+and do not load the vim-lsp package at the same time.
+
+The Vim package also exposes Seagrass report commands and a CLI quickfix scan:
+
+```vim
+:SeagrassStatus
+:SeagrassAnalyze
+:SeagrassDiagnostics
+```
+
+#### Neovim
+
+Use the checked-in Neovim runtime package:
+
+```bash
+mkdir -p ~/.local/share/nvim/site/pack/seagrass/start
+ln -sfn /path/to/seagrass/editors/nvim ~/.local/share/nvim/site/pack/seagrass/start/seagrass
+```
+
+It uses Neovim's built-in LSP config when available and falls back to
+`nvim-lspconfig`. Configure it before startup when needed:
 
 ```lua
-local configs = require("lspconfig.configs")
-if not configs.seagrass then
-  configs.seagrass = {
-    default_config = {
-      cmd = { "seagrass" },
-      filetypes = { "rust" },
-      root_dir = require("lspconfig.util").root_pattern("Anchor.toml", "Cargo.toml", "Seagrass.toml"),
-      settings = {},
-    },
-  }
-end
-require("lspconfig").seagrass.setup({})
+vim.g.seagrass_nvim = {
+  command = "seagrass",
+  cli_command = "seagrass",
+  settings = {
+    ["diagnostics.transport"] = "push",
+    ["diagnostics.coldPath"] = "idle",
+  },
+}
 ```
+
+Run `:SeagrassInfo`, `:SeagrassAnalyze`, or `:SeagrassDiagnostics` in a Rust
+buffer to verify the editor path.
+
+#### Classic vi
+
+Classic POSIX `vi` has no LSP client or plugin package surface. Use the CLI:
+
+```bash
+seagrass diagnostics programs/demo/src/lib.rs --json
+seagrass analyze programs/demo/src/lib.rs --json
+```
+
+If the user's `vi` is actually Vim or Neovim, use the package sections above.
 
 ### 3. Smoke check
 
@@ -189,12 +256,16 @@ pub struct Debit<'info> {
 
 #[account]
 pub struct BalanceAccount { pub value: u64 }
+
+fn must_have_value(value: Option<u64>) -> u64 {
+    value.unwrap()
+}
 EOF
 
 seagrass diagnostics /tmp/seagrass-smoke.rs --json | jq '.[] | {topic, severity, message}'
 ```
 
-Expected: at least one diagnostic with `topic: "seagrass/solana.code-quality.unchecked-arithmetic"`.
+Expected: at least one diagnostic with `topic: "seagrass/solana.code-quality.unsafe-unwrap"`.
 
 If empty:
 

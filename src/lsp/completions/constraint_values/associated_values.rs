@@ -1,5 +1,6 @@
 use {
     crate::{
+        anchor::idioms,
         document::{AssociatedValueKind, ParsedDocument},
         workspace::{WorkspaceAssociatedValue, WorkspaceIndex},
     },
@@ -7,10 +8,6 @@ use {
 };
 
 const ASSOCIATED_PATH_SEPARATOR: &str = "::";
-const INIT_SPACE_ASSOCIATED_CONST: &str = "INIT_SPACE";
-/// Provided by the `Discriminator` derive on every `#[account]` type; used in
-/// space math as `T::DISCRIMINATOR.len() + ...` (Anchor 0.31+).
-const DISCRIMINATOR_ASSOCIATED_CONST: &str = "DISCRIMINATOR";
 
 pub(super) struct AssociatedValuePrefix<'a> {
     pub(super) owner_type: &'a str,
@@ -45,7 +42,7 @@ pub(super) fn associated_value_items(
         .contains(owner_type)
     {
         items.push(associated_const_item(
-            INIT_SPACE_ASSOCIATED_CONST,
+            idioms::INIT_SPACE_ASSOCIATED_CONST,
             "Generated InitSpace associated const",
         ));
     }
@@ -116,11 +113,12 @@ fn workspace_associated_value_item(value: WorkspaceAssociatedValue) -> Option<Co
 /// often) since `DISCRIMINATOR` is used indirectly as `.len()` in space math.
 fn discriminator_const_item() -> CompletionItem {
     CompletionItem {
-        label: DISCRIMINATOR_ASSOCIATED_CONST.to_string(),
+        label: idioms::ACCOUNT_DISCRIMINATOR_ASSOCIATED_CONST.to_string(),
         kind: Some(CompletionItemKind::CONSTANT),
         detail: Some("Account discriminator bytes".to_string()),
         sort_text: Some(format!(
-            "030_anchor_associated_value_{DISCRIMINATOR_ASSOCIATED_CONST}"
+            "030_anchor_associated_value_{}",
+            idioms::ACCOUNT_DISCRIMINATOR_ASSOCIATED_CONST
         )),
         data: Some(serde_json::json!({
             "anchorCompletion": "associated-value",
@@ -162,14 +160,5 @@ fn associated_function_item(name: &str, detail: &str) -> CompletionItem {
 }
 
 fn is_type_path(value: &str) -> bool {
-    !value.is_empty()
-        && value.split(ASSOCIATED_PATH_SEPARATOR).all(|segment| {
-            segment
-                .chars()
-                .next()
-                .is_some_and(|ch| ch.is_ascii_uppercase())
-                && segment
-                    .chars()
-                    .all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
-        })
+    crate::syntax::is_ascii_type_path(value, ASSOCIATED_PATH_SEPARATOR)
 }

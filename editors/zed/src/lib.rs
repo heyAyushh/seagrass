@@ -1,6 +1,7 @@
 mod command;
 mod config;
 mod constants;
+mod labels;
 mod lsp_execute;
 mod slash;
 mod uri;
@@ -12,9 +13,10 @@ use {
             agent_mode, diagnostics_transport, initialization_options, workspace_configuration,
         },
         constants::SERVER_ID,
+        labels::{label_for_completion, label_for_symbol},
         slash::{run_seagrass_slash_command, slash_command_spec, unsupported_slash_command},
     },
-    zed_extension_api::{self as zed, settings::LspSettings},
+    zed_extension_api::{self as zed, lsp, settings::LspSettings},
 };
 
 struct SeagrassExtension;
@@ -35,7 +37,22 @@ impl zed::Extension for SeagrassExtension {
             ));
         }
 
-        server_command_for_worktree(worktree)
+        set_installation_status(
+            language_server_id,
+            zed::LanguageServerInstallationStatus::CheckingForUpdate,
+        );
+        let command = server_command_for_worktree(worktree);
+        match &command {
+            Ok(_) => set_installation_status(
+                language_server_id,
+                zed::LanguageServerInstallationStatus::None,
+            ),
+            Err(error) => set_installation_status(
+                language_server_id,
+                zed::LanguageServerInstallationStatus::Failed(error.clone()),
+            ),
+        }
+        command
     }
 
     fn language_server_initialization_options(
@@ -70,23 +87,54 @@ impl zed::Extension for SeagrassExtension {
     fn complete_slash_command_argument(
         &self,
         command: zed::SlashCommand,
-        _args: Vec<String>,
+        args: Vec<String>,
     ) -> zed::Result<Vec<zed::SlashCommandArgumentCompletion>> {
         slash_command_spec(&command.name)
-            .map(|_| Vec::new())
+            .map(|spec| slash::complete_slash_command_argument(spec, &args))
             .ok_or_else(|| unsupported_slash_command(&command.name))
     }
 
     fn run_slash_command(
         &self,
         command: zed::SlashCommand,
-        _args: Vec<String>,
+        args: Vec<String>,
         worktree: Option<&zed::Worktree>,
     ) -> zed::Result<zed::SlashCommandOutput> {
         let spec = slash_command_spec(&command.name)
             .ok_or_else(|| unsupported_slash_command(&command.name))?;
-        Ok(run_seagrass_slash_command(spec, worktree))
+        Ok(run_seagrass_slash_command(spec, args, worktree))
     }
+
+    fn label_for_completion(
+        &self,
+        language_server_id: &zed::LanguageServerId,
+        completion: lsp::Completion,
+    ) -> Option<zed::CodeLabel> {
+        label_for_completion(language_server_id, completion)
+    }
+
+    fn label_for_symbol(
+        &self,
+        language_server_id: &zed::LanguageServerId,
+        symbol: lsp::Symbol,
+    ) -> Option<zed::CodeLabel> {
+        label_for_symbol(language_server_id, symbol)
+    }
+}
+
+#[cfg(not(test))]
+fn set_installation_status(
+    language_server_id: &zed::LanguageServerId,
+    status: zed::LanguageServerInstallationStatus,
+) {
+    zed::set_language_server_installation_status(language_server_id, &status);
+}
+
+#[cfg(test)]
+fn set_installation_status(
+    _language_server_id: &zed::LanguageServerId,
+    _status: zed::LanguageServerInstallationStatus,
+) {
 }
 
 zed::register_extension!(SeagrassExtension);

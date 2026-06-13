@@ -12,6 +12,9 @@ const CURRENT_DOCUMENT_PLACEHOLDER_URI: &str = "file:///seagrass/current-documen
 pub struct DiagnosticSettings {
     pub security_diagnostics: bool,
     pub experimental_diagnostics: bool,
+    /// Mirrors `ServerSettings::artifact_diagnostics`. When false, all mtime-based
+    /// artifact diagnostics (stale/missing SBPF ELF, IDL, TypeScript) are suppressed.
+    pub artifact_diagnostics: bool,
     pub security_levels: BTreeMap<String, DiagnosticLevel>,
     pub strict_native_security: bool,
     pub typing_suppression: Option<TypingSuppressionRegion>,
@@ -56,6 +59,7 @@ impl Default for DiagnosticSettings {
         Self {
             security_diagnostics: true,
             experimental_diagnostics: true,
+            artifact_diagnostics: false,
             security_levels: BTreeMap::new(),
             strict_native_security: true,
             typing_suppression: None,
@@ -79,6 +83,9 @@ fn apply_settings(diagnostics: Vec<Diagnostic>, settings: DiagnosticSettings) ->
                 return Some(diagnostic);
             };
             if !settings.security_diagnostics && is_security_code(code) {
+                return None;
+            }
+            if !settings.artifact_diagnostics && is_artifact_code(code) {
                 return None;
             }
             if !settings.experimental_diagnostics && code == "anchor-missing-init-constraint" {
@@ -258,6 +265,12 @@ fn is_security_code(code: &str) -> bool {
     code.starts_with("anchor-security-") || code == "solana-code-quality"
 }
 
+/// Returns true for mtime-based artifact diagnostic codes that are noisy before a build runs.
+/// These codes are produced by the `artifacts` and `ecosystem` rules.
+fn is_artifact_code(code: &str) -> bool {
+    code.ends_with("-artifact") || code == "anchor-program-keypair"
+}
+
 fn config_key(diagnostic: &Diagnostic) -> Option<&str> {
     diagnostic
         .data
@@ -278,6 +291,7 @@ fn position_le(left: Position, right: Position) -> bool {
 mod tests {
     use {
         super::*,
+        crate::diagnostics::registry::AnchorDiagnosticKind,
         tower_lsp::lsp_types::{DiagnosticSeverity, Position, Range},
     };
 
@@ -360,6 +374,41 @@ mod tests {
     }
 
     #[test]
+    fn arbitrates_account_reference_diagnostics_by_registry_topic() {
+        let topic = AnchorDiagnosticKind::AnchorMissingAccountReference.topic();
+        let diagnostics = arbitrate(
+            vec![
+                diagnostic_with_topic(
+                    "anchor-account-usage",
+                    "typed handler member did not resolve",
+                    topic,
+                    "medium",
+                ),
+                diagnostic_with_topic(
+                    "anchor-missing-account-reference",
+                    "constraint account reference did not resolve",
+                    topic,
+                    "high",
+                ),
+            ],
+            DiagnosticSettings::default(),
+        );
+
+        assert_eq!(diagnostics.len(), 1);
+        assert_eq!(
+            diagnostics[0].message,
+            "constraint account reference did not resolve"
+        );
+        let related = diagnostics[0]
+            .related_information
+            .as_ref()
+            .expect("demoted diagnostic should be related");
+        assert!(related.iter().any(|info| info
+            .message
+            .contains("typed handler member did not resolve")));
+    }
+
+    #[test]
     fn keeps_different_topics_on_same_span() {
         let diagnostics = arbitrate(
             vec![
@@ -436,6 +485,7 @@ mod tests {
             DiagnosticSettings {
                 security_diagnostics: false,
                 experimental_diagnostics: false,
+                artifact_diagnostics: false,
                 security_levels: BTreeMap::new(),
                 strict_native_security: true,
                 typing_suppression: None,
@@ -470,6 +520,7 @@ mod tests {
             DiagnosticSettings {
                 security_diagnostics: true,
                 experimental_diagnostics: true,
+                artifact_diagnostics: false,
                 security_levels: levels,
                 strict_native_security: true,
                 typing_suppression: None,

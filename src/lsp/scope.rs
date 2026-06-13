@@ -354,10 +354,10 @@ fn text_value_declaration_binding(line: &str) -> Option<TextHandlerBinding> {
     })?;
     let name_end = declaration
         .char_indices()
-        .find_map(|(idx, ch)| (!is_identifier_char(ch)).then_some(idx))
+        .find_map(|(idx, ch)| (!crate::syntax::is_ascii_identifier_char(ch)).then_some(idx))
         .unwrap_or(declaration.len());
     let name = declaration.get(..name_end)?;
-    is_identifier(name).then(|| TextHandlerBinding {
+    crate::syntax::is_ascii_identifier(name).then(|| TextHandlerBinding {
         name: name.to_string(),
         type_display: text_value_declaration_type(prefix, &declaration[name_end..]),
         initializer_text: None,
@@ -389,7 +389,7 @@ fn function_keyword_at(source: &str, idx: usize) -> bool {
     let has_leading_boundary = source[..idx]
         .chars()
         .next_back()
-        .is_none_or(|ch| !is_identifier_char(ch));
+        .is_none_or(|ch| !crate::syntax::is_ascii_identifier_char(ch));
     let has_trailing_whitespace = source[end..]
         .chars()
         .next()
@@ -414,7 +414,7 @@ fn text_function_input_bindings(signature: &str) -> Vec<TextHandlerBinding> {
 fn text_function_input_binding(input: &str) -> Option<TextHandlerBinding> {
     let (name, ty) = input.trim().split_once(':')?;
     let name = name.trim().strip_prefix("mut ").unwrap_or(name.trim());
-    is_identifier(name).then(|| TextHandlerBinding {
+    crate::syntax::is_ascii_identifier(name).then(|| TextHandlerBinding {
         name: name.to_string(),
         type_display: (!ty.trim().is_empty()).then(|| ty.trim().to_string()),
         initializer_text: None,
@@ -445,7 +445,7 @@ fn text_local_binding_binding(line: &str) -> Option<TextHandlerBinding> {
     let (name, ty) = left
         .split_once(':')
         .map_or((left, None), |(name, ty)| (name.trim(), Some(ty.trim())));
-    is_identifier(name).then(|| TextHandlerBinding {
+    crate::syntax::is_ascii_identifier(name).then(|| TextHandlerBinding {
         name: name.to_string(),
         type_display: ty.filter(|ty| !ty.is_empty()).map(str::to_string),
         initializer_text: trimmed_initializer_text(right),
@@ -576,16 +576,4 @@ fn context_type_has_account_argument(arguments: &PathArguments) -> bool {
     args.args
         .iter()
         .any(|arg| matches!(arg, GenericArgument::Type(Type::Path(_))))
-}
-
-fn is_identifier(text: &str) -> bool {
-    let mut chars = text.chars();
-    chars
-        .next()
-        .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
-        && chars.all(is_identifier_char)
-}
-
-fn is_identifier_char(ch: char) -> bool {
-    ch.is_ascii_alphanumeric() || ch == '_'
 }

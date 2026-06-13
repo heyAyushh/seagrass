@@ -167,7 +167,34 @@ where
                 },
             )
         })
+        .map(enrich_lint_metadata::<V>)
         .collect()
+}
+
+fn enrich_lint_metadata<'ast, V>(mut diagnostic: Diagnostic) -> Diagnostic
+where
+    V: LintVisitor<'ast>,
+{
+    let mut object = match diagnostic.data.take() {
+        Some(serde_json::Value::Object(object)) => object,
+        Some(value) => {
+            diagnostic.data = Some(value);
+            return diagnostic;
+        }
+        None => serde_json::Map::new(),
+    };
+
+    object
+        .entry("confidence".to_string())
+        .or_insert_with(|| serde_json::Value::String(V::CONFIDENCE.as_str().to_string()));
+    object
+        .entry("applicability".to_string())
+        .or_insert_with(|| serde_json::Value::String(V::APPLICABILITY.as_str().to_string()));
+    object
+        .entry("topic".to_string())
+        .or_insert_with(|| serde_json::Value::String(V::TOPIC.to_string()));
+    diagnostic.data = Some(serde_json::Value::Object(object));
+    diagnostic
 }
 
 #[derive(Debug, Clone)]
