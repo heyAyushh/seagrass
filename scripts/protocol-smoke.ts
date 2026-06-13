@@ -13,6 +13,7 @@ type JsonObject = JsonRecord;
 const SERVER_EXIT_TIMEOUT_MILLIS = 5_000;
 const LSP_REQUEST_TIMEOUT_MILLIS = 45_000;
 const MIN_ANCHOR_TUTORIAL_SMOKE_FIXTURES = 3;
+const NATIVE_DEPLOY_ARTIFACT_SUFFIX = "target/deploy/native_counter_program.so";
 
 type LspMessage = {
   jsonrpc?: "2.0";
@@ -1264,6 +1265,10 @@ function documentSymbolsInclude(symbols: DocumentSymbol[] | null | undefined, pa
     return tail.length === 0 || documentSymbolsInclude(symbol.children, tail);
   }
   return false;
+}
+
+function pathEndsWith(path: string, suffix: string): boolean {
+  return path.replaceAll("\\", "/").endsWith(suffix);
 }
 
 function sourceFixture(name: string, relativePath: string, source: string): SmokeFixture {
@@ -2591,7 +2596,7 @@ try {
     nativeProgram?.kind !== "native" ||
     nativeDeploy?.status !== "invalid" ||
     typeof nativeDeployPath !== "string" ||
-    !nativeDeployPath.endsWith("target/deploy/native_counter_program.so")
+    !pathEndsWith(nativeDeployPath, NATIVE_DEPLOY_ARTIFACT_SUFFIX)
   ) {
     throw new Error(`native Solana artifacts command returned wrong evidence: ${JSON.stringify(nativeReport)}`);
   }
