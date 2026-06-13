@@ -33,7 +33,8 @@ keep future entries aligned with release-plz output.
 - ci: guard silent editor and installer control surfaces with settings,
   suppression, `Seagrass.toml`, release-parity, and install-smoke checks.
 - ci: allow slower Windows server-portability runs to finish the full Seagrass
-  library test suite instead of canceling at the previous 30-minute cap.
+  library test suite instead of canceling at the previous 30-minute cap, and
+  install rustfmt explicitly for cross-platform protocol formatting smoke.
 - test: add fetch-on-demand external corpus infrastructure, vendor permissively
   licensed corpus programs, and promote the corpus scan into a hard gate.
 - lsp: apply `seagrass-ignore` and workspace lint allowances to open-document

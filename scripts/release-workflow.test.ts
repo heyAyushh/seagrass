@@ -7,6 +7,7 @@ import { repoRoot } from "./release-evidence.ts";
 
 const releaseWorkflowPath = resolve(repoRoot, ".github/workflows/release.yaml");
 const releasePlzWorkflowPath = resolve(repoRoot, ".github/workflows/release-plz.yaml");
+const installSmokeWorkflowPath = resolve(repoRoot, ".github/workflows/install-smoke.yaml");
 const prWorkflowPath = resolve(repoRoot, ".github/workflows/pr.yaml");
 const rustToolchainPath = resolve(repoRoot, "rust-toolchain.toml");
 const verifyProductionPath = resolve(repoRoot, "scripts/verify-production.ts");
@@ -14,6 +15,7 @@ const packageReleasePath = resolve(repoRoot, "scripts/package-release.ts");
 const releaseReadinessDocPath = resolve(repoRoot, "docs/release-readiness.md");
 const seagrassWorkflowPaths = [
   ".github/workflows/fuzz.yaml",
+  ".github/workflows/install-smoke.yaml",
   ".github/workflows/perf.yaml",
   ".github/workflows/pr.yaml",
   ".github/workflows/property-tests.yaml",
@@ -155,6 +157,18 @@ describe("release workflow packaging", () => {
     expect(portability).toContain("timeout-minutes: 60");
     expect(portability).toContain("cargo build -p seagrass-cli --locked");
     expect(workflow).toContain("cargo test -p seagrass --locked");
+  });
+
+  test("installs rustfmt for protocol smoke formatting", () => {
+    const workflow = readFileSync(installSmokeWorkflowPath, "utf8");
+    const smokeBuild = workflowSection(
+      workflow,
+      "  smoke-build:\n    name: Build smoke",
+      "  smoke-release:",
+    );
+
+    expect(smokeBuild).toContain("components: rustfmt");
+    expect(smokeBuild).toContain("bun scripts/protocol-smoke.ts");
   });
 
   test("runs PR guardrails when release evidence workflows change", () => {
