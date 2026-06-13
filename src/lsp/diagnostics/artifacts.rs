@@ -666,6 +666,7 @@ solana-program = "3"
             &Url::from_file_path(lib).unwrap(),
             None,
         );
+        let source_suffix = Path::new("src").join("lib.rs");
 
         assert!(!has_code(&diagnostics, "anchor-idl-artifact"));
         assert!(!has_code(&diagnostics, "anchor-types-artifact"));
@@ -677,7 +678,7 @@ solana-program = "3"
                         && data["buildCommand"] == "cargo build-sbf"
                         && data["newerInput"]
                             .as_str()
-                            .is_some_and(|path| path.ends_with("src/lib.rs"))
+                            .is_some_and(|path| Path::new(path).ends_with(&source_suffix))
                 })
         }));
     }

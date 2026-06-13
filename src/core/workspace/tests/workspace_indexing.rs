@@ -110,7 +110,7 @@ fn workspace_symbols_include_no_build_idl_bridge_definitions() {
         .unwrap();
     let idl_uri_suffix = format!(
         "/{}",
-        artifact_paths::idl_file(Path::new(""), "escrow").display()
+        url_path_suffix(&artifact_paths::idl_file(Path::new(""), "escrow"))
     );
 
     let root_uri = Url::from_directory_path(&root).unwrap();
@@ -134,6 +134,10 @@ fn workspace_symbols_include_no_build_idl_bridge_definitions() {
     assert_eq!(maker.type_display.as_deref(), Some("pubkey"));
 
     let _ = fs::remove_dir_all(root);
+}
+
+fn url_path_suffix(path: &Path) -> String {
+    path.to_string_lossy().replace('\\', "/")
 }
 
 #[test]
