@@ -35,6 +35,8 @@ keep future entries aligned with release-plz output.
 - ci: allow slower Windows server-portability runs to finish the full Seagrass
   library test suite instead of canceling at the previous 30-minute cap, and
   install rustfmt explicitly for cross-platform protocol formatting smoke.
+- ci: serialize black-box JSON-RPC LSP integration tests so platform runners do
+  not race cargo-backed server startup or diagnostic publication.
 - test: add fetch-on-demand external corpus infrastructure, vendor permissively
   licensed corpus programs, and promote the corpus scan into a hard gate.
 - lsp: apply `seagrass-ignore` and workspace lint allowances to open-document

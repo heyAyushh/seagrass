@@ -5,7 +5,10 @@ use {
         io::{Read, Write},
         path::{Path, PathBuf},
         process::{Child, ChildStdin, Command, Stdio},
-        sync::mpsc::{self, Receiver},
+        sync::{
+            mpsc::{self, Receiver},
+            Mutex, MutexGuard, OnceLock,
+        },
         thread,
         time::{Duration, Instant, SystemTime, UNIX_EPOCH},
     },
@@ -116,6 +119,7 @@ pub fn process(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
 
 #[test]
 fn jsonrpc_lsp_formats_and_reports_framework_diagnostics() {
+    let _guard = serialized_jsonrpc_test();
     let workspace = TestWorkspace::new("jsonrpc-lsp");
     let mut client = LspClient::spawn();
     let initialize = client.request(
@@ -314,6 +318,7 @@ fn jsonrpc_lsp_formats_and_reports_framework_diagnostics() {
 
 #[test]
 fn jsonrpc_suppression_applies_to_push_diagnostics() {
+    let _guard = serialized_jsonrpc_test();
     let workspace = TestWorkspace::new("jsonrpc-push-suppression");
     let mut client = LspClient::spawn();
     let initialize = client.request(
@@ -348,6 +353,7 @@ fn jsonrpc_suppression_applies_to_push_diagnostics() {
 
 #[test]
 fn jsonrpc_suppression_applies_to_pull_parse_pause_seagrass_toml_and_cargo() {
+    let _guard = serialized_jsonrpc_test();
     let workspace = TestWorkspace::new("jsonrpc-pull-suppression");
     let mut client = LspClient::spawn();
     client.request(
@@ -494,6 +500,16 @@ fn value_contains_string(value: &Value, expected_text: &str) -> bool {
             .any(|entry| value_contains_string(entry, expected_text)),
         _ => false,
     }
+}
+
+fn serialized_jsonrpc_test() -> MutexGuard<'static, ()> {
+    // These tests spawn the real cargo-backed stdio server. Keep them serialized
+    // so runner-specific Cargo and rustfmt contention cannot starve LSP replies.
+    static JSONRPC_TEST_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+    JSONRPC_TEST_LOCK
+        .get_or_init(|| Mutex::new(()))
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 struct LspClient {
