@@ -1,110 +1,119 @@
-![Seagrass](docs/assets/readme-banner.png)
+<p align="center">
+  <img src="docs/assets/readme-banner.png" alt="Seagrass — static analysis for Solana programs" />
+</p>
 
-# Seagrass
+<p align="center">
+  <strong>Static analysis for Solana programs — catches the Anchor and account-model mistakes that compile cleanly and break on-chain.</strong><br/>
+  Codebase intelligence for Solana programs, in your editor, on the command line, and in CI.
+</p>
 
-Codebase intelligence for Solana programs: Seagrass is rust-analyzer for
-Solana. It reads your program the way the runtime does — accounts,
-constraints, CPIs, PDAs, deploy artifacts — and tells you what's wrong before
-mainnet does. Use it in your editor, on the command line, or in CI.
+<p align="center">
+  <a href="LICENSE"><img alt="MIT" src="https://img.shields.io/badge/license-MIT-blue.svg" /></a>
+  <img alt="version 0.1.2" src="https://img.shields.io/badge/version-0.1.2-green.svg" />
+  <img alt="rust 1.89.0" src="https://img.shields.io/badge/rust-1.89.0-orange.svg" />
+</p>
 
-Generic Rust tooling can't see Solana's failure modes: an `init` with no payer, an account you forgot to check the owner on, a PDA seeded with attacker-controlled input. Seagrass is built to catch exactly those.
-
-## See it work
-
-Here's an incomplete Anchor account struct — it compiles, but it won't run:
-
-```rust
-#[derive(Accounts)]
-pub struct Create<'info> {
-    #[account(init)]
-    pub state: Account<'info, State>,
-    pub payer: Signer<'info>,
-}
-```
-
-```bash
-$ seagrass diagnostics create.rs --json
-```
-
-Seagrass finds two problems, points at the exact line, and tells you how to fix each:
-
-```
-ERROR  anchor.init.missing-payer   line 3
-  `init` is missing `payer = ...`; add the account that funds initialization.
-
-ERROR  anchor.constraint.shape     line 3
-  `state` uses `init` but `Create` has no `Program<'info, System>` field
-  named `system_program`.
-```
-
-The full JSON carries the byte range, a `docsUrl` for each rule, severity, and a `confidence` level — everything an editor or an agent needs to act. Exit code is `1` when any ERROR is found, `0` when clean, `2` on bad input.
+---
 
 ## Install
 
-Needs Rust 1.89+ (pinned in `rust-toolchain.toml`).
-
-```bash
+```sh
 cargo install --git https://github.com/heyAyushh/seagrass seagrass-cli --locked
 ```
 
-That gives you a `seagrass` binary. Point it at a file or a directory:
+Needs Rust 1.89+ (pinned in `rust-toolchain.toml`). Now point it at your code:
 
-```bash
-seagrass diagnostics programs/ --json          # all diagnostics, machine-readable
-seagrass diagnostics programs/ --sarif > s.sarif   # for GitHub code scanning
-seagrass analyze programs/ --json              # structure: accounts, instructions, CPIs, PDAs
-cat lib.rs | seagrass diagnostics --stdin --stdin-path lib.rs --json
+```sh
+seagrass diagnostics programs/ --json
 ```
 
-Run `seagrass` with **no arguments** and it speaks LSP over stdio — that's how the editors below talk to it.
+Run `seagrass` with **no arguments** and it speaks LSP over stdio — that's how the editors below connect.
 
-Using an AI agent? Point it at [`skills/seagrass-install/SKILL.md`](skills/seagrass-install/SKILL.md) to install and wire up Seagrass for your editor.
+---
+
+## See it work
+
+This struct compiles. It won't run — an `init` account needs a `payer`:
+
+```rust
+#[derive(Accounts)]
+pub struct CreateVault<'info> {
+    #[account(init, space = 8 + 64)]   // no payer =
+    pub vault: Account<'info, Vault>,
+    pub user: Signer<'info>,
+}
+```
+
+```sh
+seagrass diagnostics src/lib.rs --json
+```
+
+```json
+{
+  "code": "anchor-init-constraints",
+  "topic": "seagrass/anchor.init.missing-payer",
+  "severity": "ERROR",
+  "message": "Anchor `init` constraint is missing `payer = ...`; add the account that funds initialization.",
+  "docsUrl": "..."
+}
+```
+
+Exit code is `1` when something's wrong, `0` when clean. The same finding shows up **inline in your editor with a one-click fix** — before you ever run `anchor build`.
+
+Why generic Rust tools miss this: rust-analyzer and clippy understand Rust, not Solana's account model. A missing `payer`, an unchecked account `owner`, a PDA seeded only from byte literals — all valid Rust, all on-chain bugs. Seagrass reads the same source your compiler does and reasons about that layer.
+
+---
 
 ## What it catches
 
-Four families, each linking to a per-rule doc with examples and false-positive boundaries — browse the full set in [`docs/lints/`](docs/lints/):
+40 rules in four families. Every rule has a stable ID, a doc page, and a suppression form — browse them all in [`docs/lints/`](docs/lints/).
 
-- **Anchor constraints** — `init` missing payer/space/seeds/bump, malformed constraint expressions, unused `Context<T>` accounts, SPL token-vs-mint mismatches.
-- **Security** (every framework) — unchecked owners and signers, unverified CPI program IDs, static PDA seeds and seed collisions, needless `mut`, type cosplay.
-- **Code quality** — lamport loss on close, double-init, unchecked arithmetic, deserialization overflows, accounts read stale after a CPI.
-- **Artifact freshness** — IDL drift, deploy keypair vs declared program ID, generated types out of sync, static SBF compute floors from the `.text` section.
+- **Anchor constraints** — `init` missing payer or space, constraints that reference accounts that don't exist, malformed constraint expressions.
+- **Security** — unchecked account owners and signers, CPIs to unvalidated program IDs, collidable PDA seeds, type cosplay. (Several carry [sealevel-attacks](https://github.com/coral-xyz/sealevel-attacks) references.)
+- **Code quality** — unchecked arithmetic on lamports, non-canonical bump seeds, accounts read stale after a CPI, lamport loss on close.
+- **Artifacts** — IDL drift, deploy keypair vs declared program ID, stale generated types.
+
+Silence a finding with the narrowest scope that fits:
+
+```rust
+// seagrass-allow: seagrass/security.owner-check     // this line only
+// seagrass-ignore-file                              // whole file, all rules
+```
+
+---
 
 ## What it won't do
 
-Seagrass only claims what its evidence supports, and it tells you which layer a
-finding came from. Runtime intelligence is an evidence-ingestion boundary:
+> Seagrass never invents runtime facts from code shape.
 
-- **Static** — from your source, manifests, IDLs, and SBF binaries. Always on.
-- **Preflight** — validates Anchor runtime errors (data length, account count/owner, init status, discriminator, realloc) from explicit invocation JSON, e.g. a tx simulation. No validator required. Try it: `seagrass preflight fixtures/preflight/anchor-errors.json --json`.
-- **Runtime** — real compute usage, traffic, live account state. These stay `unavailable` unless you feed in telemetry. Seagrass will **not** invent them from code shape.
+Runtime intelligence is an evidence-ingestion boundary.
 
-Details in [`docs/product-framing.md`](docs/product-framing.md).
+Every finding tells you which evidence layer it came from:
+
+- **Static** — your source, manifests, IDLs, and binaries. Always on; the basis for all 40 rules.
+- **Preflight** — validates 12 Anchor runtime errors from an invocation JSON file, no validator required. Try it: `seagrass preflight fixtures/preflight/anchor-errors.json --json`.
+- **Runtime** — live compute, traffic, account state. Stays unavailable unless you feed in telemetry.
+
+More in [`docs/product-framing.md`](docs/product-framing.md).
+
+---
 
 ## In your editor
 
-Seagrass runs next to rust-analyzer — rust-analyzer keeps doing generic Rust, Seagrass adds the Anchor/Solana layer (constraint-aware completion, account-space hovers/lenses, quick fixes, account/CPI navigation).
+Seagrass runs alongside rust-analyzer — rust-analyzer keeps doing generic Rust, Seagrass adds the Anchor/Solana layer: constraint-aware completion, account-space hovers, quick fixes, and account/CPI navigation.
 
-- **VS Code** — local dev extension (not on the Marketplace yet): `cd editors/vscode && bun install && bun run check && code .`, then run **Run Seagrass Extension**. → [`editors/vscode/README.md`](editors/vscode/README.md)
-- **Zed** — `zed: extensions` → **Install Dev Extension** → pick `editors/zed`. It finds `seagrass` on your `PATH` (or builds it), pushes diagnostics live. → [`editors/zed/README.md`](editors/zed/README.md)
-- **Vim** — install `vim-lsp`, then load the repo package at `editors/vim`; it registers `seagrass` for Rust buffers. → [`editors/vim/README.md`](editors/vim/README.md)
-- **Anything else** — command `seagrass`, language `rust`, root markers `Anchor.toml` / `Seagrass.toml` / `Cargo.toml`.
+- **VS Code** — local dev extension: `cd editors/vscode && bun install && bun run check && code .`, then run **Run Seagrass Extension**. → [`editors/vscode/README.md`](editors/vscode/README.md)
+- **Zed** — `zed: extensions` → **Install Dev Extension** → pick `editors/zed`. → [`editors/zed/README.md`](editors/zed/README.md)
+- **Vim** — install `vim-lsp`, then load the package at `editors/vim`. → [`editors/vim/README.md`](editors/vim/README.md)
+- **Neovim** — load the runtime package at `editors/nvim`; it uses built-in LSP config or `nvim-lspconfig`. → [`editors/nvim/README.md`](editors/nvim/README.md)
+- **vi** — classic POSIX `vi` is CLI-only. → [`editors/vi/README.md`](editors/vi/README.md)
+- **Any LSP client** — command `seagrass`, language `rust`, root markers `Anchor.toml` / `Seagrass.toml` / `Cargo.toml`.
 
-## For agents
+---
 
-Seagrass is built to be an agent's source of truth for Anchor/Solana code —
-drop-in prompts and the LSP command payloads (`instructionSummary`,
-`programReport`, `proposeAssists`) are in [`docs/agents.md`](docs/agents.md),
-or pull version-matched instructions from the installed binary:
+## For agents & CI
 
-```bash
-seagrass skills list --json
-seagrass skills get audit --full
-```
-
-The installed-CLI discovery contract is documented in
-[`docs/agent-skill-help.md`](docs/agent-skill-help.md).
-
-In CI, install the same way and upload SARIF:
+In CI, lint and upload SARIF for GitHub code scanning:
 
 ```yaml
 - run: cargo install --git https://github.com/heyAyushh/seagrass seagrass-cli --locked
@@ -115,24 +124,51 @@ In CI, install the same way and upload SARIF:
     sarif_file: seagrass.sarif
 ```
 
-Bundled agent skills (Claude Code, Cursor, OpenCode) live in `skills/` — symlink them into `~/.claude/skills` and see [`docs/agents.md`](docs/agents.md).
+Ready-made workflow: [`docs/templates/seagrass-diagnostics-sarif.yml`](docs/templates/seagrass-diagnostics-sarif.yml).
+
+For AI agents, Seagrass ships six skills (`install`, `lint`, `explain`, `suppress`, `debug-fp`, `audit`) and serves version-matched instructions straight from the binary:
+
+```sh
+seagrass skills list --json
+seagrass skills get audit --full
+```
+
+Full agent guide: [`docs/agents.md`](docs/agents.md). The installed-CLI
+discovery contract is documented in
+[`docs/agent-skill-help.md`](docs/agent-skill-help.md).
+
+---
 
 ## Framework support
 
-Anchor v1/v2 gets the deep treatment: constraints, init safety, completions, IDL checks. Native Solana and Pinocchio get the same security and artifact coverage wherever the semantics line up (owner/type/signer/CPI/PDA), just without Anchor-specific syntax. The exact matrix and its enforcement tests are in [`docs/framework-parity.md`](docs/framework-parity.md).
+| Framework | Deep Anchor analysis | Security diagnostics |
+|---|---|---|
+| Anchor v1 | ✅ | ✅ |
+| Anchor v2 (preview) | ✅ | ✅ |
+| Native Solana | — | ✅ |
+| Pinocchio | — | ✅ |
+
+Anchor gets the deep treatment — constraints, completions, IDL and keypair checks. Native and Pinocchio share the same security engine (owner, type, signer, CPI) where the semantics line up. Findings are account-scoped: a guard on one account never silences another in the same handler. Details in [`docs/framework-parity.md`](docs/framework-parity.md).
+
+---
 
 ## Develop
 
-```bash
-rustup toolchain install 1.89.0 --profile minimal --component clippy rustfmt
-cargo test -p seagrass                 # core
-bun scripts/verify-production.ts       # full gate: LSP, editors, versions, hygiene
+```sh
+cargo test -p seagrass              # core tests
+bun scripts/verify-production.ts    # full gate: LSP, editors, versions, hygiene
 ```
 
-[`CONTRIBUTING.md`](CONTRIBUTING.md) has the full workflow and quality gates. If you're driving an AI agent to work on Seagrass itself, [`AGENTS.md`](AGENTS.md) is its guide to this repo.
+[`CONTRIBUTING.md`](CONTRIBUTING.md) has the full workflow and quality gates. Driving an agent on Seagrass itself? [`AGENTS.md`](AGENTS.md) is its guide to the repo.
+
+---
 
 ## License
 
-MIT — see [`LICENSE`](LICENSE). Seagrass is an unofficial fork based on [`otter-sec/anchor`](https://github.com/otter-sec/anchor); [`NOTICE`](NOTICE) carries the Apache-2.0 attribution for the generated Anchor support catalogs.
+MIT — see [`LICENSE`](LICENSE). Seagrass builds on generated Anchor catalogs derived from [otter-sec/anchor](https://github.com/otter-sec/anchor) (Apache-2.0); [`NOTICE`](NOTICE) carries the attribution.
 
-![Seagrass workspace](docs/assets/readme-footer.png)
+---
+
+<p align="center">
+  <img src="docs/assets/readme-footer.png" alt="" />
+</p>

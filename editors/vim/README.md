@@ -38,6 +38,8 @@ Defaults:
 ```vim
 let g:seagrass_command = 'seagrass'
 let g:seagrass_args = []
+let g:seagrass_cli_command = 'seagrass'
+let g:seagrass_cli_args = []
 let g:seagrass_root_markers = ['Anchor.toml', 'Seagrass.toml', 'Cargo.toml']
 let g:seagrass_settings = {
       \ 'diagnostics.security.enabled': v:true,
@@ -49,16 +51,56 @@ let g:seagrass_settings = {
       \ 'editor.inlineValues.enabled': v:false,
       \ 'telemetry.completion.enabled': v:true,
       \ 'telemetry.diagnostics.enabled': v:true,
-      \ 'inlayHints.enabled': v:true,
       \ 'workspaceIndex.enabled': v:true,
       \ 'trace.server': v:false,
       \ }
 ```
 
-Use `:SeagrassInfo` to inspect the package command and root markers.
+`g:seagrass_command` and `g:seagrass_args` are for the LSP server process.
+`g:seagrass_cli_command` and `g:seagrass_cli_args` are for explicit CLI-backed
+commands such as quickfix scans. Split them when your server runs through
+`cargo run` but your CLI command is an installed `seagrass` binary.
+
+## Commands
+
+LSP-backed commands require the `seagrass` vim-lsp server to be running:
+
+```vim
+:SeagrassInfo
+:SeagrassStatus
+:SeagrassAnalyze
+:SeagrassAnalyze instruction=initialize context=Create
+:SeagrassArtifacts
+:SeagrassProgramReport
+:SeagrassErrorCoverage
+:SeagrassSupportMatrix
+:SeagrassGeneratorProfile
+:SeagrassLogs
+:SeagrassProjectCoverage
+:SeagrassFeedback
+:SeagrassRestart
+```
+
+CLI-backed commands work even when vim-lsp is not attached:
+
+```vim
+:SeagrassDiagnostics
+:SeagrassDiagnostics programs/demo/src/lib.rs
+:SeagrassAnalyzeCli
+:SeagrassAnalyzeCli programs/demo/src/lib.rs
+```
+
+`:SeagrassDiagnostics` runs `seagrass diagnostics <path> --json`, converts
+Seagrass ranges into Vim quickfix locations, and opens the quickfix list when
+findings exist.
 
 ## CoC
 
 If you use CoC instead of vim-lsp, copy
 [`coc-settings.json`](./coc-settings.json) into your Vim or project CoC settings.
 Do not load `plugin/seagrass.vim` at the same time; choose one LSP transport.
+
+## Neovim
+
+Neovim users can use this Vim package through vim-lsp, but the first-class
+Neovim package lives in [`../nvim`](../nvim).

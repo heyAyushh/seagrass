@@ -18,17 +18,44 @@ const expectedCommands = new Map([
 ]);
 const expectedZedSlashCommands = new Map([
   ["seagrass-status", "Show Seagrass server status"],
+  ["seagrass-analyze", "Show Seagrass analysis report"],
   ["seagrass-coverage", "Show Seagrass project coverage"],
   ["seagrass-artifacts", "Show Seagrass artifact report"],
+  ["seagrass-program-report", "Show Seagrass program report"],
+  ["seagrass-error-coverage", "Show Anchor error coverage"],
+  ["seagrass-support-matrix", "Show Anchor support matrix"],
+  ["seagrass-generator-profile", "Show Anchor generator profile"],
+  ["seagrass-logs", "Show recent Seagrass logs"],
   ["seagrass-feedback", "Show Seagrass feedback URL"],
 ]);
+const expectedVimFamilyCommands = [
+  "SeagrassInfo",
+  "SeagrassStatus",
+  "SeagrassAnalyze",
+  "SeagrassArtifacts",
+  "SeagrassProgramReport",
+  "SeagrassErrorCoverage",
+  "SeagrassSupportMatrix",
+  "SeagrassGeneratorProfile",
+  "SeagrassLogs",
+  "SeagrassProjectCoverage",
+  "SeagrassFeedback",
+  "SeagrassRestart",
+  "SeagrassDiagnostics",
+  "SeagrassAnalyzeCli",
+];
 
 const packageJson = JSON.parse(read("vscode/package.json"));
 const vscodeSource = read("vscode/src/extension.ts");
 const zedToml = read("zed/extension.toml");
 const vimPlugin = read("vim/plugin/seagrass.vim");
 const vimReadme = read("vim/README.md");
+const vimHelp = read("vim/doc/seagrass.txt");
 const vimCocSettings = JSON.parse(read("vim/coc-settings.json"));
+const nvimReadme = read("nvim/README.md");
+const nvimLua = read("nvim/lua/seagrass/init.lua");
+const nvimPlugin = read("nvim/plugin/seagrass.lua");
+const viReadme = read("vi/README.md");
 const feedbackManifest = read("feedback.toml");
 const contract = read("UI_CONTRACT.md");
 const recognizedSettingsManifest = JSON.parse(read("recognized-settings.json"));
@@ -124,7 +151,17 @@ assert(vimPlugin.includes("'Seagrass.toml'"), "Vim package should use Seagrass.t
 assert(vimPlugin.includes("'Cargo.toml'"), "Vim package should use Cargo.toml as a root marker");
 assert(vimPlugin.includes("'editor.client': 'vim'"), "Vim package should identify the editor client");
 assert(vimPlugin.includes("'diagnostics.transport': 'push'"), "Vim package should default diagnostics transport to push");
+assert(!vimPlugin.includes("'inlayHints.enabled'"), "Vim package should not send unrecognized inlayHints.enabled settings");
+assert(vimPlugin.includes("workspace/executeCommand"), "Vim package should expose Seagrass execute-command reports");
+assert(vimPlugin.includes("setqflist"), "Vim package should expose CLI diagnostics through quickfix");
+assert(vimPlugin.includes("json_decode"), "Vim package should parse CLI diagnostic JSON");
 assert(contract.includes("client as `vim`"), "UI contract should document the Vim client id");
+for (const command of expectedVimFamilyCommands) {
+  assert(vimPlugin.includes(`command!`) && vimPlugin.includes(command), `Vim package is missing :${command}`);
+  assert(vimReadme.includes(`:${command}`), `Vim README is missing :${command}`);
+  assert(vimHelp.includes(`:${command}`), `Vim help is missing :${command}`);
+  assert(contract.includes(`:${command}`), `UI contract is missing :${command}`);
+}
 
 const cocServer = vimCocSettings.languageserver.seagrass;
 assert(cocServer.command === "seagrass", "CoC template should start the seagrass binary");
@@ -140,6 +177,28 @@ assert(
   cocServer.settings.seagrass["diagnostics.transport"] === "push",
   "CoC template should keep push diagnostics",
 );
+
+assert(nvimReadme.includes("vim.lsp.config"), "Neovim README should document the built-in LSP path");
+assert(nvimReadme.includes("nvim-lspconfig"), "Neovim README should document the fallback LSP path");
+assert(nvimPlugin.includes("vim.g.loaded_seagrass_nvim"), "Neovim package should guard duplicate loads");
+assert(nvimLua.includes('["editor.client"] = "nvim"'), "Neovim package should identify the editor client");
+assert(nvimLua.includes('["diagnostics.transport"] = "push"'), "Neovim package should default diagnostics transport to push");
+assert(nvimLua.includes("vim.lsp.config"), "Neovim package should support built-in LSP config");
+assert(nvimLua.includes("nvim-lspconfig"), "Neovim package should support nvim-lspconfig fallback");
+assert(nvimLua.includes("workspace/executeCommand"), "Neovim package should expose Seagrass execute-command reports");
+assert(nvimLua.includes("setqflist"), "Neovim package should expose CLI diagnostics through quickfix");
+assert(nvimLua.includes("LSP_TO_EDITOR_INDEX_OFFSET"), "Neovim quickfix conversion should name the LSP/editor index offset");
+assert(contract.includes("client as `nvim`"), "UI contract should document the Neovim client id");
+for (const command of expectedVimFamilyCommands) {
+  assert(nvimLua.includes(`"${command}"`), `Neovim package is missing :${command}`);
+  assert(nvimReadme.includes(`:${command}`), `Neovim README is missing :${command}`);
+}
+
+assert(viReadme.includes("Classic POSIX `vi`"), "vi README should state the classic vi boundary");
+assert(viReadme.includes("seagrass diagnostics"), "vi README should document CLI diagnostics");
+assert(viReadme.includes("../vim"), "vi README should point Vim users to the Vim package");
+assert(viReadme.includes("../nvim"), "vi README should point Neovim users to the Neovim package");
+assert(contract.includes("Classic POSIX `vi` has no LSP"), "UI contract should document vi as CLI-only");
 assertSettingsParity();
 
 function assertSettingsParity() {

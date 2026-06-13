@@ -63,6 +63,34 @@ Zed Assistant slash commands mirror the server-owned command surface:
 - `/seagrass-logs`
 - `/seagrass-feedback`
 
+Vim and Neovim packages expose the same command surface with editor-native
+command names:
+
+- `:SeagrassInfo`
+- `:SeagrassStatus`
+- `:SeagrassAnalyze`
+- `:SeagrassArtifacts`
+- `:SeagrassProgramReport`
+- `:SeagrassErrorCoverage`
+- `:SeagrassSupportMatrix`
+- `:SeagrassGeneratorProfile`
+- `:SeagrassLogs`
+- `:SeagrassProjectCoverage`
+- `:SeagrassFeedback`
+- `:SeagrassRestart`
+- `:SeagrassDiagnostics`
+- `:SeagrassAnalyzeCli`
+
+`:SeagrassDiagnostics` is the Vim-family quickfix fallback for users who want
+an explicit scan or whose LSP transport is not attached. It must call
+`seagrass diagnostics <path> --json` and translate LSP zero-based ranges into
+editor one-based quickfix locations. `:SeagrassAnalyzeCli` prints
+`seagrass analyze <path> --json` into a scratch buffer.
+
+Classic POSIX `vi` has no LSP or plugin surface to reach parity with. Document
+it as CLI-only and point users whose `vi` is Vim or Neovim to the real
+Vim-family packages.
+
 ## Status Surface
 
 When an editor exposes a persistent status surface, use `Seagrass` as the label and keep it diagnostic-aware for the active file:
@@ -100,6 +128,12 @@ Quick fixes may carry snippet tabstops when an editor advertises
 `experimental.snippetTextEdit`. VS Code advertises this capability and applies
 the server's raw snippet text. Editors that do not advertise it receive the same
 materialized edit text without tabstops.
+The Vim package relies on vim-lsp for completion, hover, definition, formatting,
+code actions, symbols, and diagnostics; Seagrass-specific report commands use
+`workspace/executeCommand` through vim-lsp when available and identify the
+client as `vim`. The Neovim package uses the built-in LSP client, identifies the
+client as `nvim`, prefers `vim.lsp.config`/`vim.lsp.enable`, and falls back to
+`nvim-lspconfig` on older installs.
 
 Formatting should use the server's `textDocument/formatting` response. Adapters
 should not shell out to `rustfmt` independently for Seagrass-managed documents.

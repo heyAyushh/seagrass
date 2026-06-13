@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- client: add first-class Vim-family command surfaces with Vim quickfix CLI
+  scans, a Neovim runtime package, and explicit classic vi CLI-only guidance.
 - client: add Zed-native completion and symbol labels, language-server
   installation status reporting, and file/instruction arguments for document
   slash commands.

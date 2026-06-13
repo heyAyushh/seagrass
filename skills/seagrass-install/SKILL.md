@@ -3,7 +3,7 @@ name: seagrass-install
 description: Install and configure the Seagrass language server for the user's editor. Use when the user says "install seagrass", "set up seagrass", "configure seagrass in vscode/zed/vim/helix/neovim", "get seagrass running", or "wire seagrass into my project". Walks through source or release binary install, per-editor configuration, and a smoke check that real diagnostics fire on a Solana program.
 user-invocable: true
 license: MIT
-compatibility: Uses a prebuilt Seagrass binary, or Rust 1.89.0 and cargo for source installs, plus one of VS Code, Zed, Vim with vim-lsp or CoC, Helix, or a Neovim LSP client.
+compatibility: Uses a prebuilt Seagrass binary, or Rust 1.89.0 and cargo for source installs, plus one of VS Code, Zed, Vim with vim-lsp or CoC, the checked-in Neovim package, Helix, or CLI-only classic vi.
 metadata:
   author: Seagrass Maintainers
   version: 1.0.0
@@ -185,22 +185,50 @@ let g:seagrass_command = '/path/to/seagrass'
 For CoC users, copy `editors/vim/coc-settings.json` into the user's CoC settings
 and do not load the vim-lsp package at the same time.
 
-#### Neovim (nvim-lspconfig)
+The Vim package also exposes Seagrass report commands and a CLI quickfix scan:
+
+```vim
+:SeagrassStatus
+:SeagrassAnalyze
+:SeagrassDiagnostics
+```
+
+#### Neovim
+
+Use the checked-in Neovim runtime package:
+
+```bash
+mkdir -p ~/.local/share/nvim/site/pack/seagrass/start
+ln -sfn /path/to/seagrass/editors/nvim ~/.local/share/nvim/site/pack/seagrass/start/seagrass
+```
+
+It uses Neovim's built-in LSP config when available and falls back to
+`nvim-lspconfig`. Configure it before startup when needed:
 
 ```lua
-local configs = require("lspconfig.configs")
-if not configs.seagrass then
-  configs.seagrass = {
-    default_config = {
-      cmd = { "seagrass" },
-      filetypes = { "rust" },
-      root_dir = require("lspconfig.util").root_pattern("Anchor.toml", "Cargo.toml", "Seagrass.toml"),
-      settings = {},
-    },
-  }
-end
-require("lspconfig").seagrass.setup({})
+vim.g.seagrass_nvim = {
+  command = "seagrass",
+  cli_command = "seagrass",
+  settings = {
+    ["diagnostics.transport"] = "push",
+    ["diagnostics.coldPath"] = "idle",
+  },
+}
 ```
+
+Run `:SeagrassInfo`, `:SeagrassAnalyze`, or `:SeagrassDiagnostics` in a Rust
+buffer to verify the editor path.
+
+#### Classic vi
+
+Classic POSIX `vi` has no LSP client or plugin package surface. Use the CLI:
+
+```bash
+seagrass diagnostics programs/demo/src/lib.rs --json
+seagrass analyze programs/demo/src/lib.rs --json
+```
+
+If the user's `vi` is actually Vim or Neovim, use the package sections above.
 
 ### 3. Smoke check
 
