@@ -15,10 +15,11 @@ use {
 pub(crate) fn execute_lsp_command_for_worktree(
     spec: SlashCommandSpec,
     worktree: &zed::Worktree,
+    arguments: Vec<zed::serde_json::Value>,
 ) -> Result<zed::serde_json::Value, String> {
     let server_command = server_command_for_worktree(worktree)?;
     let root_uri = file_uri_from_path(&worktree.root_path());
-    let messages = lsp_execute_command_messages(&root_uri, spec.lsp_command);
+    let messages = lsp_execute_command_messages(&root_uri, spec.lsp_command, arguments);
     let config = zed::serde_json::json!({
         "command": server_command.command,
         "args": server_command.args,
@@ -48,7 +49,11 @@ pub(crate) fn execute_lsp_command_for_worktree(
     parse_lsp_result(&output.stdout, EXECUTE_COMMAND_REQUEST_ID)
 }
 
-fn lsp_execute_command_messages(root_uri: &str, lsp_command: &str) -> zed::serde_json::Value {
+fn lsp_execute_command_messages(
+    root_uri: &str,
+    lsp_command: &str,
+    arguments: Vec<zed::serde_json::Value>,
+) -> zed::serde_json::Value {
     zed::serde_json::json!({
         "initialize": lsp_message(&zed::serde_json::json!({
             "jsonrpc": JSON_RPC_VERSION,
@@ -75,7 +80,7 @@ fn lsp_execute_command_messages(root_uri: &str, lsp_command: &str) -> zed::serde
             "method": "workspace/executeCommand",
             "params": {
                 "command": lsp_command,
-                "arguments": []
+                "arguments": arguments
             }
         })),
         "shutdown": lsp_message(&zed::serde_json::json!({
@@ -160,6 +165,7 @@ mod tests {
         let messages = lsp_execute_command_messages(
             "file:///tmp/seagrass",
             slash_command_spec(SLASH_COVERAGE).unwrap().lsp_command,
+            Vec::new(),
         );
         let initialize = messages["initialize"].as_str().unwrap();
         let execute = messages["execute"].as_str().unwrap();
@@ -169,6 +175,23 @@ mod tests {
         assert!(execute.contains("\"method\":\"workspace/executeCommand\""));
         assert!(execute.contains("\"command\":\"seagrass/projectCoverage\""));
         assert!(shutdown.contains("\"method\":\"shutdown\""));
+    }
+
+    #[test]
+    fn slash_command_payload_includes_execute_arguments() {
+        let messages = lsp_execute_command_messages(
+            "file:///tmp/seagrass",
+            "seagrass/analyze",
+            vec![zed::serde_json::json!({
+                "uri": "file:///tmp/seagrass/programs/demo/src/lib.rs",
+                "instruction": "initialize",
+            })],
+        );
+        let execute = messages["execute"].as_str().unwrap();
+
+        assert!(execute.contains("\"command\":\"seagrass/analyze\""));
+        assert!(execute.contains("\"uri\":\"file:///tmp/seagrass/programs/demo/src/lib.rs\""));
+        assert!(execute.contains("\"instruction\":\"initialize\""));
     }
 
     #[test]

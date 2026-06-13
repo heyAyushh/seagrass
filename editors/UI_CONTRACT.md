@@ -53,8 +53,14 @@ adapters may expose native commands or slash commands, but they should request
 Zed Assistant slash commands mirror the server-owned command surface:
 
 - `/seagrass-status`
+- `/seagrass-analyze`
 - `/seagrass-coverage`
 - `/seagrass-artifacts`
+- `/seagrass-program-report`
+- `/seagrass-error-coverage`
+- `/seagrass-support-matrix`
+- `/seagrass-generator-profile`
+- `/seagrass-logs`
 - `/seagrass-feedback`
 
 ## Status Surface
@@ -88,6 +94,7 @@ The Vim package defaults to `push` through vim-lsp or CoC and identifies the
 client as `vim`.
 
 Completion should wake on the first typed identifier character and on space in Anchor-aware contexts. The server advertises those trigger characters and then applies its own semantic gate, so normal Rust stays quiet while Anchor prefixes and delimiter-space flows do not wait for editor minimum-word heuristics.
+Zed adapters should also provide native code labels for Seagrass completions and symbols when the extension API exposes label hooks; these labels are presentation-only and must not replace the server-owned completion, hover, symbol, or navigation payloads.
 
 Quick fixes may carry snippet tabstops when an editor advertises
 `experimental.snippetTextEdit`. VS Code advertises this capability and applies

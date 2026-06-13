@@ -6,12 +6,23 @@ use {
             SLASH_SUPPORT_MATRIX, START_SERVER_FIRST,
         },
         lsp_execute::execute_lsp_command_for_worktree,
+        uri::file_uri_from_path,
     },
     zed_extension_api as zed,
 };
 
 const SUMMARY_PREVIEW_LIMIT: usize = 5;
 const RAW_JSON_HEADING: &str = "\n\nRaw JSON\n```json\n";
+const PATH_COMPLETION_LABEL: &str = "<path>";
+const PATH_COMPLETION_TEXT: &str = "programs/demo/src/lib.rs";
+const INSTRUCTION_COMPLETION_TEXT: &str = "instruction=initialize";
+const FUNCTION_COMPLETION_TEXT: &str = "function=initialize";
+const CONTEXT_COMPLETION_TEXT: &str = "context=Create";
+const INSTRUCTION_KEY: &str = "instruction";
+const FUNCTION_KEY: &str = "function";
+const CONTEXT_KEY: &str = "context";
+const URI_KEY: &str = "uri";
+const PATH_KEY: &str = "path";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlashCommandSpec {
@@ -69,8 +80,26 @@ pub(crate) fn slash_command_spec(name: &str) -> Option<SlashCommandSpec> {
         .find(|spec| spec.name == name)
 }
 
+pub(crate) fn complete_slash_command_argument(
+    spec: SlashCommandSpec,
+    args: &[String],
+) -> Vec<zed::SlashCommandArgumentCompletion> {
+    if !supports_document_argument(spec) {
+        return Vec::new();
+    }
+
+    let query = args.last().map(String::as_str).unwrap_or("");
+    slash_argument_completions()
+        .into_iter()
+        .filter(|completion| {
+            completion.label.starts_with(query) || completion.new_text.starts_with(query)
+        })
+        .collect()
+}
+
 pub(crate) fn run_seagrass_slash_command(
     spec: SlashCommandSpec,
+    args: Vec<String>,
     worktree: Option<&zed::Worktree>,
 ) -> zed::SlashCommandOutput {
     let Some(worktree) = worktree else {
@@ -80,7 +109,8 @@ pub(crate) fn run_seagrass_slash_command(
         );
     };
 
-    match execute_lsp_command_for_worktree(spec, worktree) {
+    let arguments = lsp_arguments_for_slash_command(spec, &args, &worktree.root_path());
+    match execute_lsp_command_for_worktree(spec, worktree, arguments) {
         Ok(result) => zed::SlashCommandOutput {
             text: slash_command_result_text(spec, &result),
             sections: Vec::new(),
@@ -346,6 +376,157 @@ pub(crate) fn unsupported_slash_command(name: &str) -> String {
     format!("unsupported Seagrass slash command `{name}`")
 }
 
+fn supports_document_argument(spec: SlashCommandSpec) -> bool {
+    matches!(spec.name, SLASH_ANALYZE | SLASH_ARTIFACTS)
+}
+
+fn slash_argument_completions() -> Vec<zed::SlashCommandArgumentCompletion> {
+    [
+        (PATH_COMPLETION_LABEL, PATH_COMPLETION_TEXT),
+        (INSTRUCTION_COMPLETION_TEXT, INSTRUCTION_COMPLETION_TEXT),
+        (FUNCTION_COMPLETION_TEXT, FUNCTION_COMPLETION_TEXT),
+        (CONTEXT_COMPLETION_TEXT, CONTEXT_COMPLETION_TEXT),
+    ]
+    .into_iter()
+    .map(|(label, new_text)| zed::SlashCommandArgumentCompletion {
+        label: label.to_string(),
+        new_text: new_text.to_string(),
+        run_command: false,
+    })
+    .collect()
+}
+
+fn lsp_arguments_for_slash_command(
+    spec: SlashCommandSpec,
+    args: &[String],
+    worktree_root: &str,
+) -> Vec<zed::serde_json::Value> {
+    if !supports_document_argument(spec) {
+        return Vec::new();
+    }
+
+    let parsed = ParsedSlashArgs::from_args(args);
+    let mut object = zed::serde_json::Map::new();
+    if let Some(uri) = parsed.uri(worktree_root) {
+        object.insert(URI_KEY.to_string(), zed::serde_json::Value::String(uri));
+    }
+    if let Some(instruction) = parsed.instruction {
+        object.insert(
+            INSTRUCTION_KEY.to_string(),
+            zed::serde_json::Value::String(instruction),
+        );
+    }
+    if let Some(function) = parsed.function {
+        object.insert(
+            FUNCTION_KEY.to_string(),
+            zed::serde_json::Value::String(function),
+        );
+    }
+    if let Some(context) = parsed.context {
+        object.insert(
+            CONTEXT_KEY.to_string(),
+            zed::serde_json::Value::String(context),
+        );
+    }
+
+    (!object.is_empty())
+        .then_some(zed::serde_json::Value::Object(object))
+        .into_iter()
+        .collect()
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct ParsedSlashArgs {
+    uri: Option<String>,
+    path: Option<String>,
+    instruction: Option<String>,
+    function: Option<String>,
+    context: Option<String>,
+}
+
+impl ParsedSlashArgs {
+    fn from_args(args: &[String]) -> Self {
+        let mut parsed = Self::default();
+        let mut pending_key: Option<&str> = None;
+
+        for arg in args
+            .iter()
+            .map(String::as_str)
+            .filter(|arg| !arg.is_empty())
+        {
+            if let Some(key) = pending_key.take() {
+                parsed.set_key_value(key, arg);
+                continue;
+            }
+
+            if matches!(arg, "--instruction" | "-i") {
+                pending_key = Some(INSTRUCTION_KEY);
+                continue;
+            }
+            if matches!(arg, "--function" | "-f") {
+                pending_key = Some(FUNCTION_KEY);
+                continue;
+            }
+            if matches!(arg, "--context" | "-c") {
+                pending_key = Some(CONTEXT_KEY);
+                continue;
+            }
+
+            if let Some((key, value)) = arg.split_once('=') {
+                parsed.set_key_value(key.trim_start_matches('-'), value);
+                continue;
+            }
+
+            if parsed.path.is_none() && parsed.uri.is_none() {
+                parsed.set_path_or_uri(arg);
+            }
+        }
+
+        parsed
+    }
+
+    fn set_key_value(&mut self, key: &str, value: &str) {
+        if value.is_empty() {
+            return;
+        }
+
+        match key {
+            INSTRUCTION_KEY => self.instruction = Some(value.to_string()),
+            FUNCTION_KEY => self.function = Some(value.to_string()),
+            CONTEXT_KEY => self.context = Some(value.to_string()),
+            URI_KEY => self.uri = Some(value.to_string()),
+            PATH_KEY => self.set_path_or_uri(value),
+            _ => {}
+        }
+    }
+
+    fn set_path_or_uri(&mut self, value: &str) {
+        if value.starts_with("file://") {
+            self.uri = Some(value.to_string());
+        } else {
+            self.path = Some(value.to_string());
+        }
+    }
+
+    fn uri(&self, worktree_root: &str) -> Option<String> {
+        self.uri.clone().or_else(|| {
+            self.path
+                .as_deref()
+                .map(|path| path_uri(worktree_root, path))
+        })
+    }
+}
+
+fn path_uri(worktree_root: &str, path: &str) -> String {
+    let path = std::path::Path::new(path);
+    let full_path = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        std::path::Path::new(worktree_root).join(path)
+    };
+    file_uri_from_path(&full_path.to_string_lossy())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -427,6 +608,76 @@ mod tests {
 
         assert!(text.contains("needs the active document URI"));
         assert!(text.contains("seagrass analyze <path> --json"));
+    }
+
+    #[test]
+    fn slash_argument_completions_are_document_command_only() {
+        let completions = complete_slash_command_argument(
+            slash_command_spec(SLASH_ANALYZE).unwrap(),
+            &["inst".to_string()],
+        );
+        assert!(completions.iter().any(|completion| {
+            completion.new_text == INSTRUCTION_COMPLETION_TEXT && !completion.run_command
+        }));
+
+        assert!(
+            complete_slash_command_argument(slash_command_spec(SLASH_STATUS).unwrap(), &[])
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn slash_arguments_convert_relative_path_to_execute_command_uri() {
+        let args = lsp_arguments_for_slash_command(
+            slash_command_spec(SLASH_ANALYZE).unwrap(),
+            &[
+                "programs/demo/src/lib.rs".to_string(),
+                "instruction=initialize".to_string(),
+                "context=Create".to_string(),
+            ],
+            "/tmp/workspace",
+        );
+
+        assert_eq!(
+            args,
+            vec![zed::serde_json::json!({
+                "uri": "file:///tmp/workspace/programs/demo/src/lib.rs",
+                "instruction": "initialize",
+                "context": "Create"
+            })]
+        );
+    }
+
+    #[test]
+    fn slash_arguments_accept_file_uri_and_flag_pairs() {
+        let args = lsp_arguments_for_slash_command(
+            slash_command_spec(SLASH_ANALYZE).unwrap(),
+            &[
+                "uri=file:///tmp/workspace/programs/demo/src/lib.rs".to_string(),
+                "--function".to_string(),
+                "initialize".to_string(),
+            ],
+            "/tmp/workspace",
+        );
+
+        assert_eq!(
+            args,
+            vec![zed::serde_json::json!({
+                "uri": "file:///tmp/workspace/programs/demo/src/lib.rs",
+                "function": "initialize"
+            })]
+        );
+    }
+
+    #[test]
+    fn slash_arguments_do_not_touch_workspace_commands() {
+        let args = lsp_arguments_for_slash_command(
+            slash_command_spec(SLASH_COVERAGE).unwrap(),
+            &["programs/demo/src/lib.rs".to_string()],
+            "/tmp/workspace",
+        );
+
+        assert!(args.is_empty());
     }
 
     #[test]
