@@ -186,7 +186,7 @@ fn workspace_file_update_indexes_only_changed_rust_file() {
     let root = unique_temp_dir("seagrass-incremental-index");
     let program_src = root.join("programs").join("demo").join("src");
     fs::create_dir_all(&program_src).unwrap();
-    let source_path = program_src.join("lib.rs");
+    let source_path = program_src.join("state.rs");
     fs::write(&source_path, "#[account]\npub struct IncrementalState {}").unwrap();
     let root_uri = Url::from_directory_path(&root).unwrap();
     let uri = Url::from_file_path(&source_path).unwrap();
@@ -198,11 +198,21 @@ fn workspace_file_update_indexes_only_changed_rust_file() {
     index.upsert_open_document_update(update);
 
     assert_eq!(index.symbol_locations("IncrementalState")[0].uri, uri);
+    assert!(index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "state".to_string(),
+        "IncrementalState".to_string(),
+    ]));
     assert_eq!(index.indexed_file_count(), 1);
 
     index.remove_document(&uri);
 
     assert!(index.symbol_locations("IncrementalState").is_empty());
+    assert!(!index.symbol_exists_at_qualified_path(&[
+        "crate".to_string(),
+        "state".to_string(),
+        "IncrementalState".to_string(),
+    ]));
     assert_eq!(index.indexed_file_count(), 0);
 
     let _ = fs::remove_dir_all(root);

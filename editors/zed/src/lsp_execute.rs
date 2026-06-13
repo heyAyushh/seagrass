@@ -12,14 +12,24 @@ use {
     zed_extension_api as zed,
 };
 
+pub(crate) const LSP_DOCUMENT_LANGUAGE_ID: &str = "rust";
+pub(crate) const LSP_SYNTHETIC_DOCUMENT_VERSION: i32 = 1;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct LspDocumentSnapshot {
+    pub(crate) uri: String,
+    pub(crate) text: String,
+}
+
 pub(crate) fn execute_lsp_command_for_worktree(
     spec: SlashCommandSpec,
     worktree: &zed::Worktree,
     arguments: Vec<zed::serde_json::Value>,
+    document: Option<LspDocumentSnapshot>,
 ) -> Result<zed::serde_json::Value, String> {
     let server_command = server_command_for_worktree(worktree)?;
     let root_uri = file_uri_from_path(&worktree.root_path());
-    let messages = lsp_execute_command_messages(&root_uri, spec.lsp_command, arguments);
+    let messages = lsp_execute_command_messages(&root_uri, spec.lsp_command, arguments, document);
     let config = zed::serde_json::json!({
         "command": server_command.command,
         "args": server_command.args,
@@ -53,6 +63,7 @@ fn lsp_execute_command_messages(
     root_uri: &str,
     lsp_command: &str,
     arguments: Vec<zed::serde_json::Value>,
+    document: Option<LspDocumentSnapshot>,
 ) -> zed::serde_json::Value {
     zed::serde_json::json!({
         "initialize": lsp_message(&zed::serde_json::json!({
@@ -74,6 +85,18 @@ fn lsp_execute_command_messages(
             "method": "initialized",
             "params": {}
         })),
+        "didOpen": document.map(|document| lsp_message(&zed::serde_json::json!({
+            "jsonrpc": JSON_RPC_VERSION,
+            "method": "textDocument/didOpen",
+            "params": {
+                "textDocument": {
+                    "uri": document.uri,
+                    "languageId": LSP_DOCUMENT_LANGUAGE_ID,
+                    "version": LSP_SYNTHETIC_DOCUMENT_VERSION,
+                    "text": document.text
+                }
+            }
+        }))),
         "execute": lsp_message(&zed::serde_json::json!({
             "jsonrpc": JSON_RPC_VERSION,
             "id": EXECUTE_COMMAND_REQUEST_ID,
@@ -158,7 +181,13 @@ fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::constants::SLASH_COVERAGE, crate::slash::slash_command_spec};
+    use {
+        super::*,
+        crate::{
+            constants::{NODE_LSP_EXECUTE_SCRIPT, SLASH_COVERAGE},
+            slash::slash_command_spec,
+        },
+    };
 
     #[test]
     fn slash_command_payload_dispatches_execute_command() {
@@ -166,6 +195,7 @@ mod tests {
             "file:///tmp/seagrass",
             slash_command_spec(SLASH_COVERAGE).unwrap().lsp_command,
             Vec::new(),
+            None,
         );
         let initialize = messages["initialize"].as_str().unwrap();
         let execute = messages["execute"].as_str().unwrap();
@@ -186,12 +216,34 @@ mod tests {
                 "uri": "file:///tmp/seagrass/programs/demo/src/lib.rs",
                 "instruction": "initialize",
             })],
+            None,
         );
         let execute = messages["execute"].as_str().unwrap();
 
         assert!(execute.contains("\"command\":\"seagrass/analyze\""));
         assert!(execute.contains("\"uri\":\"file:///tmp/seagrass/programs/demo/src/lib.rs\""));
         assert!(execute.contains("\"instruction\":\"initialize\""));
+    }
+
+    #[test]
+    fn slash_command_payload_can_open_document_before_execute() {
+        let messages = lsp_execute_command_messages(
+            "file:///tmp/seagrass",
+            "seagrass/analyze",
+            vec![zed::serde_json::json!({
+                "uri": "file:///tmp/seagrass/programs/demo/src/lib.rs",
+            })],
+            Some(LspDocumentSnapshot {
+                uri: "file:///tmp/seagrass/programs/demo/src/lib.rs".to_string(),
+                text: "#[program]\npub mod demo {}".to_string(),
+            }),
+        );
+        let did_open = messages["didOpen"].as_str().unwrap();
+
+        assert!(did_open.contains("\"method\":\"textDocument/didOpen\""));
+        assert!(did_open.contains("\"languageId\":\"rust\""));
+        assert!(did_open.contains("#[program]"));
+        assert!(NODE_LSP_EXECUTE_SCRIPT.contains("config.messages.didOpen"));
     }
 
     #[test]

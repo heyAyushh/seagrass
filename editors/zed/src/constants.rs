@@ -47,6 +47,9 @@ function handleMessage(message) {
   if (message.id === config.initializeId && !sentExecute) {
     sentExecute = true;
     send(config.messages.initialized);
+    if (config.messages.didOpen) {
+      send(config.messages.didOpen);
+    }
     send(config.messages.execute);
   } else if (message.id === config.executeId && !sentShutdown) {
     sentShutdown = true;

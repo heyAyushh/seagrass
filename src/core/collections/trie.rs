@@ -67,6 +67,15 @@ impl<S: Ord + Clone, V> Trie<S, V> {
         node.value = Some(value);
     }
 
+    /// Remove and return the value stored at `key`.
+    ///
+    /// Empty branches are pruned so later prefix lookups cannot observe stale
+    /// paths after an index entry is deleted or moved.
+    pub fn remove(&mut self, key: impl IntoIterator<Item = S>) -> Option<V> {
+        let key = key.into_iter().collect::<Vec<_>>();
+        remove_from_node(&mut self.root, &key)
+    }
+
     /// Exact-match lookup. Returns `None` when the key was never inserted.
     pub fn get(&self, key: impl IntoIterator<Item = S>) -> Option<&V> {
         let mut node = &self.root;
@@ -161,6 +170,19 @@ fn collect_subtree<'a, S: Clone, V>(
         collect_subtree(child, current_key, results);
         current_key.pop();
     }
+}
+
+fn remove_from_node<S: Ord, V>(node: &mut TrieNode<S, V>, key: &[S]) -> Option<V> {
+    let Some((symbol, rest)) = key.split_first() else {
+        return node.value.take();
+    };
+
+    let child = node.children.get_mut(symbol)?;
+    let removed = remove_from_node(child, rest);
+    if child.value.is_none() && child.children.is_empty() {
+        node.children.remove(symbol);
+    }
+    removed
 }
 
 /// Recursively find `(ancestor_key, descendant_key)` proper-prefix pairs.
@@ -259,6 +281,38 @@ mod tests {
         trie.insert("key".chars(), 1u32);
         trie.insert("key".chars(), 99u32);
         assert_eq!(trie.get("key".chars()), Some(&99));
+    }
+
+    #[test]
+    fn remove_returns_stored_value_and_clears_key() {
+        let mut trie = Trie::new();
+        trie.insert("key".chars(), 7u32);
+
+        assert_eq!(trie.remove("key".chars()), Some(7));
+        assert_eq!(trie.get("key".chars()), None);
+        assert_eq!(trie.remove("key".chars()), None);
+    }
+
+    #[test]
+    fn remove_keeps_neighboring_prefix_entries() {
+        let mut trie = Trie::new();
+        trie.insert("an".chars(), 1u32);
+        trie.insert("ant".chars(), 2u32);
+        trie.insert("anteater".chars(), 3u32);
+
+        assert_eq!(trie.remove("ant".chars()), Some(2));
+        assert_eq!(trie.get("an".chars()), Some(&1));
+        assert_eq!(trie.get("anteater".chars()), Some(&3));
+        assert_eq!(trie.longest_prefix_of("anteater".chars()), Some((8, &3)));
+    }
+
+    #[test]
+    fn remove_prunes_stale_longest_prefix_branch() {
+        let mut trie = Trie::new();
+        trie.insert(["crate", "state"], "state.rs");
+
+        assert_eq!(trie.remove(["crate", "state"]), Some("state.rs"));
+        assert_eq!(trie.longest_prefix_of(["crate", "state", "Escrow"]), None);
     }
 
     // collect_with_prefix ------------------------------------------------------

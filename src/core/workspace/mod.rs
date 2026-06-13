@@ -189,9 +189,6 @@ impl WorkspaceIndex {
                         continue;
                     };
                     let document = ParsedDocument::parse_or_empty(source);
-                    // Record the module path before inserting so the trie is
-                    // populated during the same build pass.
-                    index.record_module_path_for_root(&uri);
                     index.insert_parsed_document(uri, &document, false);
                 }
             }

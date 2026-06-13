@@ -130,7 +130,12 @@ function archiveNameFailures(
     if (!expectedExtension) {
       return [];
     }
-    const archiveName = releaseArchiveName(sampleVersion, platform.platform, platform.archs[0]);
+    const archiveName = releaseArchiveName(
+      sampleVersion,
+      platform.platform,
+      platform.archs[0],
+      platform.linuxLibc,
+    );
     const expected = `seagrass-${sampleVersion}-${platform.target}${expectedExtension}`;
     return archiveName === expected
       ? []

@@ -3,7 +3,9 @@ import { describe, expect, test } from "bun:test";
 import {
   SUPPORTED_RELEASE_PLATFORMS,
   cachedBinaryName,
+  detectLinuxLibc,
   expectedSha256,
+  linuxLibcFromReport,
   releaseArchiveName,
   releaseAssetUrl,
   supportedReleasePlatform,
@@ -16,6 +18,7 @@ describe("server install model", () => {
       "aarch64-apple-darwin",
       "x86_64-apple-darwin",
       "x86_64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
       "x86_64-pc-windows-msvc",
     ]);
     expect(releaseArchiveName("0.1.2", "darwin", "arm64")).toBe(
@@ -24,8 +27,11 @@ describe("server install model", () => {
     expect(releaseArchiveName("0.1.2", "darwin", "x64")).toBe(
       "seagrass-0.1.2-x86_64-apple-darwin.tar.gz",
     );
-    expect(releaseArchiveName("0.1.2", "linux", "x64")).toBe(
+    expect(releaseArchiveName("0.1.2", "linux", "x64", "gnu")).toBe(
       "seagrass-0.1.2-x86_64-unknown-linux-gnu.tar.gz",
+    );
+    expect(releaseArchiveName("0.1.2", "linux", "x64", "musl")).toBe(
+      "seagrass-0.1.2-x86_64-unknown-linux-musl.tar.gz",
     );
     expect(releaseArchiveName("0.1.2", "win32", "x64")).toBe(
       "seagrass-0.1.2-x86_64-pc-windows-msvc.zip",
@@ -34,9 +40,27 @@ describe("server install model", () => {
 
   test("rejects platforms outside the release matrix", () => {
     expect(supportedReleasePlatform("linux", "arm64")).toBeUndefined();
+    expect(supportedReleasePlatform("linux", "x64", undefined)).toBeUndefined();
     expect(() => releaseArchiveName("0.1.2", "linux", "arm64")).toThrow(
       "prebuilt binary not available",
     );
+  });
+
+  test("detects Linux libc from Node diagnostic reports", () => {
+    expect(
+      linuxLibcFromReport({
+        header: { glibcVersionRuntime: "2.39" },
+        sharedObjects: [],
+      }),
+    ).toBe("gnu");
+    expect(
+      linuxLibcFromReport({
+        header: {},
+        sharedObjects: ["/lib/ld-musl-x86_64.so.1"],
+      }),
+    ).toBe("musl");
+    expect(linuxLibcFromReport({ header: {}, sharedObjects: [] })).toBe("musl");
+    expect(detectLinuxLibc("darwin")).toBeUndefined();
   });
 
   test("derives release URLs and cache binary names", () => {

@@ -43,4 +43,10 @@ impl WorkspaceIndex {
             self.module_path_trie.insert(segments, uri.clone());
         }
     }
+
+    pub(super) fn remove_module_path_for_root(&mut self, uri: &Url) {
+        if let Some(segments) = module_paths::module_path_segments(uri) {
+            self.module_path_trie.remove(segments);
+        }
+    }
 }

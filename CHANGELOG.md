@@ -19,8 +19,12 @@ keep future entries aligned with release-plz output.
 - client: add Zed-native completion and symbol labels, language-server
   installation status reporting, and file/instruction arguments for document
   slash commands.
+- client: open Zed slash-command path arguments in the throwaway LSP session so
+  `/seagrass-analyze <path>` returns the same report as an active document.
 - client: add VS Code server-binary resolution for matching released Seagrass
   versions and document install paths for agent/editor users.
+- client: select the VS Code `x86_64-unknown-linux-musl` server release on
+  musl-based Linux extension hosts instead of caching the glibc binary.
 - ci: add installer and release packaging workflows, release parity checks,
   generated-support freshness checks, and local production-gate coverage for the
   release/install surfaces.
@@ -32,6 +36,8 @@ keep future entries aligned with release-plz output.
   syntax diagnostics before publishing editor Problems.
 - lsp: add a bounded workspace call graph for reachable-helper signer defense
   and unambiguous reachable-helper CPI program diagnostics.
+- lsp: update trie-backed module-path resolution during incremental workspace
+  file upserts and removals, not only during full startup scans.
 - lsp: add Anchor account-space estimation for hovers and code lenses, with
   InitSpace/max_len quick fixes for `space = T::INIT_SPACE` constraints.
 - lsp: offer checked-arithmetic quick fixes for lamport/token math and cover

@@ -26,12 +26,14 @@ impl WorkspaceIndex {
     pub(super) fn insert_indexed_document(&mut self, update: WorkspaceDocumentUpdate) {
         let uri = update.uri.clone();
         self.remove_index_entries_for_uri(&uri);
+        self.record_module_path_for_root(&uri);
         self.index_document_parts(update);
         self.documents.insert(uri);
     }
 
     pub(super) fn remove_index_entries_for_uri(&mut self, uri: &Url) {
         self.documents.remove(uri);
+        self.remove_module_path_for_root(uri);
         prune_uri_entries!(self, symbols_by_name, location, uri);
         prune_uri_entries!(self, references_by_name, location, uri);
         prune_uri_entries!(self, functions_by_name, direct, uri);
