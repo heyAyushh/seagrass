@@ -5,6 +5,14 @@
 # External corpus source trees are fetched on demand; never committed.
 # See corpus/manifest.toml and scripts/fetch-corpus.sh.
 corpus/programs/
+
+# Large real-program corpus mirrors belong in corpus/programs/ via the fetch
+# manifest, not in committed regression fixtures.
+fixtures/corpus/drift/
+fixtures/corpus/marginfi/
+fixtures/corpus/raydium_clmm/
+fixtures/corpus/spl_token_swap/
+fixtures/corpus/tensor_amm/
 /.commandcode/
 /.antigravitycli/
 /node_modules/

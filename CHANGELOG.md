@@ -41,6 +41,8 @@ keep future entries aligned with release-plz output.
   Windows push-diagnostic assertions compare the same URI form the server emits.
 - ci: retry the protocol-smoke formatting request after `didOpen` so slower
   runners do not race document registration before checking rustfmt output.
+- test: keep large real-program corpus trees fetch-only instead of committing
+  their source mirrors under `fixtures/corpus`.
 - test: add fetch-on-demand external corpus infrastructure, vendor permissively
   licensed corpus programs, and promote the corpus scan into a hard gate.
 - lsp: apply `seagrass-ignore` and workspace lint allowances to open-document
