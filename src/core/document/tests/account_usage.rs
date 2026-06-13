@@ -333,6 +333,9 @@ pub mod demo {
         if ctx.accounts.user_a.key() == ctx.accounts.user_b.key() {
             return err!(ErrorCode::DuplicateAccount);
         }
+        if ctx.accounts.metadata_program.key() != mpl_token_metadata::ID {
+            return err!(ErrorCode::InvalidProgram);
+        }
         Ok(())
     }
 }
@@ -350,6 +353,10 @@ pub mod demo {
         .account_key_comparisons
         .iter()
         .any(|comparison| comparison.matches("user_a", "user_b")));
+    assert!(update
+        .account_key_comparisons
+        .iter()
+        .any(|comparison| comparison.compares_account_to_static_program_id("metadata_program")));
     assert!(update.account_usages.iter().all(|usage| !usage.mutable));
 }
 

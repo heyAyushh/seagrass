@@ -35,9 +35,9 @@ pub use {
     symbols::document_symbols,
     types::{
         AccountConstraint, AccountDataFieldUsage, AccountFieldTypeSummary, AccountKeyComparison,
-        AccountPathUsage, AccountUsage, ContextReference, DeclaredProgramId, FunctionCall,
-        InstructionArgument, InstructionAttributeArgument, InstructionSymbol, NamedRange, PdaBump,
-        PdaConstraint, PdaSeeds, SymbolRange,
+        AccountKeyOperand, AccountPathUsage, AccountUsage, ContextReference, DeclaredProgramId,
+        FunctionCall, InstructionArgument, InstructionAttributeArgument, InstructionSymbol,
+        NamedRange, PdaBump, PdaConstraint, PdaSeeds, SymbolRange,
     },
 };
 

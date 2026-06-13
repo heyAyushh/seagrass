@@ -139,8 +139,14 @@ pub struct AccountPathUsage {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AccountKeyComparison {
-    pub left: String,
-    pub right: String,
+    pub left: AccountKeyOperand,
+    pub right: AccountKeyOperand,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AccountKeyOperand {
+    Account(String),
+    StaticProgramId,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

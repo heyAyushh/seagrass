@@ -47,6 +47,8 @@ keep future entries aligned with release-plz output.
   licensed corpus programs, and promote the corpus scan into a hard gate.
 - lsp: apply `seagrass-ignore` and workspace lint allowances to open-document
   syntax diagnostics before publishing editor Problems.
+- lsp: require static program-id evidence before suppressing arbitrary-CPI
+  program-account diagnostics from reachable runtime checks.
 - lsp: add a bounded workspace call graph for reachable-helper signer defense
   and unambiguous reachable-helper CPI program diagnostics.
 - lsp: update trie-backed module-path resolution during incremental workspace

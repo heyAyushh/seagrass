@@ -579,21 +579,46 @@ fn has_manual_signer_check(
 }
 
 fn has_reachable_program_account_check(
-    _document: &ParsedDocument,
+    document: &ParsedDocument,
     workspace_index: Option<&WorkspaceIndex>,
     accounts: &SymbolRange,
     field: &SymbolRange,
 ) -> bool {
+    if has_reachable_local_program_account_check(document, &accounts.name, &field.name) {
+        return true;
+    }
+
     workspace_index
         .and_then(|index| index.reachable_function_entries_for_context(&accounts.name))
         .is_some_and(|(entries, truncated)| {
             truncated
                 || entries.iter().any(|function| {
                     function.account_key_comparisons.iter().any(|comparison| {
-                        comparison.left == field.name || comparison.right == field.name
+                        comparison.compares_account_to_static_program_id(&field.name)
                     })
                 })
         })
+}
+
+fn has_reachable_local_program_account_check(
+    document: &ParsedDocument,
+    context_name: &str,
+    field_name: &str,
+) -> bool {
+    let Some(reachable) = reachable_local_function_names_for_context(document, context_name) else {
+        return false;
+    };
+    reachable.truncated
+        || document
+            .symbols()
+            .callable_functions()
+            .filter(|function| reachable.names.contains(&function.name))
+            .any(|function| {
+                function
+                    .account_key_comparisons
+                    .iter()
+                    .any(|comparison| comparison.compares_account_to_static_program_id(field_name))
+            })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -661,6 +686,29 @@ fn reachable_local_account_usage_names_for_context(
     context_name: &str,
     usages: impl Fn(&crate::document::InstructionSymbol) -> &[crate::document::AccountUsage],
 ) -> Option<ReachableAccountUsageNames> {
+    let reachable = reachable_local_function_names_for_context(document, context_name)?;
+
+    Some(ReachableAccountUsageNames {
+        names: document
+            .symbols()
+            .callable_functions()
+            .filter(|function| reachable.names.contains(&function.name))
+            .flat_map(usages)
+            .map(|usage| usage.name.clone())
+            .collect(),
+        truncated: reachable.truncated,
+    })
+}
+
+struct ReachableLocalFunctionNames {
+    names: HashSet<String>,
+    truncated: bool,
+}
+
+fn reachable_local_function_names_for_context(
+    document: &ParsedDocument,
+    context_name: &str,
+) -> Option<ReachableLocalFunctionNames> {
     let instructions = document
         .symbols()
         .instructions
@@ -711,14 +759,8 @@ fn reachable_local_account_usage_names_for_context(
         );
     }
 
-    Some(ReachableAccountUsageNames {
-        names: document
-            .symbols()
-            .callable_functions()
-            .filter(|function| reachable.contains(&function.name))
-            .flat_map(usages)
-            .map(|usage| usage.name.clone())
-            .collect(),
+    Some(ReachableLocalFunctionNames {
+        names: reachable,
         truncated,
     })
 }

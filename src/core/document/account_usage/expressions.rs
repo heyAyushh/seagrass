@@ -1,7 +1,7 @@
 use {
     super::{
         aliases::{account_field_alias_segment_for_expr, AccountFieldAlias},
-        AccountUsage, NamedRange,
+        AccountKeyOperand, AccountUsage, NamedRange,
     },
     crate::{range::range_from_span, syntax::member_is_named},
 };
@@ -192,12 +192,12 @@ pub(super) fn account_path_from_expr(
     }
 }
 
-pub(super) fn account_key_from_expr(
+pub(super) fn account_key_operand_from_expr(
     expr: &syn::Expr,
     context_names: &[String],
     accounts_aliases: &[String],
     account_field_aliases: &[AccountFieldAlias],
-) -> Option<String> {
+) -> Option<AccountKeyOperand> {
     match expr {
         syn::Expr::MethodCall(method_call) if method_call.method == "key" => {
             account_usage_from_expr(
@@ -206,27 +206,33 @@ pub(super) fn account_key_from_expr(
                 accounts_aliases,
                 account_field_aliases,
             )
-            .map(|usage| usage.name)
+            .map(|usage| AccountKeyOperand::Account(usage.name))
         }
-        syn::Expr::Reference(reference) => account_key_from_expr(
+        syn::Expr::Path(path) if is_static_program_id_path(&path.path) => {
+            Some(AccountKeyOperand::StaticProgramId)
+        }
+        syn::Expr::Call(call) if is_static_program_id_call(call.func.as_ref()) => {
+            Some(AccountKeyOperand::StaticProgramId)
+        }
+        syn::Expr::Reference(reference) => account_key_operand_from_expr(
             reference.expr.as_ref(),
             context_names,
             accounts_aliases,
             account_field_aliases,
         ),
-        syn::Expr::Paren(paren) => account_key_from_expr(
+        syn::Expr::Paren(paren) => account_key_operand_from_expr(
             paren.expr.as_ref(),
             context_names,
             accounts_aliases,
             account_field_aliases,
         ),
-        syn::Expr::Group(group) => account_key_from_expr(
+        syn::Expr::Group(group) => account_key_operand_from_expr(
             group.expr.as_ref(),
             context_names,
             accounts_aliases,
             account_field_aliases,
         ),
-        syn::Expr::Unary(unary) => account_key_from_expr(
+        syn::Expr::Unary(unary) => account_key_operand_from_expr(
             unary.expr.as_ref(),
             context_names,
             accounts_aliases,
@@ -234,4 +240,24 @@ pub(super) fn account_key_from_expr(
         ),
         _ => None,
     }
+}
+
+fn is_static_program_id_call(expr: &syn::Expr) -> bool {
+    let syn::Expr::Path(path) = expr else {
+        return false;
+    };
+    path.path.segments.len() >= 2
+        && path
+            .path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "id")
+}
+
+fn is_static_program_id_path(path: &syn::Path) -> bool {
+    path.segments.len() >= 2
+        && path
+            .segments
+            .last()
+            .is_some_and(|segment| segment.ident == "ID")
 }

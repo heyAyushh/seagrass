@@ -1,7 +1,7 @@
 use {
     super::{
-        context_accounts_type, AccountDataFieldUsage, AccountKeyComparison, AccountPathUsage,
-        AccountUsage, FunctionCall, NamedRange,
+        context_accounts_type, AccountDataFieldUsage, AccountKeyComparison, AccountKeyOperand,
+        AccountPathUsage, AccountUsage, FunctionCall, NamedRange,
     },
     crate::{anchor::idioms, range::range_from_span, syntax::member_is_named},
     aliases::{
@@ -20,7 +20,7 @@ mod aliases;
 mod expressions;
 
 use expressions::{
-    account_key_from_expr, account_path_from_expr, account_usage_from_expr,
+    account_key_operand_from_expr, account_path_from_expr, account_usage_from_expr,
     is_accounts_container_expr,
 };
 
@@ -175,20 +175,20 @@ impl AccountUsageVisitor {
     }
 
     fn record_account_key_comparison(&mut self, left: &syn::Expr, right: &syn::Expr) {
-        let Some(left) = self.account_key_from_expr(left) else {
+        let Some(left) = self.account_key_operand_from_expr(left) else {
             return;
         };
-        let Some(right) = self.account_key_from_expr(right) else {
+        let Some(right) = self.account_key_operand_from_expr(right) else {
             return;
         };
-        if left == right {
+        let comparison = AccountKeyComparison { left, right };
+        if !comparison.has_account_operand() || comparison.compares_account_to_itself() {
             return;
         }
-        let comparison = AccountKeyComparison { left, right };
         if !self
             .account_key_comparisons
             .iter()
-            .any(|existing| existing.matches(&comparison.left, &comparison.right))
+            .any(|existing| existing.matches_operands(&comparison.left, &comparison.right))
         {
             self.account_key_comparisons.push(comparison);
         }
@@ -295,8 +295,8 @@ impl AccountUsageVisitor {
         )
     }
 
-    fn account_key_from_expr(&self, expr: &syn::Expr) -> Option<String> {
-        account_key_from_expr(
+    fn account_key_operand_from_expr(&self, expr: &syn::Expr) -> Option<AccountKeyOperand> {
+        account_key_operand_from_expr(
             expr,
             &self.context_names,
             &self.accounts_aliases,
@@ -469,7 +469,38 @@ fn context_argument_names(item_fn: &ItemFn) -> Vec<String> {
 
 impl AccountKeyComparison {
     pub fn matches(&self, left: &str, right: &str) -> bool {
-        (self.left == left && self.right == right) || (self.left == right && self.right == left)
+        self.matches_operands(
+            &AccountKeyOperand::Account(left.to_string()),
+            &AccountKeyOperand::Account(right.to_string()),
+        )
+    }
+
+    pub fn matches_operands(&self, left: &AccountKeyOperand, right: &AccountKeyOperand) -> bool {
+        (self.left == *left && self.right == *right) || (self.left == *right && self.right == *left)
+    }
+
+    pub fn compares_account_to_static_program_id(&self, account: &str) -> bool {
+        matches!(
+            (&self.left, &self.right),
+            (AccountKeyOperand::Account(left), AccountKeyOperand::StaticProgramId)
+                if left == account
+        ) || matches!(
+            (&self.left, &self.right),
+            (AccountKeyOperand::StaticProgramId, AccountKeyOperand::Account(right))
+                if right == account
+        )
+    }
+
+    fn has_account_operand(&self) -> bool {
+        matches!(self.left, AccountKeyOperand::Account(_))
+            || matches!(self.right, AccountKeyOperand::Account(_))
+    }
+
+    fn compares_account_to_itself(&self) -> bool {
+        matches!(
+            (&self.left, &self.right),
+            (AccountKeyOperand::Account(left), AccountKeyOperand::Account(right)) if left == right
+        )
     }
 }
 
