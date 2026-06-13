@@ -5,13 +5,29 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- build: pin Solana and Anchor catalog inputs, add runtime catalog parity checks,
+  and keep generated Anchor support guarded against hand-edited drift.
+- lsp: derive diagnostic severity from registry provability, enforce
+  truth-source audit coverage, and align emitted topics with the lint catalog.
+- lsp: add framework semantic modeling and capability-registry resolution so
+  Anchor, native Solana, and Pinocchio diagnostics rely on parsed workspace
+  facts instead of name-only guesses.
+- lsp: add trie-backed completion wakeups and program-id completion gating so
+  Anchor-aware completions stay fast without polluting normal Rust contexts.
 - client: add first-class Vim-family command surfaces with Vim quickfix CLI
   scans, a Neovim runtime package, and explicit classic vi CLI-only guidance.
 - client: add Zed-native completion and symbol labels, language-server
   installation status reporting, and file/instruction arguments for document
   slash commands.
+- client: add VS Code server-binary resolution for matching released Seagrass
+  versions and document install paths for agent/editor users.
+- ci: add installer and release packaging workflows, release parity checks,
+  generated-support freshness checks, and local production-gate coverage for the
+  release/install surfaces.
 - ci: guard silent editor and installer control surfaces with settings,
   suppression, `Seagrass.toml`, release-parity, and install-smoke checks.
+- test: add fetch-on-demand external corpus infrastructure, vendor permissively
+  licensed corpus programs, and promote the corpus scan into a hard gate.
 - lsp: apply `seagrass-ignore` and workspace lint allowances to open-document
   syntax diagnostics before publishing editor Problems.
 - lsp: add a bounded workspace call graph for reachable-helper signer defense
