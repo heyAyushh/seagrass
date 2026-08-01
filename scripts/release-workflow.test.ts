@@ -210,6 +210,7 @@ describe("release workflow packaging", () => {
     expect(script).toContain('"scripts/check-generated-support.test.ts"');
     expect(script).toContain('"scripts/verify-proptest.ts"');
     expect(script).toContain('"scripts/package-release.test.ts"');
+    expect(script).toContain('"scripts/install-cargo-fuzz.test.ts"');
   });
 
   test("documents the same concrete proof constraints as the validator", () => {
@@ -260,13 +261,16 @@ describe("release workflow packaging", () => {
     expect(failures).toEqual([]);
   });
 
-  test("installs cargo-fuzz with pinned stable cargo before nightly fuzzing", () => {
+  test("installs cargo-fuzz through the deterministic nightly installer script", () => {
     const fuzzWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/fuzz.yaml"), "utf8");
     const releaseWorkflow = readFileSync(releaseWorkflowPath, "utf8");
-    const installCommand = `cargo +${rustToolchainChannel()} install cargo-fuzz --locked`;
 
-    expect(fuzzWorkflow).toContain(installCommand);
-    expect(releaseWorkflow).toContain(installCommand);
+    expect(fuzzWorkflow).toContain("bash scripts/install-cargo-fuzz.sh");
+    expect(releaseWorkflow).toContain("bash scripts/install-cargo-fuzz.sh");
+    expect(fuzzWorkflow).toContain("bash scripts/run-fuzz.sh");
+    expect(releaseWorkflow).toContain("bash scripts/run-fuzz.sh");
+    expect(fuzzWorkflow).not.toContain("cargo +1.89.0 install cargo-fuzz");
+    expect(releaseWorkflow).not.toContain("cargo +1.89.0 install cargo-fuzz");
     expect(fuzzWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
     expect(releaseWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
   });

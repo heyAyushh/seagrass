@@ -47,20 +47,16 @@ jobs:
           toolchain: nightly
       - uses: Swatinem/rust-cache@98c8021b550208e191a6a3145459bfc9fb29c4c0 # v2.8.1
       - name: Install cargo-fuzz
-        run: cargo +1.89.0 install cargo-fuzz --locked
+        run: bash scripts/install-cargo-fuzz.sh
       - name: Build fuzz targets
-        run: cargo fuzz build
+        run: bash scripts/run-fuzz.sh build
       - name: Fuzz target shard
         run: |
           mkdir -p "fuzz/artifacts/${{ matrix.target }}"
-          cargo fuzz run "${{ matrix.target }}" -- -max_total_time="${FUZZ_SECONDS_PER_SHARD}" -artifact_prefix="fuzz/artifacts/${{ matrix.target }}/shard-${{ matrix.shard }}-"
+          bash scripts/run-fuzz.sh run "${{ matrix.target }}" -- -max_total_time="${FUZZ_SECONDS_PER_SHARD}" -artifact_prefix="fuzz/artifacts/${{ matrix.target }}/shard-${{ matrix.shard }}-"
       - name: Package fuzz corpus and crashes
         if: always()
-        run: |
-          tar -czf "fuzz-corpus-${GITHUB_SHA}-${{ matrix.target }}-${{ matrix.shard }}.tar.gz" \
-            -C . \
-            fuzz/corpus \
-            fuzz/artifacts
+        run: bash scripts/package-fuzz-artifacts.sh "fuzz-corpus-${GITHUB_SHA}-${{ matrix.target }}-${{ matrix.shard }}.tar.gz"
       - name: Upload fuzz artifacts
         if: always()
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0

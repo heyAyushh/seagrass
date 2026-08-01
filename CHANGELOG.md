@@ -5,6 +5,9 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- ci: install and run cargo-fuzz through deterministic nightly scripts so fuzz
+  CI no longer fails on the cargo-platform 1.91 MSRV floor, and package corpus
+  artifacts even when crash dirs are empty.
 - build: pin Solana and Anchor catalog inputs, add runtime catalog parity checks,
   and keep generated Anchor support guarded against hand-edited drift.
 - lsp: derive diagnostic severity from registry provability, enforce
