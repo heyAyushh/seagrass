@@ -144,6 +144,12 @@ const steps = [
     args: ["test", "scripts/release-workflow.test.ts"],
   },
   {
+    name: "Cargo-fuzz installer tests",
+    cwd: repoRoot,
+    command: "bun",
+    args: ["test", "scripts/install-cargo-fuzz.test.ts"],
+  },
+  {
     name: "Release package command tests",
     cwd: repoRoot,
     command: "bun",
