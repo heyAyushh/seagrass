@@ -51,7 +51,13 @@ targets. The install step must not use the repository `1.89.0` pin because
 `cargo-fuzz`'s locked dependency tree currently requires rustc `1.91+`.
 `scripts/run-fuzz.sh` defaults to `-s none` because current nightly ASAN builds
 fail to link with undefined `__sancov_gen_*` symbols (`rust-fuzz/cargo-fuzz#404`);
-libFuzzer coverage instrumentation still runs:
+libFuzzer coverage instrumentation still runs.
+
+PR CI runs a **Fuzz build smoke** job that installs `cargo-fuzz`, builds
+`fuzz_document_parse`, and runs it for 15 seconds so install/MSRV and ASAN link
+regressions fail before merge. The long scheduled workflow is still the source of
+release-readiness hours; retrigger it from Actions → Seagrass Fuzz → Run workflow
+(or `gh workflow run fuzz.yaml --ref <branch>`).
 
 ```sh
 bash scripts/install-cargo-fuzz.sh --check-toolchain

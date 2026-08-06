@@ -75,11 +75,15 @@ describe("install-cargo-fuzz", () => {
   test("defaults fuzz builds to -s none to avoid ASAN __sancov_gen_ link failures", () => {
     const runScript = readFileSync(resolve(repoRoot, "scripts/run-fuzz.sh"), "utf8");
     const docs = readFileSync(qualityKitPath, "utf8");
+    const prWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/pr.yaml"), "utf8");
 
     expect(runScript).toContain('FUZZ_SANITIZER="${FUZZ_SANITIZER:-none}"');
     expect(runScript).toContain("rust-fuzz/cargo-fuzz#404");
     expect(docs).toContain("-s none");
     expect(docs).toContain("__sancov_gen_");
+    expect(docs).toContain("Fuzz build smoke");
+    expect(prWorkflow).toContain("fuzz-build-smoke:");
+    expect(prWorkflow).toContain("bash scripts/run-fuzz.sh build fuzz_document_parse");
   });
 
   test("packages fuzz artifacts through the resilient shell helper", () => {
