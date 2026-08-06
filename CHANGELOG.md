@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- ci: disable cargo-fuzz AddressSanitizer (`-s none`) so nightly builds avoid
+  the broken `__sancov_gen_*` ASAN link path, and build only each shard's target.
 - ci: install and run cargo-fuzz through deterministic nightly scripts so fuzz
   CI no longer fails on the cargo-platform 1.91 MSRV floor, and package corpus
   artifacts even when crash dirs are empty.

@@ -48,11 +48,15 @@ The long workflow runs target shards sequentially and uploads
 readiness evidence.
 Local runs require nightly Rust for both installing `cargo-fuzz` and executing
 targets. The install step must not use the repository `1.89.0` pin because
-`cargo-fuzz`'s locked dependency tree currently requires rustc `1.91+`:
+`cargo-fuzz`'s locked dependency tree currently requires rustc `1.91+`.
+`scripts/run-fuzz.sh` defaults to `-s none` because current nightly ASAN builds
+fail to link with undefined `__sancov_gen_*` symbols (`rust-fuzz/cargo-fuzz#404`);
+libFuzzer coverage instrumentation still runs:
 
 ```sh
 bash scripts/install-cargo-fuzz.sh --check-toolchain
 bash scripts/install-cargo-fuzz.sh
+bash scripts/run-fuzz.sh build fuzz_document_parse
 bash scripts/run-fuzz.sh run fuzz_document_parse
 bash scripts/run-fuzz.sh run fuzz_anchor_attr
 bash scripts/run-fuzz.sh run fuzz_anchor_preflight

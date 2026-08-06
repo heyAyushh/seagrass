@@ -183,7 +183,7 @@ jobs:
         run: bash scripts/install-cargo-fuzz.sh
 
       - name: Build fuzz targets
-        run: bash scripts/run-fuzz.sh build
+        run: bash scripts/run-fuzz.sh build "${{ matrix.target }}"
 
       - name: Replay corpus and fuzz briefly
         run: bash scripts/run-fuzz.sh run "${{ matrix.target }}" -- -max_total_time="${RELEASE_FUZZ_SECONDS_PER_TARGET}"
