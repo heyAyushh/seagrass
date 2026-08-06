@@ -49,7 +49,7 @@ jobs:
       - name: Install cargo-fuzz
         run: bash scripts/install-cargo-fuzz.sh
       - name: Build fuzz targets
-        run: bash scripts/run-fuzz.sh build
+        run: bash scripts/run-fuzz.sh build "${{ matrix.target }}"
       - name: Fuzz target shard
         run: |
           mkdir -p "fuzz/artifacts/${{ matrix.target }}"

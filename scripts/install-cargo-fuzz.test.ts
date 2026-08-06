@@ -57,17 +57,33 @@ describe("install-cargo-fuzz", () => {
 
     expect(fuzzWorkflow).toContain("bash scripts/install-cargo-fuzz.sh");
     expect(releaseWorkflow).toContain("bash scripts/install-cargo-fuzz.sh");
-    expect(fuzzWorkflow).toContain("bash scripts/run-fuzz.sh build");
+    expect(fuzzWorkflow).toContain('bash scripts/run-fuzz.sh build "${{ matrix.target }}"');
     expect(fuzzWorkflow).toContain("bash scripts/run-fuzz.sh run");
-    expect(releaseWorkflow).toContain("bash scripts/run-fuzz.sh build");
+    expect(releaseWorkflow).toContain('bash scripts/run-fuzz.sh build "${{ matrix.target }}"');
     expect(releaseWorkflow).toContain("bash scripts/run-fuzz.sh run");
-    expect(runScript).toContain("cargo +nightly fuzz");
+    expect(runScript).toContain('cargo +nightly fuzz build -s "${FUZZ_SANITIZER}"');
+    expect(runScript).toContain('cargo +nightly fuzz run -s "${FUZZ_SANITIZER}"');
+    expect(runScript).toContain('FUZZ_SANITIZER="${FUZZ_SANITIZER:-none}"');
     expect(fuzzWorkflow).not.toContain("cargo +1.89.0 install cargo-fuzz");
     expect(releaseWorkflow).not.toContain("cargo +1.89.0 install cargo-fuzz");
     expect(fuzzWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
     expect(releaseWorkflow).not.toContain("run: cargo install cargo-fuzz --locked");
     expect(fuzzWorkflow).not.toContain("bun scripts/install-cargo-fuzz.ts");
     expect(releaseWorkflow).not.toContain("bun scripts/install-cargo-fuzz.ts");
+  });
+
+  test("defaults fuzz builds to -s none to avoid ASAN __sancov_gen_ link failures", () => {
+    const runScript = readFileSync(resolve(repoRoot, "scripts/run-fuzz.sh"), "utf8");
+    const docs = readFileSync(qualityKitPath, "utf8");
+    const prWorkflow = readFileSync(resolve(repoRoot, ".github/workflows/pr.yaml"), "utf8");
+
+    expect(runScript).toContain('FUZZ_SANITIZER="${FUZZ_SANITIZER:-none}"');
+    expect(runScript).toContain("rust-fuzz/cargo-fuzz#404");
+    expect(docs).toContain("-s none");
+    expect(docs).toContain("__sancov_gen_");
+    expect(docs).toContain("Fuzz build smoke");
+    expect(prWorkflow).toContain("fuzz-build-smoke:");
+    expect(prWorkflow).toContain("bash scripts/run-fuzz.sh build fuzz_document_parse");
   });
 
   test("packages fuzz artifacts through the resilient shell helper", () => {

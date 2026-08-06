@@ -135,7 +135,12 @@ describe("release workflow packaging", () => {
     expect(workflow).toContain("bun test scripts/check-release-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/fuzz-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/import-fuzz-artifacts.test.ts");
+    expect(workflow).toContain("bun test scripts/install-cargo-fuzz.test.ts");
     expect(workflow).toContain("bun test scripts/review-readiness.test.ts");
+    expect(workflow).toContain("fuzz-build-smoke:");
+    expect(workflow).toContain("bash scripts/install-cargo-fuzz.sh");
+    expect(workflow).toContain("bash scripts/run-fuzz.sh build fuzz_document_parse");
+    expect(workflow).toContain("bash scripts/run-fuzz.sh run fuzz_document_parse -- -max_total_time=15");
     expect(workflow).toContain("bun test scripts/apply-release-readiness.test.ts");
     expect(workflow).toContain("bun test scripts/release-workflow.test.ts");
     expect(workflow).toContain("bun test scripts/package-release.test.ts");
