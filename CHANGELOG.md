@@ -5,6 +5,8 @@ keep future entries aligned with release-plz output.
 
 ## [Unreleased]
 
+- ci: raise libFuzzer RSS/timeout defaults and ignore OOM/timeout aborts so
+  scheduled fuzz shards survive past the previous 2 GiB / 1200s resource exits.
 - ci: add a PR fuzz build smoke so install/MSRV and ASAN link regressions fail
   before merge, instead of only on the scheduled long fuzz run.
 - ci: disable cargo-fuzz AddressSanitizer (`-s none`) so nightly builds avoid

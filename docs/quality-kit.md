@@ -51,7 +51,10 @@ targets. The install step must not use the repository `1.89.0` pin because
 `cargo-fuzz`'s locked dependency tree currently requires rustc `1.91+`.
 `scripts/run-fuzz.sh` defaults to `-s none` because current nightly ASAN builds
 fail to link with undefined `__sancov_gen_*` symbols (`rust-fuzz/cargo-fuzz#404`);
-libFuzzer coverage instrumentation still runs.
+libFuzzer coverage instrumentation still runs. Runs also default to a 4096 MiB
+RSS cap, 60s per-input timeout, and `-ignore_ooms=1` / `-ignore_timeouts=1` so
+hour-long CI shards are not aborted by libFuzzer's 2 GiB / 1200s defaults
+(artifacts are still written; panics still fail).
 
 PR CI runs a **Fuzz build smoke** job that installs `cargo-fuzz`, builds
 `fuzz_document_parse`, and runs it for 15 seconds so install/MSRV and ASAN link
